@@ -432,3 +432,53 @@ export const resumeJob = async (targetId, jobId) => {
     throw error;
   }
 };
+
+// AI Provider Configuration Functions
+export const signupForCredits = async (email, description) => {
+  try {
+    const response = await apiClient.post('/auth/signup', {
+      email,
+      description,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error signing up for credits:', error);
+    throw error;
+  }
+};
+
+export const configureAIProvider = async (provider, config) => {
+  try {
+    const response = await apiClient.post('/ai/provider/configure', {
+      provider,
+      config,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error configuring AI provider:', error);
+    throw error;
+  }
+};
+
+export const validateAIProvider = async (provider, config) => {
+  try {
+    const response = await apiClient.post('/ai/provider/validate', {
+      provider,
+      config,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error validating AI provider:', error);
+    throw error;
+  }
+};
+
+export const getAIProviderStatus = async () => {
+  try {
+    const response = await apiClient.get('/ai/provider/status');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting AI provider status:', error);
+    throw error;
+  }
+};

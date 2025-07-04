@@ -10,6 +10,7 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import React, { useEffect, useState } from 'react';
 import { Outlet, Route, BrowserRouter as Router, Routes, useLocation } from 'react-router-dom';
+import AIProviderSetup from './components/AIProviderSetup';
 import ApiKeyDialog from './components/ApiKeyDialog';
 import ApiList from './components/ApiList';
 import AppHeader from './components/AppHeader';
@@ -24,6 +25,7 @@ import TargetDetails from './components/TargetDetails';
 import TargetList from './components/TargetList';
 import VncViewer from './components/VncViewer';
 import { ApiKeyProvider, useApiKey } from './contexts/ApiKeyContext';
+import { AIProviderProvider, useAIProvider } from './contexts/AIProviderContext';
 import { getSessions, setApiKeyHeader, testApiKey } from './services/apiService';
 
 // Create a dark theme
@@ -152,7 +154,9 @@ const AppLayout = () => {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [currentSession, setCurrentSession] = useState(null);
   const { apiKey, setIsApiKeyValid } = useApiKey();
+  const { isConfigured } = useAIProvider();
   const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
+  const [aiProviderSetupOpen, setAiProviderSetupOpen] = useState(false);
   const [isValidatingApiKey, setIsValidatingApiKey] = useState(true);
 
   // Check if we're on a session detail page or job detail page
@@ -293,6 +297,18 @@ const AppLayout = () => {
     );
   }
 
+  // Show AI provider setup if not configured
+  if (!isConfigured) {
+    return (
+      <>
+        <AIProviderSetup
+          open={!isConfigured}
+          onClose={() => setAiProviderSetupOpen(false)}
+        />
+      </>
+    );
+  }
+
   return (
     <SessionContext.Provider
       value={{ selectedSessionId, setSelectedSessionId, currentSession, setCurrentSession }}
@@ -337,6 +353,9 @@ const AppLayout = () => {
 
       {/* API Key Dialog */}
       <ApiKeyDialog open={apiKeyDialogOpen} onClose={() => setApiKeyDialogOpen(false)} />
+      
+      {/* AI Provider Setup Dialog */}
+      <AIProviderSetup open={aiProviderSetupOpen} onClose={() => setAiProviderSetupOpen(false)} />
     </SessionContext.Provider>
   );
 };
@@ -346,23 +365,25 @@ function App() {
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
       <ApiKeyProvider>
-        <Router>
-          <Routes>
-            <Route element={<AppLayout />}>
-              <Route path="" element={<Dashboard />} />
-              <Route path="apis" element={<ApiList />} />
-              <Route path="apis/:apiName/edit" element={<EditApiDefinition />} />
-              <Route path="sessions" element={<SessionList />} />
-              <Route path="sessions/new" element={<CreateSession />} />
-              <Route path="sessions/:sessionId" element={<TargetDetails />} />
-              <Route path="jobs" element={<JobsList />} />
-              <Route path="jobs/:targetId/:jobId" element={<JobDetails />} />
-              <Route path="targets" element={<TargetList />} />
-              <Route path="targets/new" element={<CreateTarget />} />
-              <Route path="targets/:targetId" element={<TargetDetails />} />
-            </Route>
-          </Routes>
-        </Router>
+        <AIProviderProvider>
+          <Router>
+            <Routes>
+              <Route element={<AppLayout />}>
+                <Route path="" element={<Dashboard />} />
+                <Route path="apis" element={<ApiList />} />
+                <Route path="apis/:apiName/edit" element={<EditApiDefinition />} />
+                <Route path="sessions" element={<SessionList />} />
+                <Route path="sessions/new" element={<CreateSession />} />
+                <Route path="sessions/:sessionId" element={<TargetDetails />} />
+                <Route path="jobs" element={<JobsList />} />
+                <Route path="jobs/:targetId/:jobId" element={<JobDetails />} />
+                <Route path="targets" element={<TargetList />} />
+                <Route path="targets/new" element={<CreateTarget />} />
+                <Route path="targets/:targetId" element={<TargetDetails />} />
+              </Route>
+            </Routes>
+          </Router>
+        </AIProviderProvider>
       </ApiKeyProvider>
     </ThemeProvider>
   );

@@ -15,13 +15,18 @@ import Typography from '@mui/material/Typography';
 import { useState } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { useApiKey } from '../contexts/ApiKeyContext';
+import { useAIProvider } from '../contexts/AIProviderContext';
+import AIProviderSetup from './AIProviderSetup';
 import ApiKeyDialog from './ApiKeyDialog';
+import ProviderStatusIndicator from './ProviderStatusIndicator';
 
 const AppHeader = () => {
   const location = useLocation();
   const { apiKey, clearApiKey, isApiKeyValid } = useApiKey();
+  const { isConfigured } = useAIProvider();
   const [anchorEl, setAnchorEl] = useState(null);
   const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
+  const [aiProviderSetupOpen, setAiProviderSetupOpen] = useState(false);
 
   const isActive = path => {
     return location.pathname === path;
@@ -43,6 +48,10 @@ const AppHeader = () => {
   const handleClearApiKey = () => {
     clearApiKey();
     handleMenuClose();
+  };
+
+  const handleOpenProviderSetup = () => {
+    setAiProviderSetupOpen(true);
   };
 
   return (
@@ -108,6 +117,10 @@ const AppHeader = () => {
             </Button>
           </Box>
 
+          {isConfigured && (
+            <ProviderStatusIndicator onOpenSetup={handleOpenProviderSetup} />
+          )}
+
           <Tooltip title="API Key Settings">
             <IconButton
               color={isApiKeyValid ? 'success' : 'error'}
@@ -128,6 +141,7 @@ const AppHeader = () => {
       </AppBar>
 
       <ApiKeyDialog open={apiKeyDialogOpen} onClose={() => setApiKeyDialogOpen(false)} />
+      <AIProviderSetup open={aiProviderSetupOpen} onClose={() => setAiProviderSetupOpen(false)} />
     </>
   );
 };
