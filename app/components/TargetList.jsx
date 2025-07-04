@@ -32,10 +32,11 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { deleteTarget, getJobs, getTarget, getTargets, updateTarget } from '../services/apiService';
 import VPNConfigInputField from './VPNConfigInputField';
+import ResolutionRecommendation from './ResolutionRecommendation';
 
 const TargetList = () => {
   const navigate = useNavigate();
@@ -208,7 +209,7 @@ const TargetList = () => {
       }));
     } else {
       const portValue = parseInt(value, 10);
-      if (!isNaN(portValue)) {
+      if (!Number.isNaN(portValue)) {
         setEditFormData(prev => ({
           ...prev,
           port: portValue,
@@ -220,7 +221,7 @@ const TargetList = () => {
   const handleEditResolutionChange = e => {
     const { name, value } = e.target;
     const numValue = parseInt(value, 10);
-    if (!isNaN(numValue)) {
+    if (!Number.isNaN(numValue)) {
       setEditFormData(prev => ({
         ...prev,
         [name]: numValue,
@@ -241,16 +242,16 @@ const TargetList = () => {
 
     if (
       editFormData.port !== null &&
-      (isNaN(editFormData.port) || editFormData.port < 1 || editFormData.port > 65535)
+      (Number.isNaN(editFormData.port) || editFormData.port < 1 || editFormData.port > 65535)
     ) {
       errors.port = 'Port must be a valid number between 1 and 65535';
     }
 
-    if (!editFormData.width || isNaN(editFormData.width) || editFormData.width < 1) {
+    if (!editFormData.width || Number.isNaN(editFormData.width) || editFormData.width < 1) {
       errors.width = 'Width must be a positive number';
     }
 
-    if (!editFormData.height || isNaN(editFormData.height) || editFormData.height < 1) {
+    if (!editFormData.height || Number.isNaN(editFormData.height) || editFormData.height < 1) {
       errors.height = 'Height must be a positive number';
     }
 
@@ -648,6 +649,21 @@ const TargetList = () => {
                 required
                 margin="normal"
                 InputProps={{ inputProps: { min: 1 } }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <ResolutionRecommendation
+                width={editFormData.width}
+                height={editFormData.height}
+                onApplyRecommended={(recommended) => {
+                  setEditFormData(prev => ({
+                    ...prev,
+                    width: recommended.width,
+                    height: recommended.height
+                  }));
+                }}
+                showApplyButton={true}
               />
             </Grid>
           </Grid>

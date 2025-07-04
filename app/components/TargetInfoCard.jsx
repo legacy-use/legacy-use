@@ -1,5 +1,6 @@
 import { Box, Card, CardContent, Chip, Grid, Typography } from '@mui/material';
-import React from 'react';
+
+import ResolutionRecommendation from './ResolutionRecommendation';
 
 const TargetInfoCard = ({ target, formatDate }) => {
   if (!target) return null;
@@ -67,6 +68,16 @@ const TargetInfoCard = ({ target, formatDate }) => {
               <Typography variant="body2" color="textSecondary">
                 Screen Resolution: {target.width}×{target.height}
               </Typography>
+            </Grid>
+          )}
+          {target.width && target.height && (
+            <Grid item xs={12}>
+              <ResolutionRecommendation
+                width={target.width}
+                height={target.height}
+                showApplyButton={false}
+                compact={true}
+              />
             </Grid>
           )}
           {target.username && (
