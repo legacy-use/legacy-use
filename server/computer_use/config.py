@@ -10,6 +10,7 @@ PROMPT_CACHING_BETA_FLAG = 'prompt-caching-2024-07-31'
 
 
 class APIProvider(StrEnum):
+    OPENAI = 'openai'
     ANTHROPIC = 'anthropic'
     BEDROCK = 'bedrock'
     VERTEX = 'vertex'
