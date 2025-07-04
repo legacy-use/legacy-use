@@ -20,6 +20,7 @@ PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.ANTHROPIC: 'claude-sonnet-4-20250514',
     APIProvider.BEDROCK: 'eu.anthropic.claude-sonnet-4-20250514-v1:0',
     APIProvider.VERTEX: 'claude-sonnet-4@20250514',
+    APIProvider.OPENAI: 'ByteDance-Seed/UI-TARS-1.5-7B',
 }
 
 
