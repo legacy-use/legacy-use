@@ -1,5 +1,4 @@
 import logging
-import os
 from contextvars import ContextVar
 from typing import Any, Dict
 from uuid import UUID
@@ -7,6 +6,7 @@ from uuid import UUID
 from fastapi import Request
 from posthog import Posthog
 
+from server.config import config
 from server.models.base import (
     Job,
     JobStatus,
@@ -21,11 +21,8 @@ logger = logging.getLogger(__name__)
 distinct_id_context: ContextVar[str] = ContextVar('distinct_id', default='external')
 
 posthog = Posthog(
-    os.getenv(
-        'VITE_PUBLIC_POSTHOG_KEY',
-        'phc_i1lWRELFSWLrbwV8M8sddiFD83rVhWzyZhP27T3s6V8',
-    ),
-    host=os.getenv('VITE_PUBLIC_POSTHOG_HOST', 'https://eu.i.posthog.com'),
+    config.VITE_PUBLIC_POSTHOG_KEY or 'phc_i1lWRELFSWLrbwV8M8sddiFD83rVhWzyZhP27T3s6V8',
+    host=config.VITE_PUBLIC_POSTHOG_HOST,
 )
 
 
@@ -38,7 +35,7 @@ def capture_event(request: Request | None, event_name, properties):
         event_name: The name of the event
         properties: The properties of the event
     """
-    if os.getenv('VITE_PUBLIC_DISABLE_TRACKING') == 'true':
+    if config.VITE_PUBLIC_DISABLE_TRACKING:
         return
 
     try:

@@ -174,10 +174,11 @@ async def sampling_loop(
         elif provider == APIProvider.BEDROCK:
             # AWS credentials should be set in environment variables
             # by the server.py initialization
-            aws_region = os.getenv('AWS_REGION', 'us-east-1')
-            aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
-            aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
-            aws_session_token = os.getenv('AWS_SESSION_TOKEN')
+            from server.config import config
+            aws_region = config.AWS_REGION or 'us-east-1'
+            aws_access_key = config.AWS_ACCESS_KEY_ID
+            aws_secret_key = config.AWS_SECRET_ACCESS_KEY
+            aws_session_token = config.AWS_SESSION_TOKEN
 
             # Initialize with available credentials
             bedrock_kwargs = {'aws_region': aws_region}

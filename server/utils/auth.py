@@ -1,14 +1,9 @@
-import os
 import re
 
 from fastapi import HTTPException, Request
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-# Documentation flags - keep here to avoid circular imports
-SHOW_DOCS = os.getenv('SHOW_DOCS', 'undefined') == 'true'
-HIDE_INTERNAL_API_ENDPOINTS_IN_DOC = (
-    os.getenv('HIDE_INTERNAL_API_ENDPOINTS_IN_DOC', 'undefined') == 'true'
-)
+from server.config import config
 
 
 async def get_api_key(request: Request):
