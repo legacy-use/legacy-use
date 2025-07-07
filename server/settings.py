@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
-from server.computer_use.config import APIProvider
+from server.models.api_provider import APIProvider
 
 ROOT_DIR = Path(__file__).parent.parent
 ENV_FILE_PATH = ROOT_DIR / '.env'

@@ -2,7 +2,7 @@
 Computer Use API Gateway package
 """
 
-from server.computer_use.config import (
+from server.models.api_provider import (
     APIProvider,
     get_default_model_name,
     get_tool_version,

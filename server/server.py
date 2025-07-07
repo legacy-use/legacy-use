@@ -14,7 +14,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-from server.computer_use import APIProvider
+from server.models.api_provider import APIProvider
 from server.database import db
 from server.routes import api_router, job_router, target_router
 from server.routes.diagnostics import diagnostics_router

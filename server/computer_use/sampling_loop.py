@@ -29,8 +29,8 @@ from anthropic.types.beta import (
 
 from server.computer_use.config import (
     PROMPT_CACHING_BETA_FLAG,
-    APIProvider,
 )
+from server.models.api_provider import APIProvider
 from server.computer_use.logging import logger
 from server.computer_use.tools import (
     TOOL_GROUPS_BY_VERSION,
