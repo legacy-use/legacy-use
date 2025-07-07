@@ -51,4 +51,4 @@ def get_tool_version(model_name: str) -> str:
     """
     if '3-7' in model_name or 'sonnet-4' in model_name:
         return 'computer_use_20250124'
-    return 'computer_use_20241022' 
+    return 'computer_use_20241022'
