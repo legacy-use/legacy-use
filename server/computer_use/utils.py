@@ -20,7 +20,6 @@ from anthropic.types.beta import (
 
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolResult
-from server.database.models import JobMessage
 
 
 def _load_system_prompt(system_prompt_suffix: str = '') -> str:
@@ -254,7 +253,7 @@ def _maybe_prepend_system_tool_result(result: ToolResult, result_text: str):
     return result_text
 
 
-def _job_message_to_beta_message_param(job_message: JobMessage) -> BetaMessageParam:
+def _job_message_to_beta_message_param(job_message: Dict[str, Any]) -> BetaMessageParam:
     """Converts a JobMessage dictionary (or model instance) to a BetaMessageParam TypedDict."""
     # Deserialize from JSON to plain dict
     restored = {
@@ -275,3 +274,225 @@ def _beta_message_param_to_job_message_content(
     (role and serialized message_content). Does not create a JobMessage DB model instance.
     """
     return beta_param.get('content')
+
+
+# OpenAI Conversion Functions
+
+
+def _anthropic_to_openai_messages(
+    anthropic_messages: list[BetaMessageParam],
+) -> list[Dict[str, Any]]:
+    """Convert Anthropic messages to OpenAI format."""
+    openai_messages = []
+
+    for msg in anthropic_messages:
+        role = msg.get('role')
+        content = msg.get('content')
+
+        if role == 'assistant':
+            # Handle assistant messages with potential tool calls
+            openai_msg = {'role': 'assistant'}
+            text_content = ''
+            tool_calls = []
+
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get('type') == 'text':
+                            text_content += block.get('text', '')
+                        elif block.get('type') == 'tool_use':
+                            tool_calls.append(
+                                {
+                                    'id': block.get('id'),
+                                    'type': 'function',
+                                    'function': {
+                                        'name': block.get('name'),
+                                        'arguments': json.dumps(block.get('input', {})),
+                                    },
+                                }
+                            )
+
+            if text_content:
+                openai_msg['content'] = text_content
+            if tool_calls:
+                openai_msg['tool_calls'] = tool_calls
+
+            openai_messages.append(openai_msg)
+
+        elif role == 'user':
+            # Handle user messages with potential tool results
+            openai_msg = {'role': 'user'}
+            text_content = ''
+
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get('type') == 'text':
+                            text_content += block.get('text', '')
+                        elif block.get('type') == 'image':
+                            # Handle image content
+                            image_data = block.get('source', {})
+                            if image_data.get('type') == 'base64':
+                                text_content += (
+                                    f'[Image: {image_data.get("media_type", "image")}]'
+                                )
+                        elif block.get('type') == 'tool_result':
+                            # Convert tool result to tool message
+                            tool_msg = {
+                                'role': 'tool',
+                                'tool_call_id': block.get('tool_use_id'),
+                                'content': '',
+                            }
+
+                            # Extract content from tool result
+                            tool_content = block.get('content', [])
+                            if isinstance(tool_content, list):
+                                for tc in tool_content:
+                                    if (
+                                        isinstance(tc, dict)
+                                        and tc.get('type') == 'text'
+                                    ):
+                                        tool_msg['content'] += tc.get('text', '')
+                                    elif (
+                                        isinstance(tc, dict)
+                                        and tc.get('type') == 'image'
+                                    ):
+                                        # For tool results with images, include base64 data
+                                        image_data = tc.get('source', {})
+                                        if image_data.get('type') == 'base64':
+                                            tool_msg['content'] += (
+                                                f'\n[Image: data:{image_data.get("media_type", "image/png")};base64,{image_data.get("data", "")}]'
+                                            )
+
+                            if block.get('error'):
+                                tool_msg['content'] += f'\nError: {block.get("error")}'
+
+                            openai_messages.append(tool_msg)
+
+            if text_content.strip():
+                openai_msg['content'] = text_content
+                openai_messages.append(openai_msg)
+
+    return openai_messages
+
+
+def _openai_to_anthropic_messages(
+    openai_messages: list[Dict[str, Any]],
+) -> list[BetaMessageParam]:
+    """Convert OpenAI messages to Anthropic format."""
+    anthropic_messages = []
+
+    for msg in openai_messages:
+        role = msg.get('role')
+
+        if role == 'assistant':
+            content = []
+
+            # Add text content if present
+            if msg.get('content'):
+                content.append({'type': 'text', 'text': msg['content']})
+
+            # Add tool calls if present
+            if msg.get('tool_calls'):
+                for tool_call in msg['tool_calls']:
+                    if tool_call.get('type') == 'function':
+                        func = tool_call.get('function', {})
+                        content.append(
+                            {
+                                'type': 'tool_use',
+                                'id': tool_call.get('id'),
+                                'name': func.get('name'),
+                                'input': json.loads(func.get('arguments', '{}')),
+                            }
+                        )
+
+            anthropic_messages.append({'role': 'assistant', 'content': content})
+
+        elif role == 'user':
+            content = []
+
+            if msg.get('content'):
+                content.append({'type': 'text', 'text': msg['content']})
+
+            anthropic_messages.append({'role': 'user', 'content': content})
+
+        elif role == 'tool':
+            # Convert tool message to tool_result in user message
+            tool_result = {
+                'type': 'tool_result',
+                'tool_use_id': msg.get('tool_call_id'),
+                'content': [],
+            }
+
+            content_text = msg.get('content', '')
+            if content_text:
+                # Check if content contains base64 image data
+                if '[Image: data:' in content_text:
+                    # Extract text and image parts
+                    parts = content_text.split('[Image: data:')
+                    if parts[0].strip():
+                        tool_result['content'].append(
+                            {'type': 'text', 'text': parts[0].strip()}
+                        )
+
+                    # Handle image data
+                    for part in parts[1:]:
+                        if ';base64,' in part:
+                            media_type, rest = part.split(';base64,', 1)
+                            if ']' in rest:
+                                base64_data, remaining_text = rest.split(']', 1)
+                                tool_result['content'].append(
+                                    {
+                                        'type': 'image',
+                                        'source': {
+                                            'type': 'base64',
+                                            'media_type': media_type,
+                                            'data': base64_data,
+                                        },
+                                    }
+                                )
+                                if remaining_text.strip():
+                                    tool_result['content'].append(
+                                        {'type': 'text', 'text': remaining_text.strip()}
+                                    )
+                else:
+                    tool_result['content'].append(
+                        {'type': 'text', 'text': content_text}
+                    )
+
+            # Add to last user message or create new one
+            if anthropic_messages and anthropic_messages[-1]['role'] == 'user':
+                anthropic_messages[-1]['content'].append(tool_result)
+            else:
+                anthropic_messages.append({'role': 'user', 'content': [tool_result]})
+
+    return anthropic_messages
+
+
+def _openai_response_to_anthropic_params(
+    openai_response: Dict[str, Any],
+) -> list[BetaContentBlockParam]:
+    """Convert OpenAI response to Anthropic content blocks."""
+    content_blocks = []
+
+    message = openai_response.get('choices', [{}])[0].get('message', {})
+
+    # Add text content
+    if message.get('content'):
+        content_blocks.append({'type': 'text', 'text': message['content']})
+
+    # Add tool calls
+    if message.get('tool_calls'):
+        for tool_call in message['tool_calls']:
+            if tool_call.get('type') == 'function':
+                func = tool_call.get('function', {})
+                content_blocks.append(
+                    {
+                        'type': 'tool_use',
+                        'id': tool_call.get('id'),
+                        'name': func.get('name'),
+                        'input': json.loads(func.get('arguments', '{}')),
+                    }
+                )
+
+    return content_blocks

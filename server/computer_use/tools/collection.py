@@ -1,14 +1,16 @@
 """Collection classes for managing multiple tools."""
 
-from typing import Any
+from typing import Any, Dict, List
 
 from anthropic.types.beta import BetaToolUnionParam
 
 from .base import (
     BaseAnthropicTool,
+    BaseUniversalTool,
     ToolError,
     ToolFailure,
     ToolResult,
+    anthropic_to_openai_tool,
 )
 from .computer import BaseComputerTool
 
@@ -24,6 +26,19 @@ class ToolCollection:
         self,
     ) -> list[BetaToolUnionParam]:
         return [tool.to_params() for tool in self.tools]
+
+    def to_openai_params(self) -> List[Dict[str, Any]]:
+        """Convert tools to OpenAI function calling format."""
+        openai_tools = []
+        for tool in self.tools:
+            if isinstance(tool, BaseUniversalTool):
+                # Tool supports both formats
+                openai_tools.append(tool.to_openai_params())
+            else:
+                # Convert from Anthropic format
+                anthropic_params = tool.to_params()
+                openai_tools.append(anthropic_to_openai_tool(anthropic_params))
+        return openai_tools
 
     async def run(
         self, *, name: str, tool_input: dict[str, Any], session_id: str

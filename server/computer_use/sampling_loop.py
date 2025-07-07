@@ -5,6 +5,7 @@ Agentic sampling loop that calls the Anthropic API and local implementation of a
 import asyncio
 import json
 import os
+from openai import AsyncOpenAI
 from typing import Any, Callable, Optional, cast
 from uuid import UUID
 
@@ -40,12 +41,14 @@ from server.computer_use.tools import (
     ToolVersion,
 )
 from server.computer_use.utils import (
+    _anthropic_to_openai_messages,
     _beta_message_param_to_job_message_content,
     _inject_prompt_caching,
     _job_message_to_beta_message_param,
     _load_system_prompt,
     _make_api_tool_result,
     _maybe_filter_to_n_most_recent_images,
+    _openai_response_to_anthropic_params,
     _response_to_params,
 )
 
@@ -71,8 +74,10 @@ async def sampling_loop(
     messages: list[BetaMessageParam],  # Keep for initial messages
     output_callback: Callable[[BetaContentBlockParam], None],
     tool_output_callback: Callable[[ToolResult, str], None],
-    api_response_callback: Callable[
-        [httpx.Request, httpx.Response | object | None, Exception | None], None
+    api_response_callback: Optional[
+        Callable[
+            [httpx.Request, httpx.Response | object | None, Exception | None], None
+        ]
     ] = None,
     max_tokens: int = 4096,
     tool_version: ToolVersion,
@@ -133,7 +138,9 @@ async def sampling_loop(
             job_id=job_id,
             sequence=current_sequence,
             role=init_message.get('role'),
-            content=serialized_content,
+            content=[serialized_content]
+            if not isinstance(serialized_content, list)
+            else serialized_content,
         )
         logger.info(f'Added initial message seq {current_sequence} for job {job_id}')
         current_sequence += 1
@@ -162,12 +169,18 @@ async def sampling_loop(
         if token_efficient_tools_beta:
             betas.append('token-efficient-tools-2025-02-19')
         image_truncation_threshold = 1
+
         # --- Client Initialization (remains the same) ---
         # TODO: Does this need to be done for every iteration?
         if provider == APIProvider.ANTHROPIC:
             # Use AsyncAnthropic instead of Anthropic
             client = AsyncAnthropic(api_key=api_key, max_retries=4)
             enable_prompt_caching = True
+        elif provider == APIProvider.OPENAI:
+            client = AsyncOpenAI(
+                base_url='http://147.189.202.156/v1',
+                api_key='EMPTY',
+            )
         elif provider == APIProvider.VERTEX:
             # Use AsyncAnthropicVertex instead of AnthropicVertex
             client = AsyncAnthropicVertex()
@@ -216,28 +229,79 @@ async def sampling_loop(
             raise
 
         try:
-            # Use original 'system' variable
-            raw_response = await client.beta.messages.with_raw_response.create(
-                max_tokens=max_tokens,
-                messages=current_messages_for_api,
-                model=model,
-                system=[system],  # Pass original system dict
-                tools=tool_collection.to_params(),
-                betas=betas,
-            )
-
-            if api_response_callback:
-                api_response_callback(
-                    raw_response.http_response.request, raw_response.http_response, None
+            if provider == APIProvider.OPENAI:
+                # Convert messages to OpenAI format
+                openai_messages = _anthropic_to_openai_messages(
+                    current_messages_for_api
                 )
 
-            # Add exchange to the list
-            exchanges.append(
-                {
-                    'request': raw_response.http_response.request,
-                    'response': raw_response.http_response,
-                }
-            )
+                # Add system message to the beginning
+                openai_messages.insert(0, {'role': 'system', 'content': system['text']})
+
+                # Convert tools to OpenAI format
+                openai_tools = tool_collection.to_openai_params()
+
+                # Make OpenAI API call
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=openai_messages,
+                    tools=openai_tools,
+                    max_tokens=max_tokens,
+                    temperature=0.1,
+                )
+
+                # Convert response to Anthropic format
+                response_params = _openai_response_to_anthropic_params(
+                    response.model_dump()
+                )
+
+                # Create a mock response object for compatibility
+                class MockResponse:
+                    def __init__(self, content_params):
+                        self.stop_reason = 'end_turn'
+                        if any(
+                            block.get('type') == 'tool_use' for block in content_params
+                        ):
+                            self.stop_reason = 'tool_use'
+
+                response = MockResponse(response_params)
+
+                # Add to exchanges for logging
+                exchanges.append(
+                    {
+                        'request': {'messages': openai_messages, 'tools': openai_tools},
+                        'response': response,
+                    }
+                )
+
+            else:
+                # Use original 'system' variable for Anthropic providers
+                raw_response = await client.beta.messages.with_raw_response.create(
+                    max_tokens=max_tokens,
+                    messages=current_messages_for_api,
+                    model=model,
+                    system=[system],  # Pass original system dict
+                    tools=tool_collection.to_params(),
+                    betas=betas,
+                )
+
+                if api_response_callback:
+                    api_response_callback(
+                        raw_response.http_response.request,
+                        raw_response.http_response,
+                        None,
+                    )
+
+                # Add exchange to the list
+                exchanges.append(
+                    {
+                        'request': raw_response.http_response.request,
+                        'response': raw_response.http_response,
+                    }
+                )
+
+                response = raw_response.parse()
+                response_params = _response_to_params(response)
 
         except (APIStatusError, APIResponseValidationError) as e:
             # For other API errors, handle as before
@@ -264,9 +328,6 @@ async def sampling_loop(
             logger.info('Sampling loop cancelled after API call')
             raise
 
-        response = raw_response.parse()
-        response_params = _response_to_params(response)
-
         # --- Save Assistant Message to DB --- START
         try:
             resulting_message = BetaMessageParam(
@@ -281,7 +342,9 @@ async def sampling_loop(
                 role=resulting_message[
                     'role'
                 ],  # Tool results are sent back as user role
-                content=serialized_message,
+                content=[serialized_message]
+                if not isinstance(serialized_message, list)
+                else serialized_message,
             )
             logger.info(f'Saved assistant message seq {next_sequence} for job {job_id}')
             next_sequence += 1  # Increment sequence for potential tool results
@@ -350,7 +413,7 @@ async def sampling_loop(
                 result = await tool_collection.run(
                     name=content_block['name'],
                     tool_input=cast(dict[str, Any], content_block['input']),
-                    session_id=session_id,
+                    session_id=session_id or '',
                 )
 
                 # --- Save Tool Result Message to DB --- START
@@ -370,7 +433,9 @@ async def sampling_loop(
                         role=resulting_message[
                             'role'
                         ],  # Tool results are sent back as user role
-                        content=serialized_message,
+                        content=[serialized_message]
+                        if not isinstance(serialized_message, list)
+                        else serialized_message,
                     )
                     logger.info(
                         f'Saved tool result message seq {next_sequence} for tool {content_block["name"]} job {job_id}'
