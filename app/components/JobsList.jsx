@@ -1,4 +1,5 @@
 import {
+  Add as AddIcon,
   Cancel as CancelIcon,
   Clear as ClearIcon,
   FilterAlt as FilterIcon,
@@ -9,6 +10,10 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   Grid,
   IconButton,
@@ -57,6 +62,10 @@ const JobsList = () => {
   const [apis, setApis] = useState([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [cancelingJobId, setCancelingJobId] = useState(null);
+
+  // Create job dialog states
+  const [createJobDialogOpen, setCreateJobDialogOpen] = useState(false);
+  const [selectedTargetForJob, setSelectedTargetForJob] = useState('');
 
   // Fetch available targets and APIs for filters
   const fetchFilterOptions = async () => {
@@ -196,6 +205,22 @@ const JobsList = () => {
     }
   };
 
+  const handleCreateJob = () => {
+    setCreateJobDialogOpen(true);
+  };
+
+  const handleCreateJobConfirm = () => {
+    if (selectedTargetForJob) {
+      setCreateJobDialogOpen(false);
+      navigate(`/apis?targetId=${selectedTargetForJob}`);
+    }
+  };
+
+  const handleCreateJobCancel = () => {
+    setCreateJobDialogOpen(false);
+    setSelectedTargetForJob('');
+  };
+
   if (loading && jobs.length === 0) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
@@ -216,11 +241,23 @@ const JobsList = () => {
     <Box sx={{ p: 3 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">All Jobs</Typography>
-        <Tooltip title="Refresh">
-          <IconButton onClick={fetchJobs}>
-            <RefreshIcon />
-          </IconButton>
-        </Tooltip>
+        <Box display="flex" alignItems="center" gap={2}>
+          <Tooltip title="Create New Job">
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={handleCreateJob}
+            >
+              Create Job
+            </Button>
+          </Tooltip>
+          <Tooltip title="Refresh">
+            <IconButton onClick={fetchJobs}>
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
       {/* Filter controls */}
@@ -417,6 +454,41 @@ const JobsList = () => {
         onRowsPerPageChange={handleChangeRowsPerPage}
         rowsPerPageOptions={[5, 10, 25, 50]}
       />
+
+      {/* Create Job Dialog */}
+      <Dialog open={createJobDialogOpen} onClose={handleCreateJobCancel} maxWidth="sm" fullWidth>
+        <DialogTitle>Create New Job</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Select a target to create a new job:
+          </Typography>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel id="target-select-label">Target</InputLabel>
+            <Select
+              labelId="target-select-label"
+              value={selectedTargetForJob}
+              onChange={e => setSelectedTargetForJob(e.target.value)}
+              label="Target"
+            >
+              {targets.map(target => (
+                <MenuItem key={target.id} value={target.id}>
+                  {target.name || `Target ${target.id.substring(0, 8)}`}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCreateJobCancel}>Cancel</Button>
+          <Button
+            onClick={handleCreateJobConfirm}
+            variant="contained"
+            disabled={!selectedTargetForJob}
+          >
+            Continue
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
