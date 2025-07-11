@@ -326,7 +326,7 @@ const AppLayout = () => {
       value={{ selectedSessionId, setSelectedSessionId, currentSession, setCurrentSession }}
     >
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-        <AppHeader />
+        <AppHeader setOnboardingOpen={setOnboardingOpen} />
 
         {/* Show warning if no ai provider is configured */}
         {!isProviderValid && !onboardingOpen && (

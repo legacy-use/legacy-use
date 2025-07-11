@@ -19,16 +19,14 @@ import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { useAiProvider } from '../contexts/AiProviderContext';
 import { useApiKey } from '../contexts/ApiKeyContext';
 import ApiKeyDialog from './ApiKeyDialog';
-import OnboardingWizard from './OnboardingWizard';
 
-const AppHeader = () => {
+const AppHeader = ({ setOnboardingOpen }) => {
   const location = useLocation();
   const { apiKey, clearApiKey, isApiKeyValid } = useApiKey();
   const { hasConfiguredProvider, isProviderValid } = useAiProvider();
   const [anchorEl, setAnchorEl] = useState(null);
   const [aiProviderAnchorEl, setAiProviderAnchorEl] = useState(null);
   const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
-  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   const isActive = path => {
     return location.pathname === path;
@@ -66,11 +64,6 @@ const AppHeader = () => {
     localStorage.removeItem('onboardingCompleted');
     // Open the onboarding wizard
     setOnboardingOpen(true);
-  };
-
-  const handleOnboardingComplete = () => {
-    localStorage.setItem('onboardingCompleted', 'true');
-    setOnboardingOpen(false);
   };
 
   const aiProviderStatus = hasConfiguredProvider
@@ -184,11 +177,6 @@ const AppHeader = () => {
       </AppBar>
 
       <ApiKeyDialog open={apiKeyDialogOpen} onClose={() => setApiKeyDialogOpen(false)} />
-      <OnboardingWizard
-        open={onboardingOpen}
-        onClose={() => setOnboardingOpen(false)}
-        onComplete={handleOnboardingComplete}
-      />
     </>
   );
 };
