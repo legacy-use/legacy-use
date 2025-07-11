@@ -3,6 +3,7 @@ import {
   Close as CloseIcon,
   Email as EmailIcon,
   Key as KeyIcon,
+  PlayArrow as PlayArrowIcon,
   Rocket as RocketIcon,
 } from '@mui/icons-material';
 import {
@@ -29,9 +30,11 @@ import {
 } from '@mui/material';
 import posthog from 'posthog-js';
 import { useEffect, useState } from 'react';
-import { getProviders, updateProviderSettings } from '../services/apiService';
+import { useNavigate } from 'react-router-dom';
+import { getProviders, getTargets, updateProviderSettings } from '../services/apiService';
 
 const OnboardingWizard = ({ open, onClose, onComplete }) => {
+  const navigate = useNavigate();
   const [activeStep, setActiveStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -40,6 +43,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
   const [signupCompleted, setSignupCompleted] = useState(false);
   const [activationCode, setActivationCode] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
+  const [targets, setTargets] = useState([]);
 
   // Signup form state
   const [signupData, setSignupData] = useState({
@@ -60,7 +64,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
     region: 'us-central1',
   });
 
-  const steps = ['Welcome', 'Get Started', 'Configure Provider'];
+  const steps = ['Welcome', 'Get Started', 'Configure Provider', 'Run First Job'];
 
   // Timer effect for resend countdown
   useEffect(() => {
@@ -84,12 +88,14 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
     console.log('signup', response);
   };
 
-  // Fetch providers on component mount and reset state
+  // Fetch providers and targets on component mount and reset state
   useEffect(() => {
-    const fetchProviders = async () => {
+    const fetchData = async () => {
       try {
-        const providersData = await getProviders();
+        const [providersData, targetsData] = await Promise.all([getProviders(), getTargets()]);
+
         setProviders(providersData.providers || []);
+        setTargets(targetsData || []);
 
         // Set default provider to first available one
         const availableProvider = providersData.providers?.find(p => p.available);
@@ -99,13 +105,13 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
           setSelectedProvider(providersData.providers[0].provider);
         }
       } catch (err) {
-        console.error('Error fetching providers:', err);
+        console.error('Error fetching data:', err);
         setError('Failed to load provider configurations');
       }
     };
 
     if (open) {
-      fetchProviders();
+      fetchData();
       // Reset signup state when dialog opens
       setSignupCompleted(false);
       setActivationCode('');
@@ -242,13 +248,26 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
       // Use the new backend logic to configure the provider
       await updateProviderSettings(selectedProvider, credentials);
 
-      // Complete the onboarding
-      onComplete();
+      // Move to next step instead of completing onboarding
+      handleNext();
     } catch (_err) {
       setError('Failed to configure provider. Please check your credentials.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRunFirstJob = () => {
+    // Navigate to API page with first target selected
+    if (targets.length > 0) {
+      const firstTarget = targets[0];
+      navigate(`/apis?target=${firstTarget.id}`);
+    } else {
+      navigate('/apis');
+    }
+
+    // Complete the onboarding
+    onComplete();
   };
 
   const renderWelcomeStep = () => (
@@ -572,8 +591,81 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
         disabled={loading}
         sx={{ mt: 2 }}
       >
-        {loading ? 'Configuring...' : 'Complete Setup'}
+        {loading ? 'Configuring...' : 'Continue to Next Step'}
       </Button>
+    </Box>
+  );
+
+  const renderRunFirstJobStep = () => (
+    <Box sx={{ py: 2 }}>
+      <Typography variant="h4" component="h2" gutterBottom align="center">
+        Run Your First Job
+      </Typography>
+      <Typography variant="body1" color="text.secondary" paragraph align="center" sx={{ mb: 4 }}>
+        You're all set! Now let's run your first automation job.
+      </Typography>
+
+      {/* Legacy App Screenshot - Placeholder for now */}
+      <Paper elevation={2} sx={{ p: 3, mb: 3, textAlign: 'center' }}>
+        <Box
+          sx={{
+            width: '100%',
+            height: 300,
+            backgroundColor: 'grey.100',
+            borderRadius: 2,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mb: 2,
+          }}
+        >
+          <Typography variant="h6" color="text.secondary">
+            Legacy App Screenshot
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            (Image will be provided)
+          </Typography>
+        </Box>
+        <Typography variant="body1" paragraph>
+          This is what your legacy application will look like when automated with legacy-use.
+        </Typography>
+      </Paper>
+
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <PlayArrowIcon sx={{ mr: 1, color: 'primary.main' }} />
+          <Typography variant="h6">Ready to Start</Typography>
+        </Box>
+
+        {targets.length > 0 ? (
+          <Typography variant="body1" paragraph>
+            We found <strong>{targets.length}</strong> target{targets.length > 1 ? 's' : ''}{' '}
+            available. Click the button below to go to the API page and execute your first
+            automation job.
+          </Typography>
+        ) : (
+          <Typography variant="body1" paragraph>
+            You'll need to create a target first, then you can start running automation jobs. Click
+            the button below to go to the API page.
+          </Typography>
+        )}
+
+        <Button
+          fullWidth
+          variant="contained"
+          size="large"
+          onClick={handleRunFirstJob}
+          startIcon={<PlayArrowIcon />}
+          sx={{ mt: 2 }}
+        >
+          {targets.length > 0 ? 'Go to APIs & Run First Job' : 'Go to APIs'}
+        </Button>
+      </Paper>
+
+      <Typography variant="body2" color="text.secondary" align="center">
+        You can always access the API page from the navigation menu to run more jobs.
+      </Typography>
     </Box>
   );
 
@@ -585,6 +677,8 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
         return renderSignupStep();
       case 2:
         return renderProviderStep();
+      case 3:
+        return renderRunFirstJobStep();
       default:
         return null;
     }
@@ -635,7 +729,15 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
             {renderStepContent(activeStep)}
 
             {/* Navigation */}
-            {activeStep > 0 && activeStep < steps.length && (
+            {activeStep > 0 && activeStep < steps.length - 1 && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+                <Button onClick={handleBack} disabled={loading}>
+                  Back
+                </Button>
+                <Box /> {/* Spacer */}
+              </Box>
+            )}
+            {activeStep === steps.length - 1 && (
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
                 <Button onClick={handleBack} disabled={loading}>
                   Back
