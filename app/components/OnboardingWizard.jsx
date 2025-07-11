@@ -193,7 +193,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
       });
 
       // Complete the onboarding
-      onComplete();
+      setActiveStep(prev => prev + 2); // jump to final step
     } catch (_err) {
       setError('Invalid activation code. Please check your email and try again.');
     } finally {
