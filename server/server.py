@@ -221,7 +221,7 @@ async def prune_old_logs():
     while True:
         try:
             # Sleep until next pruning time (once a day at midnight)
-            now = datetime.now()
+            now = datetime.utcnow()
             next_run = (now + timedelta(days=1)).replace(
                 hour=0, minute=0, second=0, microsecond=0
             )

@@ -48,7 +48,7 @@ async def monitor_session_states():
             # Get all non-archived sessions
             sessions = db.list_sessions(include_archived=False)
             current_time = time.time()
-            current_datetime = datetime.now()
+            current_datetime = datetime.utcnow()
 
             for session in sessions:
                 session_id = session.get('id')

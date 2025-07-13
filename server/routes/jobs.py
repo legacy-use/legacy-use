@@ -359,7 +359,6 @@ async def interrupt_job(target_id: UUID, job_id: UUID, request: Request):
                     f'Tried to interrupt queued job {job_id_str}, but it was not found in the queue.'
                 )
                 # If not in queue, it might have finished or errored already. Ensure status reflects this.
-                # Optionally check current DB status and update if needed
                 if db.get_job(job_id)['status'] == JobStatus.QUEUED:
                     db.update_job_status(job_id, JobStatus.ERROR)
                     add_job_log(
@@ -593,10 +592,10 @@ async def resolve_job(
         {
             'status': JobStatus.SUCCESS,
             'result': result,
-            'completed_at': datetime.now()
+            'completed_at': datetime.utcnow()
             if job_model.completed_at is None
             else job_model.completed_at,
-            'updated_at': datetime.now(),
+            'updated_at': datetime.utcnow(),
         },
     )
 

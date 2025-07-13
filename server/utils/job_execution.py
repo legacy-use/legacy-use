@@ -253,8 +253,8 @@ async def _check_preconditions_and_set_running(
             {
                 'status': JobStatus.ERROR,
                 'error': error_message,
-                'completed_at': datetime.now(),
-                'updated_at': datetime.now(),
+                'completed_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow(),
             },
         )
 
@@ -343,7 +343,7 @@ def _create_api_response_callback(job_id_str: str, running_token_total_ref: List
         nonlocal running_token_total_ref  # Allow modification of the outer scope variable
         # Create exchange object with full request and response details
         exchange = {
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.utcnow().isoformat(),
             'request': {
                 'method': request.method,
                 'url': str(request.url),
@@ -580,8 +580,8 @@ async def execute_api_in_background(job: Job):
                 {
                     'status': api_response.status,
                     'result': api_response.extraction,
-                    'completed_at': datetime.now(),
-                    'updated_at': datetime.now(),
+                    'completed_at': datetime.utcnow(),
+                    'updated_at': datetime.utcnow(),
                 },
             )
 
@@ -664,8 +664,8 @@ async def execute_api_in_background(job: Job):
                     'error': 'Job was automatically terminated: exceeded token limit'
                     if running_token_total > TOKEN_LIMIT
                     else 'Job was interrupted by user',
-                    'completed_at': datetime.now(),
-                    'updated_at': datetime.now(),
+                    'completed_at': datetime.utcnow(),
+                    'updated_at': datetime.utcnow(),
                     'total_input_tokens': running_token_total // 2,  # Rough estimate
                     'total_output_tokens': running_token_total // 2,  # Rough estimate
                 },
@@ -767,8 +767,8 @@ async def execute_api_in_background(job: Job):
             {
                 'status': JobStatus.ERROR,
                 'error': error_message,
-                'completed_at': datetime.now(),
-                'updated_at': datetime.now(),
+                'completed_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow(),
             },
         )
 

@@ -80,7 +80,7 @@ IMPORTANT INSTRUCTIONS FOR RETURNING RESULTS:
 
         # Add current date to the parameters
         job_parameters = job_parameters.copy()
-        job_parameters['now'] = datetime.now()  # TODO: Why is this needed?
+        job_parameters['now'] = datetime.utcnow()  # TODO: Why is this needed?
 
         # Replace parameter placeholders with actual values
         for param_name, param_value in job_parameters.items():
@@ -123,8 +123,8 @@ class Target(BaseModel):
     vpn_password: Optional[str] = None
     width: int = 1024
     height: int = 768
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
     is_archived: bool = False
     queue_status: Optional[str] = (
         None  # Added field for queue status: "running" or "paused"
@@ -233,8 +233,8 @@ class Job(BaseModel):
     status: JobStatus = JobStatus.PENDING
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
     api_exchanges: List[Dict[str, Any]] = []
     api_definition_version_id: Optional[UUID] = None

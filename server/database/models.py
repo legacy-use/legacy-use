@@ -50,8 +50,8 @@ class Target(Base):
     vpn_password = Column(String, nullable=True)
     width = Column(String, nullable=False, default='1024')
     height = Column(String, nullable=False, default='768')
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_archived = Column(Boolean, default=False)
 
     sessions = relationship(
@@ -98,8 +98,8 @@ class APIDefinition(Base):
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False, unique=True)
     description = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_archived = Column(Boolean, default=False)
 
     # Relationships
@@ -122,7 +122,7 @@ class APIDefinitionVersion(Base):
     prompt = Column(String, nullable=False)
     prompt_cleanup = Column(String, nullable=False)
     response_example = Column(SQLiteJSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(
         Boolean, default=True
     )  # Only one version can be active at a time
@@ -146,8 +146,8 @@ class Job(Base):
     status = Column(String, default='pending')
     result = Column(SQLiteJSON, nullable=True)
     error = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
     total_input_tokens = Column(Integer, nullable=True)
     total_output_tokens = Column(Integer, nullable=True)
@@ -169,7 +169,7 @@ class JobLog(Base):
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
     job_id = Column(UUID, ForeignKey('jobs.id'))
-    timestamp = Column(DateTime, default=datetime.now)
+    timestamp = Column(DateTime, default=datetime.utcnow)
     log_type = Column(String)  # system, http_exchange, tool_use, message, result, error
     content = Column(SQLiteJSON)
     content_trimmed = Column(

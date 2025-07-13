@@ -39,7 +39,7 @@ async def diagnose_job_queue():
     """
     # Gather diagnostic information
     diagnostics = {
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': datetime.utcnow().isoformat(),
         'queue_size': 0,
         'is_processor_running': job_processor_task is not None
         and not job_processor_task.done(),
@@ -166,7 +166,7 @@ async def start_job_processor():
     """
     global job_processor_task
     processor_info = {
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': datetime.utcnow().isoformat(),
         'previous_state': 'Not initialized',
         'action_taken': 'None',
         'current_state': 'Not initialized',

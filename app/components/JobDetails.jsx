@@ -443,17 +443,27 @@ const JobDetails = () => {
   // Calculate and format duration
   const formatDuration = (startDate, endDate) => {
     if (!startDate) return 'N/A';
+
+    // Parse the start date from ISO string (assumes UTC)
     const start = new Date(startDate);
+
+    // If endDate is provided, use it; otherwise use current UTC time
     const end = endDate ? new Date(endDate) : new Date();
-    const diff = end - start;
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
+
+    // Calculate the difference in milliseconds
+    const diff = end.getTime() - start.getTime();
+
+    // Convert to seconds and ensure non-negative
+    const totalSeconds = Math.max(0, Math.floor(diff / 1000));
+
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
 
     if (hours > 0) {
-      return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+      return `${hours}h ${minutes}m ${seconds}s`;
     } else if (minutes > 0) {
-      return `${minutes}m ${seconds % 60}s`;
+      return `${minutes}m ${seconds}s`;
     } else {
       return `${seconds}s`;
     }

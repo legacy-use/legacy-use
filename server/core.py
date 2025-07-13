@@ -174,8 +174,8 @@ class APIGatewayCore:
                 JobStatus.ERROR
             )  # Default to error unless success/pause determined
             update_data = {
-                'updated_at': datetime.now(),
-                'completed_at': datetime.now(),  # Mark as completed on finish/error/pause
+                'updated_at': datetime.utcnow(),
+                'completed_at': datetime.utcnow(),  # Mark as completed on finish/error/pause
                 'error': None,  # Clear previous error maybe?
                 'result': None,  # Clear previous result maybe?
             }
@@ -253,8 +253,8 @@ class APIGatewayCore:
                     {
                         'status': JobStatus.ERROR.value,
                         'error': error_message,
-                        'completed_at': datetime.now(),
-                        'updated_at': datetime.now(),
+                        'completed_at': datetime.utcnow(),
+                        'updated_at': datetime.utcnow(),
                     },
                 )
             except Exception as db_err:

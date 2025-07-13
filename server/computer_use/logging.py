@@ -27,5 +27,5 @@ logger.addHandler(file_handler)
 
 # Add a startup message to separate runs
 logger.info('=' * 80)
-logger.info(f'New API Gateway session started at {datetime.now().isoformat()}')
+logger.info(f'New API Gateway session started at {datetime.utcnow().isoformat()}')
 logger.info('=' * 80)

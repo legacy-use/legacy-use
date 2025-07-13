@@ -47,7 +47,7 @@ def _load_system_prompt(system_prompt_suffix: str = '') -> str:
 
     # Format the prompt with current values
     formatted_prompt = system_prompt.format(
-        current_date=datetime.today().strftime('%A, %B %-d, %Y')
+        current_date=datetime.utcnow().strftime('%A, %B %-d, %Y')
     )
 
     # Append suffix if provided
