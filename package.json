@@ -7,21 +7,21 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@mui/icons-material": "^5.14.19",
-    "@mui/material": "^5.18.0",
-    "@sentry/react": "^9.5.0",
+    "@mui/icons-material": "^7.2.0",
+    "@mui/material": "^7.2.0",
+    "@sentry/react": "^9.40.0",
     "@tawk.to/tawk-messenger-react": "^2.0.2",
-    "ajv": "8.12.0",
+    "ajv": "8.17.1",
     "ajv-keywords": "5.1.0",
-    "axios": "^1.6.2",
-    "posthog-js": "^1.252.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "axios": "^1.10.0",
+    "posthog-js": "^1.257.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "react-json-pretty": "^2.2.0",
-    "react-router-dom": "^6.20.0",
+    "react-router-dom": "^7.7.0",
     "react-syntax-highlighter": "^15.5.0",
-    "uuid": "^9.0.1",
-    "web-vitals": "^4.2.4"
+    "uuid": "^11.1.0",
+    "web-vitals": "^5.0.3"
   },
   "scripts": {
     "start": "vite",
@@ -48,9 +48,9 @@
     ]
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.0.6",
+    "@biomejs/biome": "^2.1.2",
     "@emotion/babel-plugin": "^11.13.5",
     "@vitejs/plugin-react": "^4.6.0",
-    "vite": "^7.0.0"
+    "vite": "^7.0.5"
   }
 }
