@@ -19,6 +19,7 @@ import CreateSession from './components/CreateSession';
 import CreateTarget from './components/CreateTarget';
 import Dashboard from './components/Dashboard';
 import EditApiDefinition from './components/EditApiDefinition';
+import InteractiveMode from './components/InteractiveMode';
 import JobDetails from './components/JobDetails';
 import JobsList from './components/JobsList';
 import OnboardingWizard from './components/OnboardingWizard';
@@ -168,7 +169,12 @@ const AppLayout = () => {
 
   // Check if we're on a session detail page or job detail page
   const isSessionDetail =
-    location.pathname.includes('/sessions/') && !location.pathname.includes('/sessions/new');
+    location.pathname.includes('/sessions/') && 
+    !location.pathname.includes('/sessions/new') &&
+    !location.pathname.includes('/interactive');
+
+  // Check if we're on interactive mode
+  const isInteractiveMode = location.pathname.includes('/interactive');
 
   // Check if we're on a job detail page
   const isJobDetail = location.pathname.includes('/jobs/');
@@ -177,9 +183,9 @@ const AppLayout = () => {
   const isTargetDetail =
     location.pathname.includes('/targets/') && !location.pathname.includes('/targets/new');
 
-  // Extract session ID from URL if we're on a session detail page
+  // Extract session ID from URL if we're on a session detail page or interactive mode
   useEffect(() => {
-    if (isSessionDetail) {
+    if (isSessionDetail || isInteractiveMode) {
       const pathParts = location.pathname.split('/');
       const sessionIdIndex = pathParts.indexOf('sessions') + 1;
 
@@ -188,7 +194,7 @@ const AppLayout = () => {
         setSelectedSessionId(newSessionId);
       }
     }
-  }, [isSessionDetail, location.pathname]);
+  }, [isSessionDetail, isInteractiveMode, location.pathname]);
 
   // Fetch session details when selectedSessionId changes
   useEffect(() => {
@@ -298,6 +304,9 @@ const AppLayout = () => {
 
   // Adjust the grid layout based on what's being shown
   const showRightPanel = showVncViewer || showNotReadyPlaceholder || showArchivedPlaceholder;
+  
+  // Interactive mode uses its own layout
+  const isFullScreenMode = isInteractiveMode;
 
   // Handle onboarding completion
   const handleOnboardingComplete = () => {
@@ -327,10 +336,10 @@ const AppLayout = () => {
       value={{ selectedSessionId, setSelectedSessionId, currentSession, setCurrentSession }}
     >
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-        <AppHeader />
+        {!isFullScreenMode && <AppHeader />}
 
         {/* Show warning if no ai provider is configured */}
-        {!isProviderValid && !onboardingOpen && (
+        {!isProviderValid && !onboardingOpen && !isFullScreenMode && (
           <Box sx={{ p: 2 }}>
             <Alert
               severity="warning"
@@ -347,38 +356,43 @@ const AppLayout = () => {
         )}
 
         <Box component="main" sx={{ flexGrow: 1, overflow: 'hidden' }}>
-          <Grid container sx={{ height: '100%' }}>
-            {/* Left panel - adjusts width based on whether VNC viewer is shown */}
-            <Grid
-              item
-              xs={12}
-              md={showRightPanel ? 4 : 12}
-              lg={showRightPanel ? 3.6 : 12}
-              sx={{
-                height: '100%',
-                overflow: 'auto',
-                borderRight: showRightPanel ? '1px solid rgba(255, 255, 255, 0.12)' : 'none',
-                p: 2,
-              }}
-            >
-              <Outlet />
-            </Grid>
-
-            {/* Right panel - shown for session details or API page with selected session */}
-            {showRightPanel && (
+          {isFullScreenMode ? (
+            // Full screen layout for interactive mode
+            <Outlet />
+          ) : (
+            <Grid container sx={{ height: '100%' }}>
+              {/* Left panel - adjusts width based on whether VNC viewer is shown */}
               <Grid
                 item
                 xs={12}
-                md={showRightPanel ? 8 : 12}
-                lg={showRightPanel ? 8.4 : 12}
-                sx={{ height: '100%', p: 2 }}
+                md={showRightPanel ? 4 : 12}
+                lg={showRightPanel ? 3.6 : 12}
+                sx={{
+                  height: '100%',
+                  overflow: 'auto',
+                  borderRight: showRightPanel ? '1px solid rgba(255, 255, 255, 0.12)' : 'none',
+                  p: 2,
+                }}
               >
-                {showVncViewer && <VncViewer />}
-                {showNotReadyPlaceholder && <NotReadySessionPlaceholder session={currentSession} />}
-                {showArchivedPlaceholder && <ArchivedSessionPlaceholder />}
+                <Outlet />
               </Grid>
-            )}
-          </Grid>
+
+              {/* Right panel - shown for session details or API page with selected session */}
+              {showRightPanel && (
+                <Grid
+                  item
+                  xs={12}
+                  md={showRightPanel ? 8 : 12}
+                  lg={showRightPanel ? 8.4 : 12}
+                  sx={{ height: '100%', p: 2 }}
+                >
+                  {showVncViewer && <VncViewer />}
+                  {showNotReadyPlaceholder && <NotReadySessionPlaceholder session={currentSession} />}
+                  {showArchivedPlaceholder && <ArchivedSessionPlaceholder />}
+                </Grid>
+              )}
+            </Grid>
+          )}
         </Box>
       </Box>
 
@@ -413,6 +427,7 @@ function App() {
                 <Route path="sessions" element={<SessionList />} />
                 <Route path="sessions/new" element={<CreateSession />} />
                 <Route path="sessions/:sessionId" element={<TargetDetails />} />
+                <Route path="sessions/:sessionId/interactive" element={<InteractiveMode />} />
                 <Route path="jobs" element={<JobsList />} />
                 <Route path="jobs/:targetId/:jobId" element={<JobDetails />} />
                 <Route path="targets" element={<TargetList />} />

@@ -3,6 +3,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import {
   Alert,
   Box,
@@ -18,6 +19,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
 
 const SessionDetailsCard = ({
   selectedSession,
@@ -51,14 +53,27 @@ const SessionDetailsCard = ({
             <Chip label="Archived" size="small" color="default" sx={{ ml: 2 }} />
           )}
         </Box>
-        <Button
-          variant="contained"
-          color="error"
-          startIcon={<DeleteIcon />}
-          onClick={handleDeleteClick}
-        >
-          {selectedSession.is_archived ? 'Permanently Delete' : 'Archive Session'}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {selectedSession.state === 'ready' && !selectedSession.is_archived && (
+            <Button
+              component={RouterLink}
+              to={`/sessions/${selectedSession.id}/interactive`}
+              variant="contained"
+              color="primary"
+              startIcon={<SmartToyIcon />}
+            >
+              Interactive Mode
+            </Button>
+          )}
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={handleDeleteClick}
+          >
+            {selectedSession.is_archived ? 'Permanently Delete' : 'Archive Session'}
+          </Button>
+        </Box>
       </Box>
       <Card sx={{ mb: 3 }}>
         <CardContent>

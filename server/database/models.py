@@ -193,3 +193,80 @@ class JobMessage(Base):
     job = relationship('Job', back_populates='messages')
 
     __table_args__ = (Index('ix_jobmessage_job_id_sequence', 'job_id', 'sequence'),)
+
+
+class Workflow(Base):
+    """Database model for workflow definitions."""
+    __tablename__ = "workflows"
+    
+    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    name = Column(String, nullable=False)
+    description = Column(String)
+    session_id = Column(UUID, nullable=False)
+    steps = Column(SQLiteJSON)  # Store workflow steps as JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+    
+    # Relationships
+    recordings = relationship("Recording", back_populates="workflow")
+
+
+class Recording(Base):
+    """Database model for screen recordings."""
+    __tablename__ = "recordings"
+    
+    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID, nullable=False)
+    workflow_id = Column(UUID, ForeignKey("workflows.id"), nullable=True)
+    filename = Column(String, nullable=False)
+    file_path = Column(String)
+    file_size = Column(Integer)  # Size in bytes
+    duration = Column(Integer)  # Duration in seconds
+    status = Column(String, default='recording')  # recording, completed, processing, processed, failed
+    description = Column(String)
+    extracted_actions = Column(SQLiteJSON)  # Actions extracted by Gemini
+    started_at = Column(DateTime, default=datetime.utcnow)
+    stopped_at = Column(DateTime)
+    processed_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    workflow = relationship("Workflow", back_populates="recordings")
+
+
+class Action(Base):
+    """Database model for individual workflow actions."""
+    __tablename__ = "actions"
+    
+    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    workflow_id = Column(UUID, ForeignKey("workflows.id"), nullable=False)
+    step_id = Column(String, nullable=False)  # Reference to step within workflow
+    name = Column(String, nullable=False)
+    description = Column(String)
+    action_type = Column(String, nullable=False)  # click, type, key_press, etc.
+    parameters = Column(SQLiteJSON)  # Action-specific parameters
+    expected_ui = Column(String)  # Expected UI state before action
+    custom_prompt = Column(String)  # Custom instructions for this action
+    order_index = Column(Integer, default=0)  # Order within the step
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+
+class ExecutionLog(Base):
+    """Database model for action execution logs."""
+    __tablename__ = "execution_logs"
+    
+    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID, nullable=False)
+    workflow_id = Column(UUID, ForeignKey("workflows.id"), nullable=True)
+    action_id = Column(UUID, ForeignKey("actions.id"), nullable=True)
+    step_id = Column(String)
+    action_type = Column(String, nullable=False)
+    parameters = Column(SQLiteJSON)
+    result = Column(SQLiteJSON)  # Execution result
+    success = Column(Boolean, default=False)
+    error_message = Column(String)
+    execution_time_ms = Column(Integer)  # Execution time in milliseconds
+    executed_at = Column(DateTime, default=datetime.utcnow)

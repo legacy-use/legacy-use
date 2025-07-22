@@ -17,6 +17,7 @@ from server.computer_use import APIProvider
 from server.database import db
 from server.routes import api_router, job_router, target_router
 from server.routes.diagnostics import diagnostics_router
+from server.routes.interactive import router as interactive_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
 from server.utils.auth import get_api_key
@@ -215,6 +216,9 @@ app.include_router(
 
 # Include settings router
 app.include_router(settings_router)
+
+# Include interactive mode router
+app.include_router(interactive_router)
 
 
 # Root endpoint

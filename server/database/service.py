@@ -11,12 +11,16 @@ from server.settings import settings
 from .models import (
     APIDefinition,
     APIDefinitionVersion,
+    Action,
     Base,
+    ExecutionLog,
     Job,
     JobLog,
     JobMessage,
+    Recording,
     Session,
     Target,
+    Workflow,
 )
 
 
@@ -999,6 +1003,164 @@ class DatabaseService:
                 f'Error checking active session for target {target_id}: {e}',
                 exc_info=True,
             )
-            return {'has_active_session': False, 'session': None}
+        finally:
+            session.close()
+
+    # Interactive mode methods
+    
+    async def create_workflow(self, workflow_data):
+        """Create a new workflow."""
+        session = self.Session()
+        try:
+            workflow = Workflow(**workflow_data)
+            session.add(workflow)
+            session.commit()
+            return str(workflow.id)
+        finally:
+            session.close()
+
+    async def get_workflow(self, workflow_id):
+        """Get a workflow by ID."""
+        session = self.Session()
+        try:
+            workflow = session.query(Workflow).filter(Workflow.id == workflow_id).first()
+            return self._to_dict(workflow) if workflow else None
+        finally:
+            session.close()
+
+    async def get_workflows_by_session(self, session_id):
+        """Get all workflows for a session."""
+        session = self.Session()
+        try:
+            workflows = session.query(Workflow).filter(
+                Workflow.session_id == session_id,
+                Workflow.is_active == True
+            ).all()
+            return [self._to_dict(w) for w in workflows]
+        finally:
+            session.close()
+
+    async def create_recording(self, recording_data):
+        """Create a new recording."""
+        session = self.Session()
+        try:
+            recording = Recording(**recording_data)
+            session.add(recording)
+            session.commit()
+            return str(recording.id)
+        finally:
+            session.close()
+
+    async def get_recording(self, recording_id):
+        """Get a recording by ID."""
+        session = self.Session()
+        try:
+            recording = session.query(Recording).filter(Recording.id == recording_id).first()
+            return self._to_dict(recording) if recording else None
+        finally:
+            session.close()
+
+    async def get_recording_by_path(self, file_path):
+        """Get a recording by file path."""
+        session = self.Session()
+        try:
+            recording = session.query(Recording).filter(Recording.file_path == file_path).first()
+            return self._to_dict(recording) if recording else None
+        finally:
+            session.close()
+
+    async def get_active_recording(self, session_id):
+        """Get the active recording for a session."""
+        session = self.Session()
+        try:
+            recording = session.query(Recording).filter(
+                Recording.session_id == session_id,
+                Recording.status == 'recording'
+            ).first()
+            return self._to_dict(recording) if recording else None
+        finally:
+            session.close()
+
+    async def get_recordings_by_session(self, session_id):
+        """Get all recordings for a session."""
+        session = self.Session()
+        try:
+            recordings = session.query(Recording).filter(
+                Recording.session_id == session_id
+            ).order_by(Recording.created_at.desc()).all()
+            return [self._to_dict(r) for r in recordings]
+        finally:
+            session.close()
+
+    async def update_recording(self, recording_data):
+        """Update a recording."""
+        session = self.Session()
+        try:
+            recording = session.query(Recording).filter(Recording.id == recording_data.get('id')).first()
+            if recording:
+                for key, value in recording_data.items():
+                    if hasattr(recording, key):
+                        setattr(recording, key, value)
+                session.commit()
+                return self._to_dict(recording)
+            return None
+        finally:
+            session.close()
+
+    async def delete_recording(self, recording_id):
+        """Delete a recording."""
+        session = self.Session()
+        try:
+            recording = session.query(Recording).filter(Recording.id == recording_id).first()
+            if recording:
+                session.delete(recording)
+                session.commit()
+                return True
+            return False
+        finally:
+            session.close()
+
+    async def create_action(self, action_data):
+        """Create a new action."""
+        session = self.Session()
+        try:
+            action = Action(**action_data)
+            session.add(action)
+            session.commit()
+            return str(action.id)
+        finally:
+            session.close()
+
+    async def get_actions_by_workflow(self, workflow_id):
+        """Get all actions for a workflow."""
+        session = self.Session()
+        try:
+            actions = session.query(Action).filter(
+                Action.workflow_id == workflow_id,
+                Action.is_active == True
+            ).order_by(Action.order_index).all()
+            return [self._to_dict(a) for a in actions]
+        finally:
+            session.close()
+
+    async def create_execution_log(self, log_data):
+        """Create a new execution log entry."""
+        session = self.Session()
+        try:
+            log = ExecutionLog(**log_data)
+            session.add(log)
+            session.commit()
+            return str(log.id)
+        finally:
+            session.close()
+
+    async def get_execution_logs_by_session(self, session_id):
+        """Get execution logs for a session."""
+        session = self.Session()
+        try:
+            logs = session.query(ExecutionLog).filter(
+                ExecutionLog.session_id == session_id
+            ).order_by(ExecutionLog.executed_at.desc()).all()
+            return [self._to_dict(l) for l in logs]
         finally:
             session.close()
