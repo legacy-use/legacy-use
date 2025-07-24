@@ -486,3 +486,34 @@ export const resumeJob = async (targetId, jobId) => {
     throw error;
   }
 };
+
+// Recording functions
+export const startRecording = async (sessionId: string, options = {}) => {
+  try {
+    const response = await apiClient.post(`/sessions/${sessionId}/recording/start`, options);
+    return response.data;
+  } catch (error) {
+    console.error('Error starting recording:', error);
+    throw error;
+  }
+};
+
+export const stopRecording = async (sessionId: string) => {
+  try {
+    const response = await apiClient.post(`/sessions/${sessionId}/recording/stop`);
+    return response.data;
+  } catch (error) {
+    console.error('Error stopping recording:', error);
+    throw error;
+  }
+};
+
+export const getRecordingStatus = async (sessionId: string) => {
+  try {
+    const response = await apiClient.get(`/sessions/${sessionId}/recording/status`);
+    return response.data;
+  } catch (error) {
+    console.error('Error getting recording status:', error);
+    throw error;
+  }
+};
