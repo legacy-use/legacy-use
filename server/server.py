@@ -15,7 +15,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from server.computer_use import APIProvider
 from server.database import db
-from server.routes import api_router, job_router, target_router
+from server.routes import api_router, ai_router, job_router, target_router
 from server.routes.diagnostics import diagnostics_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
@@ -195,6 +195,9 @@ app.openapi_security = [{'ApiKeyAuth': []}]
 
 # Include API router
 app.include_router(api_router)
+
+# Include AI router
+app.include_router(ai_router)
 
 # Include core routers
 app.include_router(target_router)
