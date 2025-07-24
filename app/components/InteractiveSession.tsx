@@ -488,16 +488,34 @@ def automate_recorded_workflow():
 
       case 'analyzed':
         return (
-          <Button
-            variant="contained"
-            color="success"
-            size="large"
-            startIcon={<PlayArrow />}
-            onClick={handleStartNewRecording}
-            sx={{ minWidth: 160 }}
-          >
-            New Recording
-          </Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Button
+              variant="contained"
+              color="success"
+              size="large"
+              startIcon={<PlayArrow />}
+              onClick={handleStartNewRecording}
+              sx={{ minWidth: 160 }}
+            >
+              New Recording
+            </Button>
+            {recordingResult && (
+              <IconButton
+                color="primary"
+                onClick={e =>
+                  handleShowRecordingDetails(e, {
+                    id: recordingResult.recording_id || 'current',
+                    timestamp: new Date(),
+                    duration: recordingDuration,
+                    status: 'recorded',
+                    recordingResult,
+                  })
+                }
+              >
+                <Info />
+              </IconButton>
+            )}
+          </Box>
         );
 
       default:
