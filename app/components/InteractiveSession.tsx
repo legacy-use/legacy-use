@@ -198,18 +198,18 @@ export default function InteractiveSession() {
             )}
           </Box>
 
-          {recordingStatus && (
-            <Box sx={{ mb: 2 }}>
+          <Box sx={{ mb: 2 }}>
+            {recordingStatus?.status && (
               <Typography variant="body2" color="text.secondary">
-                Session ID: {recordingStatus.session_id || currentSession.id}
+                Status: {recordingStatus.status}
               </Typography>
-              {recordingStatus.file_path && (
-                <Typography variant="body2" color="text.secondary">
-                  Recording Path: {recordingStatus.file_path}
-                </Typography>
-              )}
-            </Box>
-          )}
+            )}
+            {recordingStatus?.file_path && (
+              <Typography variant="body2" color="text.secondary">
+                Recording Path: {recordingStatus.file_path}
+              </Typography>
+            )}
+          </Box>
 
           {/* Recording Controls */}
           <Box sx={{ display: 'flex', gap: 2 }}>
