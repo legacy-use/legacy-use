@@ -16,6 +16,9 @@ RUN apt-get update && \
     sudo \
     x11vnc \
     autocutsel \
+    # Input monitoring tools
+    xinput \
+    x11-utils \
     # Network tools
     net-tools \
     netcat-openbsd \
