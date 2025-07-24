@@ -279,6 +279,8 @@ class RecordingStatusResponse(BaseModel):
     vnc_monitoring: Optional[bool] = None
     session_id: Optional[str] = None
     file_path: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    start_time: Optional[str] = None
 
 
 class Job(BaseModel):

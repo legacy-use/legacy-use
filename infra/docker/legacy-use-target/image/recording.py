@@ -16,6 +16,7 @@ recording_process = None
 recording_file = None
 vnc_monitor_process = None
 current_recording_session_id = None
+recording_start_time = None
 
 
 class RecordingRequest(BaseModel):
@@ -295,7 +296,11 @@ def analyze_input_logs(logs: List[InputLogEntry]) -> Dict[str, Any]:
 @router.post('/start', response_model=RecordingResponse)
 async def start_recording(request: RecordingRequest | None = None) -> RecordingResponse:
     """Start screen recording using FFmpeg"""
-    global recording_process, recording_file, current_recording_session_id
+    global \
+        recording_process, \
+        recording_file, \
+        current_recording_session_id, \
+        recording_start_time
 
     if request is None:
         request = RecordingRequest()
@@ -343,6 +348,9 @@ async def start_recording(request: RecordingRequest | None = None) -> RecordingR
             *ffmpeg_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
 
+        # Record start time
+        recording_start_time = datetime.now()
+
         # Give it a moment to start
         await asyncio.sleep(1)
 
@@ -379,7 +387,11 @@ async def start_recording(request: RecordingRequest | None = None) -> RecordingR
 @router.post('/stop', response_model=RecordingStopResponse)
 async def stop_recording() -> RecordingStopResponse:
     """Stop screen recording and return the video file"""
-    global recording_process, recording_file, current_recording_session_id
+    global \
+        recording_process, \
+        recording_file, \
+        current_recording_session_id, \
+        recording_start_time
 
     if recording_process is None:
         raise HTTPException(
@@ -447,6 +459,7 @@ async def stop_recording() -> RecordingStopResponse:
         if recording_file and recording_file.exists():
             recording_file.unlink()
         recording_file = None
+        recording_start_time = None
 
         # Also stop VNC monitoring on error
         await stop_vnc_input_monitoring()
@@ -460,6 +473,7 @@ async def stop_recording() -> RecordingStopResponse:
         recording_process = None
         temp_file = recording_file
         recording_file = None
+        recording_start_time = None
         current_recording_session_id = None
 
         # Remove the file after encoding to base64
@@ -474,7 +488,8 @@ async def get_recording_status():
         recording_process, \
         recording_file, \
         vnc_monitor_process, \
-        current_recording_session_id
+        current_recording_session_id, \
+        recording_start_time
 
     if recording_process is None:
         return {'status': 'stopped', 'recording': False, 'vnc_monitoring': False}
@@ -484,9 +499,15 @@ async def get_recording_status():
         # Process has terminated
         recording_process = None
         recording_file = None
+        recording_start_time = None
         await stop_vnc_input_monitoring()
         current_recording_session_id = None
         return {'status': 'stopped', 'recording': False, 'vnc_monitoring': False}
+
+    # Calculate duration if recording is active
+    duration_seconds = None
+    if recording_start_time:
+        duration_seconds = (datetime.now() - recording_start_time).total_seconds()
 
     return {
         'status': 'recording',
@@ -495,4 +516,8 @@ async def get_recording_status():
         and vnc_monitor_process.returncode is None,
         'session_id': current_recording_session_id,
         'file_path': str(recording_file) if recording_file else None,
+        'duration_seconds': duration_seconds,
+        'start_time': recording_start_time.isoformat()
+        if recording_start_time
+        else None,
     }

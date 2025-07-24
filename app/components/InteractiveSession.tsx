@@ -55,10 +55,8 @@ export default function InteractiveSession() {
   const [recordingResult, setRecordingResult] = useState<any>(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
-  // Timer state
-  const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
+  // Server-provided duration state
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Analysis state
   const [analyzingProgress, setAnalyzingProgress] = useState(false);
@@ -89,16 +87,11 @@ export default function InteractiveSession() {
       // Update state based on server status
       if (status.recording) {
         setRecordingState('recording');
-        // If we detect an ongoing recording but don't have a start time, estimate it
-        if (!recordingStartTime) {
-          // We can't know the exact start time, so we'll start counting from now
-          // This is not perfect but better than showing 0 duration
-          setRecordingStartTime(new Date());
-        }
+        // Update duration from server
+        setRecordingDuration(status.duration_seconds || 0);
       } else if (recordingState === 'recording') {
         // Recording was stopped externally
         setRecordingState('initial');
-        setRecordingStartTime(null);
         setRecordingDuration(0);
       }
 
@@ -146,33 +139,11 @@ export default function InteractiveSession() {
     }
   };
 
-  // Timer effect for recording duration
-  useEffect(() => {
-    if (recordingState === 'recording' && recordingStartTime) {
-      timerIntervalRef.current = setInterval(() => {
-        const now = new Date();
-        const duration = Math.floor((now.getTime() - recordingStartTime.getTime()) / 1000);
-        setRecordingDuration(duration);
-      }, 1000);
-    } else {
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-      }
-    };
-  }, [recordingState, recordingStartTime]);
-
   // Polling for recording status (only when recording or when we have a session)
   useEffect(() => {
     if (currentSession?.id) {
-      // Poll more frequently when recording, less frequently otherwise
-      const pollInterval = recordingState === 'recording' ? 2000 : 5000;
+      // Poll more frequently when recording for real-time duration updates, less frequently otherwise
+      const pollInterval = recordingState === 'recording' ? 1000 : 5000;
 
       pollingIntervalRef.current = setInterval(() => {
         fetchRecordingStatus(false); // Don't show loading during polling
@@ -209,7 +180,6 @@ export default function InteractiveSession() {
       });
 
       setRecordingState('recording');
-      setRecordingStartTime(new Date());
       setRecordingDuration(0);
       console.log('Recording started:', result);
     } catch (err) {
@@ -261,7 +231,6 @@ export default function InteractiveSession() {
       setRecordingState('initial');
     } finally {
       setLoading(false);
-      setRecordingStartTime(null);
     }
   };
 
