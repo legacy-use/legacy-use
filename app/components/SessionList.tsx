@@ -1,5 +1,6 @@
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import {
   Box,
   Button,
@@ -263,7 +264,7 @@ const SessionList = () => {
                         )}
                       </TableCell>
                       <TableCell>{formatDate(session.created_at)}</TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" sx={{ display: 'flex', gap: 2 }}>
                         {!session.is_archived && (
                           <Tooltip title="Archive Session">
                             <IconButton
@@ -275,6 +276,18 @@ const SessionList = () => {
                             </IconButton>
                           </Tooltip>
                         )}
+                        <Tooltip title="Interactive Mode">
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={e => {
+                              e.stopPropagation();
+                              navigate(`/sessions/${session.id}/interactive`);
+                            }}
+                          >
+                            <SmartToyIcon />
+                          </IconButton>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   ))}
