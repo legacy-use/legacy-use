@@ -327,6 +327,8 @@ async def start_recording(request: RecordingRequest | None = None) -> RecordingR
         f':{display_num}',
         '-c:v',
         'libx264',
+        '-pix_fmt',
+        'yuv420p',
         '-preset',
         request.quality,
         '-crf',
