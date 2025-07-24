@@ -264,7 +264,21 @@ const SessionList = () => {
                         )}
                       </TableCell>
                       <TableCell>{formatDate(session.created_at)}</TableCell>
-                      <TableCell align="right" sx={{ display: 'flex', gap: 2 }}>
+                      <TableCell align="right">
+                        {session.state === 'ready' && !session.is_archived && (
+                          <Tooltip title="Interactive Mode" sx={{ mr: 1 }}>
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={e => {
+                                e.stopPropagation();
+                                navigate(`/sessions/${session.id}/interactive`);
+                              }}
+                            >
+                              <SmartToyIcon />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         {!session.is_archived && (
                           <Tooltip title="Archive Session">
                             <IconButton
@@ -276,18 +290,6 @@ const SessionList = () => {
                             </IconButton>
                           </Tooltip>
                         )}
-                        <Tooltip title="Interactive Mode">
-                          <IconButton
-                            size="small"
-                            color="primary"
-                            onClick={e => {
-                              e.stopPropagation();
-                              navigate(`/sessions/${session.id}/interactive`);
-                            }}
-                          >
-                            <SmartToyIcon />
-                          </IconButton>
-                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   ))}
