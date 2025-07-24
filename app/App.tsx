@@ -277,6 +277,7 @@ const AppLayout = () => {
     !currentSession?.is_archived &&
     currentSession &&
     currentSession.state === 'ready';
+  const isInteractiveMode = location.pathname.includes('/interactive');
 
   // Determine if we should show the not ready placeholder
   const showNotReadyPlaceholder =
@@ -374,7 +375,7 @@ const AppLayout = () => {
                 lg={showRightPanel ? 8.4 : 12}
                 sx={{ height: '100%', p: 2 }}
               >
-                {showVncViewer && <VncViewer />}
+                {showVncViewer && <VncViewer viewOnly={!isInteractiveMode} />}
                 {showNotReadyPlaceholder && <NotReadySessionPlaceholder session={currentSession} />}
                 {showArchivedPlaceholder && <ArchivedSessionPlaceholder />}
               </Grid>
