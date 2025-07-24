@@ -20,7 +20,7 @@ export default function InteractiveSession() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingStatus, setRecordingStatus] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [recordingResult, setRecordingResult] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const pollingIntervalRef = useRef(null);
@@ -122,15 +122,15 @@ export default function InteractiveSession() {
   };
 
   // Format file size
-  const formatFileSize = bytes => {
+  const formatFileSize = (bytes: number) => {
     if (!bytes) return 'Unknown';
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round((bytes / 1024 ** i) * 100) / 100 + ' ' + sizes[i];
+    return `${Math.round((bytes / 1024 ** i) * 100) / 100} ${sizes[i]}`;
   };
 
   // Format duration
-  const formatDuration = seconds => {
+  const formatDuration = (seconds: number) => {
     if (!seconds) return 'Unknown';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
