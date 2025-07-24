@@ -29,7 +29,9 @@ RUN apt-get update && \
     python3 \
     python3-pip \
     python3-venv \
-    tightvncserver && \
+    tightvncserver \
+    # Video recording
+    ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /tmp/* /var/tmp/*
