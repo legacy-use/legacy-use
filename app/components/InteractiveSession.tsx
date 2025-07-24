@@ -52,7 +52,8 @@ export default function InteractiveSession() {
   const [recordingState, setRecordingState] = useState<RecordingState>('initial');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [recordingResult, setRecordingResult] = useState(null);
+  const [recordingResult, setRecordingResult] = useState<any>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
 
   // Timer state
   const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
@@ -74,9 +75,54 @@ export default function InteractiveSession() {
   // Polling refs
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load recording history from localStorage on mount
+  // Function to fetch recording status from server
+  const fetchRecordingStatus = async (showLoading = true) => {
+    if (!currentSession?.id) return;
+
+    try {
+      if (showLoading) {
+        setStatusLoading(true);
+      }
+
+      const status = await getRecordingStatus(currentSession.id);
+
+      // Update state based on server status
+      if (status.recording) {
+        setRecordingState('recording');
+        // If we detect an ongoing recording but don't have a start time, estimate it
+        if (!recordingStartTime) {
+          // We can't know the exact start time, so we'll start counting from now
+          // This is not perfect but better than showing 0 duration
+          setRecordingStartTime(new Date());
+        }
+      } else if (recordingState === 'recording') {
+        // Recording was stopped externally
+        setRecordingState('initial');
+        setRecordingStartTime(null);
+        setRecordingDuration(0);
+      }
+
+      // Clear any previous errors when status is fetched successfully
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching recording status:', err);
+      if (showLoading) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setError(`Failed to get recording status: ${errorMessage}`);
+      }
+    } finally {
+      if (showLoading) {
+        setStatusLoading(false);
+      }
+    }
+  };
+
+  // Load recording history from localStorage on mount and check server status
   useEffect(() => {
-    const savedHistory = localStorage.getItem(`recording-history-${currentSession?.id}`);
+    if (!currentSession?.id) return;
+
+    // Load recording history
+    const savedHistory = localStorage.getItem(`recording-history-${currentSession.id}`);
     if (savedHistory) {
       try {
         const parsed = JSON.parse(savedHistory).map((item: any) => ({
@@ -88,6 +134,9 @@ export default function InteractiveSession() {
         console.error('Error loading recording history:', e);
       }
     }
+
+    // Check initial recording status from server
+    fetchRecordingStatus(true);
   }, [currentSession?.id]);
 
   // Save recording history to localStorage
@@ -119,22 +168,15 @@ export default function InteractiveSession() {
     };
   }, [recordingState, recordingStartTime]);
 
-  // Polling for recording status (only when recording)
+  // Polling for recording status (only when recording or when we have a session)
   useEffect(() => {
-    if (recordingState === 'recording' && currentSession?.id) {
-      pollingIntervalRef.current = setInterval(async () => {
-        try {
-          const status = await getRecordingStatus(currentSession.id);
-          if (!status.recording) {
-            // Recording stopped externally
-            setRecordingState('initial');
-            setRecordingStartTime(null);
-            setRecordingDuration(0);
-          }
-        } catch (err) {
-          console.error('Error polling recording status:', err);
-        }
-      }, 2000);
+    if (currentSession?.id) {
+      // Poll more frequently when recording, less frequently otherwise
+      const pollInterval = recordingState === 'recording' ? 2000 : 5000;
+
+      pollingIntervalRef.current = setInterval(() => {
+        fetchRecordingStatus(false); // Don't show loading during polling
+      }, pollInterval);
     } else {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
@@ -172,7 +214,8 @@ export default function InteractiveSession() {
       console.log('Recording started:', result);
     } catch (err) {
       console.error('Error starting recording:', err);
-      setError(`Failed to start recording: ${err.message || 'Unknown error'}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to start recording: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -213,7 +256,8 @@ export default function InteractiveSession() {
       console.log('Recording stopped:', result);
     } catch (err) {
       console.error('Error stopping recording:', err);
-      setError(`Failed to stop recording: ${err.message || 'Unknown error'}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to stop recording: ${errorMessage}`);
       setRecordingState('initial');
     } finally {
       setLoading(false);
@@ -337,6 +381,22 @@ def automate_recorded_workflow():
   }
 
   const renderRecordingButton = () => {
+    // Show loading state while checking initial status
+    if (statusLoading && recordingState === 'initial') {
+      return (
+        <Button
+          variant="contained"
+          color="primary"
+          size="large"
+          startIcon={<CircularProgress size={20} color="inherit" />}
+          disabled
+          sx={{ minWidth: 160 }}
+        >
+          Checking Status...
+        </Button>
+      );
+    }
+
     switch (recordingState) {
       case 'initial':
         return (
@@ -592,6 +652,7 @@ def automate_recorded_workflow():
                     style={{ maxWidth: '100%', maxHeight: '200px' }}
                     src={`data:video/mp4;base64,${currentRecordingForPopover.recordingResult.base64_video}`}
                   >
+                    <track kind="captions" srcLang="en" label="English captions" />
                     Your browser does not support the video tag.
                   </video>
                 </Box>
