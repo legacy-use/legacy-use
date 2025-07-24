@@ -218,10 +218,67 @@ class JobStatus(str, Enum):
 class APIResponse(BaseModel):
     """Model for API execution response."""
 
-    status: JobStatus
-    reason: Optional[str] = None
-    extraction: Optional[Dict[str, Any]] = None
-    exchanges: List[Dict[str, Any]] = []
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    token_usage: Optional[Dict[str, Any]] = None
+
+
+# Recording Models
+
+
+class RecordingRequest(BaseModel):
+    """Request model for starting a recording"""
+
+    framerate: Optional[int] = 30
+    quality: Optional[str] = (
+        'ultrafast'  # ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+    )
+    format: Optional[str] = 'mp4'  # mp4, avi, mkv
+    capture_vnc_input: Optional[bool] = True
+
+
+class InputLogEntry(BaseModel):
+    """Model for individual input log entries"""
+
+    timestamp: str
+    session_id: str
+    source: str  # 'api' or 'vnc'
+    action_type: str
+    details: Dict[str, Any]
+
+
+class RecordingResponse(BaseModel):
+    """Response model for recording operations"""
+
+    status: str
+    message: str
+    recording_id: Optional[str] = None
+    file_path: Optional[str] = None
+    vnc_monitoring: Optional[bool] = None
+
+
+class RecordingStopResponse(BaseModel):
+    """Response model for stopping a recording"""
+
+    status: str
+    message: str
+    recording_id: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    duration_seconds: Optional[float] = None
+    base64_video: Optional[str] = None
+    input_logs: Optional[List[InputLogEntry]] = None
+    input_log_summary: Optional[Dict[str, Any]] = None
+
+
+class RecordingStatusResponse(BaseModel):
+    """Response model for recording status"""
+
+    status: str
+    recording: bool
+    vnc_monitoring: Optional[bool] = None
+    session_id: Optional[str] = None
+    file_path: Optional[str] = None
 
 
 class Job(BaseModel):
