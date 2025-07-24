@@ -508,6 +508,26 @@ export const stopRecording = async (sessionId: string) => {
   }
 };
 
+// AI Analysis
+export const analyzeVideo = async videoFile => {
+  try {
+    const formData = new FormData();
+    formData.append('video', videoFile);
+
+    const response = await apiClient.post('/ai/analyze', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 120000, // 2 minute timeout for video analysis
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error analyzing video:', error);
+    throw error;
+  }
+};
+
 export const getRecordingStatus = async (sessionId: string) => {
   try {
     const response = await apiClient.get(`/sessions/${sessionId}/recording/status`);

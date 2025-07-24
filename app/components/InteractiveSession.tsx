@@ -1,4 +1,4 @@
-import { Cancel, FiberManualRecord, Info, PlayArrow } from '@mui/icons-material';
+import { Cancel, CheckCircle, FiberManualRecord, Info, PlayArrow } from '@mui/icons-material';
 import {
   Alert,
   Box,
@@ -14,7 +14,13 @@ import {
 } from '@mui/material';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { SessionContext } from '../App';
-import { getRecordingStatus, startRecording, stopRecording } from '../services/apiService';
+import {
+  analyzeVideo,
+  getRecordingStatus,
+  importApiDefinition,
+  startRecording,
+  stopRecording,
+} from '../services/apiService';
 import { formatDuration } from '../utils/formatDuration';
 
 // Keyframes for pulsing record dot
@@ -43,6 +49,9 @@ interface RecordingHistory {
   status: RecordingState;
   prompt?: string;
   recordingResult?: any;
+  apiDefinition?: any;
+  analysisResult?: any;
+  apiDefinitionSaved?: boolean;
 }
 
 export default function InteractiveSession() {
@@ -61,6 +70,8 @@ export default function InteractiveSession() {
   // Analysis state
   const [analyzingProgress, setAnalyzingProgress] = useState(false);
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
+  const [savingApiDefinition, setSavingApiDefinition] = useState(false);
+  const [apiDefinitionSaved, setApiDefinitionSaved] = useState(false);
 
   // Recording history
   const [recordingHistory, setRecordingHistory] = useState<RecordingHistory[]>([]);
@@ -233,43 +244,80 @@ export default function InteractiveSession() {
 
   const handleAnalyzeRecording = async (recording: RecordingHistory) => {
     setAnalyzingProgress(true);
+    setError(null);
 
-    // Mock analysis with 2-second delay
-    setTimeout(() => {
-      const mockPrompt = `# Generated Prompt from Recording
+    try {
+      // Check if we have base64 video data
+      if (!recording.recordingResult?.base64_video) {
+        throw new Error('No video data available for analysis');
+      }
 
-Based on the recorded session activity, here's a suggested automation prompt:
+      // Convert base64 video to File object
+      const base64Data = recording.recordingResult.base64_video;
+      const binaryData = atob(base64Data);
+      const arrayBuffer = new ArrayBuffer(binaryData.length);
+      const uint8Array = new Uint8Array(arrayBuffer);
 
-## Task Description
-Automate the workflow captured in the ${formatDuration(recording.duration || 0)} recording session.
+      for (let i = 0; i < binaryData.length; i++) {
+        uint8Array[i] = binaryData.charCodeAt(i);
+      }
 
-## Steps Identified
-1. **Initial Setup**: Prepare the workspace environment
-2. **User Interactions**: Execute the sequence of clicks and inputs
-3. **Data Processing**: Handle any form submissions or data entry
-4. **Completion**: Verify the final state and results
+      const videoFile = new File([arrayBuffer], `recording_${recording.id}.mp4`, {
+        type: 'video/mp4',
+      });
 
-## Suggested Automation Code
-\`\`\`python
-# TODO: Implement actual video analysis
-# This is a mock prompt generated for demonstration
-def automate_recorded_workflow():
-    """
-    Automate the workflow from the recorded session
-    """
-    pass
+      console.log('Analyzing video with AI...', {
+        recordingId: recording.id,
+        fileSize: videoFile.size,
+        duration: recording.duration,
+      });
+
+      // Call the AI analyze endpoint
+      const analysisResult = await analyzeVideo(videoFile);
+
+      console.log('AI analysis completed:', analysisResult);
+
+      // Extract the API definition from the analysis result
+      const apiDefinition = analysisResult.api_definition;
+
+      // Create a formatted prompt from the API definition
+      const formattedPrompt = `# Generated API Definition: ${apiDefinition.name}
+
+**Description:** ${apiDefinition.description}
+
+## Parameters
+${
+  apiDefinition.parameters.length > 0
+    ? apiDefinition.parameters
+        .map(param => `- **${param.name}** (${param.type}): ${param.description}`)
+        .join('\n')
+    : 'No parameters required'
+}
+
+## Automation Instructions
+${apiDefinition.prompt || 'No specific instructions provided'}
+
+## Response Format
+\`\`\`json
+${JSON.stringify(apiDefinition.response_example, null, 2)}
 \`\`\`
 
-*Note: This is a mock analysis. Actual implementation would analyze the video frames and input logs to generate specific automation instructions.*`;
+---
+**Analysis Summary:** ${analysisResult.analysis_summary}
+**Confidence Score:** ${Math.round(analysisResult.confidence_score * 100)}%
 
-      setGeneratedPrompt(mockPrompt);
+*This API definition was automatically generated from your screen recording using AI analysis.*`;
+
+      setGeneratedPrompt(formattedPrompt);
       setRecordingState('analyzed');
 
-      // Update recording history
+      // Update recording history with the analysis results
       const updatedRecording = {
         ...recording,
         status: 'analyzed' as RecordingState,
-        prompt: mockPrompt,
+        prompt: formattedPrompt,
+        apiDefinition: apiDefinition,
+        analysisResult: analysisResult,
       };
 
       const updatedHistory = recordingHistory.map(r =>
@@ -279,7 +327,13 @@ def automate_recorded_workflow():
       saveRecordingHistory(updatedHistory);
 
       setAnalyzingProgress(false);
-    }, 2000);
+    } catch (err) {
+      console.error('Error analyzing recording:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to analyze recording: ${errorMessage}`);
+      setAnalyzingProgress(false);
+      setRecordingState('recorded'); // Go back to recorded state on error
+    }
   };
 
   const handleCancelAnalysis = () => {
@@ -292,6 +346,50 @@ def automate_recorded_workflow():
     setRecordingResult(null);
     setGeneratedPrompt('');
     setError(null);
+    setApiDefinitionSaved(false);
+  };
+
+  const handleSaveApiDefinition = async (recording: RecordingHistory) => {
+    if (!recording.apiDefinition) {
+      setError('No API definition available to save');
+      return;
+    }
+
+    setSavingApiDefinition(true);
+    setError(null);
+
+    try {
+      // Prepare the API definition for import
+      const apiDefinitionToSave = {
+        name: recording.apiDefinition.name,
+        description: recording.apiDefinition.description,
+        parameters: recording.apiDefinition.parameters || [],
+        prompt: recording.apiDefinition.prompt || '',
+        prompt_cleanup: recording.apiDefinition.prompt_cleanup || '',
+        response_example: recording.apiDefinition.response_example || {},
+      };
+
+      console.log('Saving API definition:', apiDefinitionToSave);
+
+      // Import the API definition
+      const result = await importApiDefinition(apiDefinitionToSave);
+
+      console.log('API definition saved successfully:', result);
+      setApiDefinitionSaved(true);
+
+      // Update the recording history to mark it as saved
+      const updatedHistory = recordingHistory.map(r =>
+        r.id === recording.id ? { ...r, apiDefinitionSaved: true } : r,
+      );
+      setRecordingHistory(updatedHistory);
+      saveRecordingHistory(updatedHistory);
+    } catch (err) {
+      console.error('Error saving API definition:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to save API definition: ${errorMessage}`);
+    } finally {
+      setSavingApiDefinition(false);
+    }
   };
 
   const handleShowRecordingDetails = (
@@ -525,11 +623,36 @@ def automate_recorded_workflow():
 
   const renderContent = () => {
     if (recordingState === 'analyzed' && generatedPrompt) {
+      // Find the current recording to get the API definition
+      const currentRecording = recordingHistory.find(r => r.status === 'analyzed');
+
       return (
         <Box sx={{ mt: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Generated Automation Prompt
-          </Typography>
+          <Box
+            sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}
+          >
+            <Typography variant="h6">Generated Automation API</Typography>
+            {currentRecording?.apiDefinition && (
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                {currentRecording.apiDefinitionSaved ? (
+                  <Button variant="outlined" color="success" disabled startIcon={<CheckCircle />}>
+                    API Saved
+                  </Button>
+                ) : (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => handleSaveApiDefinition(currentRecording)}
+                    disabled={savingApiDefinition}
+                    startIcon={savingApiDefinition ? <CircularProgress size={20} /> : undefined}
+                  >
+                    {savingApiDefinition ? 'Saving...' : 'Save as API'}
+                  </Button>
+                )}
+              </Box>
+            )}
+          </Box>
+
           <Paper sx={{ p: 3, bgcolor: 'background.default' }}>
             <Typography
               component="div"

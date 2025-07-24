@@ -26,6 +26,7 @@ class VideoAnalysisResponse(BaseModel):
     api_definition: APIDefinition
     analysis_summary: str
     confidence_score: float
+    prompt: str
 
 
 def initialize_vertex_ai():
@@ -40,7 +41,7 @@ def initialize_vertex_ai():
         vertexai.init(
             project=settings.VERTEX_PROJECT_ID, location=settings.VERTEX_REGION
         )
-        return GenerativeModel('gemini-1.5-pro')
+        return GenerativeModel('gemini-2.5-flash')
     except Exception as e:
         logger.error(f'Failed to initialize Vertex AI: {str(e)}')
         raise HTTPException(
@@ -287,6 +288,8 @@ async def analyze_video(video: UploadFile = File(...)) -> VideoAnalysisResponse:
                 )
             )
 
+        print(api_def_dict)
+
         # Create APIDefinition object
         api_definition = APIDefinition(
             name=api_def_dict['name'],
@@ -294,11 +297,6 @@ async def analyze_video(video: UploadFile = File(...)) -> VideoAnalysisResponse:
             parameters=parameters,
             response_example=api_def_dict['response_example'],
         )
-
-        # Store the prompt and prompt_cleanup for later use (they're not part of APIDefinition model)
-        # These will be used when creating the actual API definition version in the database
-        api_definition.prompt = api_def_dict.get('prompt', '')
-        api_definition.prompt_cleanup = api_def_dict.get('prompt_cleanup', '')
 
         # Calculate confidence score based on response quality
         confidence_score = calculate_confidence_score(response_text, api_def_dict)
@@ -314,6 +312,7 @@ async def analyze_video(video: UploadFile = File(...)) -> VideoAnalysisResponse:
             api_definition=api_definition,
             analysis_summary=analysis_summary,
             confidence_score=confidence_score,
+            prompt=api_def_dict['prompt'],
         )
 
     except HTTPException:
