@@ -1,4 +1,4 @@
-import { Analytics, Cancel, FiberManualRecord, Info, PlayArrow, Stop } from '@mui/icons-material';
+import { Cancel, FiberManualRecord, Info, PlayArrow } from '@mui/icons-material';
 import {
   Alert,
   Box,
