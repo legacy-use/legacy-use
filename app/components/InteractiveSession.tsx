@@ -142,12 +142,9 @@ export default function InteractiveSession() {
   // Polling for recording status (only when recording or when we have a session)
   useEffect(() => {
     if (currentSession?.id) {
-      // Poll more frequently when recording for real-time duration updates, less frequently otherwise
-      const pollInterval = recordingState === 'recording' ? 1000 : 5000;
-
       pollingIntervalRef.current = setInterval(() => {
         fetchRecordingStatus(false); // Don't show loading during polling
-      }, pollInterval);
+      }, 1000);
     } else {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
