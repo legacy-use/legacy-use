@@ -19,6 +19,7 @@ import CreateSession from './components/CreateSession';
 import CreateTarget from './components/CreateTarget';
 import Dashboard from './components/Dashboard';
 import EditApiDefinition from './components/EditApiDefinition';
+import InteractiveSession from './components/InteractiveSession';
 import JobDetails from './components/JobDetails';
 import JobsList from './components/JobsList';
 import OnboardingWizard from './components/OnboardingWizard';
@@ -413,6 +414,7 @@ function App() {
                 <Route path="sessions" element={<SessionList />} />
                 <Route path="sessions/new" element={<CreateSession />} />
                 <Route path="sessions/:sessionId" element={<TargetDetails />} />
+                <Route path="sessions/:sessionId/interactive" element={<InteractiveSession />} />
                 <Route path="jobs" element={<JobsList />} />
                 <Route path="jobs/:targetId/:jobId" element={<JobDetails />} />
                 <Route path="targets" element={<TargetList />} />
