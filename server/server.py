@@ -1,5 +1,5 @@
 """
-FastAPI server implementation for the API Gateway.
+FastAPI server implementation for the API Gateway with Multi-Tenancy support.
 """
 
 import asyncio
@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timedelta
 
 import sentry_sdk
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
@@ -16,14 +16,17 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from server.computer_use import APIProvider
 from server.database import db
+from server.database.service import get_tenant_database_service
 from server.routes import api_router, job_router, target_router
 from server.routes.diagnostics import diagnostics_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
-from server.utils.auth import get_api_key
+from server.routes.tenant import router as tenant_router
+from server.utils.auth import get_current_tenant, TenantNotFoundError
 from server.utils.job_execution import job_queue_initializer
 from server.utils.session_monitor import start_session_monitor
 from server.utils.telemetry import posthog_middleware
+from server.database.models import TenantModel
 
 from .settings import settings
 
@@ -93,8 +96,8 @@ elif settings.API_PROVIDER == APIProvider.VERTEX:
 
 
 app = FastAPI(
-    title='AI API Gateway',
-    description='API Gateway for AI-powered endpoints',
+    title='AI API Gateway - Multi-Tenant',
+    description='Multi-tenant API Gateway for AI-powered endpoints',
     version='1.0.0',
     redoc_url='/redoc' if settings.SHOW_DOCS else None,
     # Disable automatic redirect from /path to /path/
@@ -108,25 +111,30 @@ async def telemetry_middleware(request: Request, call_next):
 
 
 @app.middleware('http')
-async def auth_middleware(request: Request, call_next):
+async def tenant_middleware(request: Request, call_next):
+    """
+    Multi-tenant middleware that handles tenant context and database routing.
+    """
     import re
 
     # Allow CORS preflight requests (OPTIONS) to pass through without authentication
     if request.method == 'OPTIONS':
         return await call_next(request)
 
-    # auth whitelist (regex patterns)
+    # Auth whitelist (regex patterns) - these don't require tenant authentication
     whitelist_patterns = [
         r'^/favicon\.ico$',  # Favicon requests
         r'^/robots\.txt$',  # Robots.txt requests
         r'^/sitemap\.xml$',  # Sitemap requests
+        r'^/tenants/?.*$',  # Tenant management endpoints (should be admin-protected)
     ]
 
     if settings.SHOW_DOCS:
-        whitelist_patterns.append(
-            r'^/redoc(/.*)?$'
-        )  # Matches /redoc and /redoc/anything
-        whitelist_patterns.append(r'^/openapi.json$')  # Needed for docs
+        whitelist_patterns.extend([
+            r'^/redoc(/.*)?$',  # Matches /redoc and /redoc/anything
+            r'^/openapi.json$',  # Needed for docs
+            r'^/docs(/.*)?$',  # Swagger UI
+        ])
 
     # Check if request path matches any whitelist pattern
     for pattern in whitelist_patterns:
@@ -134,19 +142,55 @@ async def auth_middleware(request: Request, call_next):
             return await call_next(request)
 
     try:
-        api_key = await get_api_key(request)
-        if api_key == settings.API_KEY:
-            return await call_next(request)
-        else:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={'detail': 'Invalid API Key'},
-            )
+        # Get current tenant from API key
+        tenant = await get_current_tenant(request)
+        
+        # Add tenant context to request state
+        request.state.tenant = tenant
+        request.state.tenant_schema = tenant.schema_name
+        
+        # Create tenant-aware database service and add to request state
+        tenant_db = get_tenant_database_service(tenant.schema_name)
+        request.state.tenant_db = tenant_db
+        
+        return await call_next(request)
+        
+    except TenantNotFoundError as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={'detail': e.detail},
+        )
     except HTTPException as e:
         return JSONResponse(
             status_code=e.status_code,
             content={'detail': e.detail},
         )
+    except Exception as e:
+        logger.error(f"Unexpected error in tenant middleware: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={'detail': 'Internal server error'},
+        )
+
+
+# Dependency to get tenant-aware database service
+def get_tenant_db(request: Request):
+    """Get tenant-aware database service from request state."""
+    if hasattr(request.state, 'tenant_db'):
+        return request.state.tenant_db
+    # Fallback to global db for non-tenant endpoints
+    return db
+
+
+# Dependency to get current tenant from request state
+def get_request_tenant(request: Request) -> TenantModel:
+    """Get current tenant from request state."""
+    if hasattr(request.state, 'tenant'):
+        return request.state.tenant
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="No tenant context available"
+    )
 
 
 # Add CORS middleware
@@ -185,6 +229,7 @@ app.add_middleware(
 # Add API key security scheme to OpenAPI
 app.openapi_tags = [
     {'name': 'API Definitions', 'description': 'API definition endpoints'},
+    {'name': 'Tenants', 'description': 'Multi-tenant management endpoints'},
 ]
 
 app.openapi_components = {
@@ -193,12 +238,15 @@ app.openapi_components = {
             'type': 'apiKey',
             'in': 'header',
             'name': settings.API_KEY_NAME,
-            'description': "API key authentication. Enter your API key in the format: 'your_api_key'",
+            'description': "Tenant-specific API key authentication. Enter your tenant's API key.",
         }
     }
 }
 
 app.openapi_security = [{'ApiKeyAuth': []}]
+
+# Include tenant management router (should be admin-protected in production)
+app.include_router(tenant_router)
 
 # Include API router
 app.include_router(api_router)
@@ -228,12 +276,28 @@ app.include_router(settings_router)
 @app.get('/')
 async def root():
     """Root endpoint."""
-    return {'message': 'Welcome to the API Gateway'}
+    return {
+        'message': 'Welcome to the Multi-Tenant AI API Gateway',
+        'version': '1.0.0',
+        'features': ['Multi-tenancy', 'Secure API key storage', 'Schema isolation']
+    }
+
+
+# Tenant info endpoint
+@app.get('/tenant-info')
+async def get_tenant_info(tenant: TenantModel = Depends(get_request_tenant)):
+    """Get current tenant information."""
+    return {
+        'tenant_id': str(tenant.id),
+        'name': tenant.name,
+        'subdomain': tenant.subdomain,
+        'status': tenant.status
+    }
 
 
 # Scheduled task to prune old logs
 async def prune_old_logs():
-    """Prune logs older than 7 days."""
+    """Prune logs older than 7 days for all tenants."""
     while True:
         try:
             # Sleep until next pruning time (once a day at midnight)
@@ -247,18 +311,37 @@ async def prune_old_logs():
             )
             await asyncio.sleep(sleep_seconds)
 
-            # Prune logs
+            # Prune logs for all active tenants
             days_to_keep = settings.LOG_RETENTION_DAYS
-            deleted_count = db.prune_old_logs(days=days_to_keep)
-            logger.info(f'Pruned {deleted_count} logs older than {days_to_keep} days')
+            tenants = db.list_tenants(include_inactive=False)
+            
+            total_deleted = 0
+            for tenant_dict in tenants:
+                try:
+                    tenant_db = get_tenant_database_service(tenant_dict['schema_name'])
+                    deleted_count = tenant_db.prune_old_logs(days=days_to_keep)
+                    total_deleted += deleted_count
+                    logger.info(f"Pruned {deleted_count} logs for tenant {tenant_dict['name']}")
+                except Exception as e:
+                    logger.error(f"Error pruning logs for tenant {tenant_dict['name']}: {e}")
+            
+            logger.info(f'Total pruned {total_deleted} logs older than {days_to_keep} days across all tenants')
         except Exception as e:
-            logger.error(f'Error pruning logs: {str(e)}')
+            logger.error(f'Error in log pruning task: {str(e)}')
             await asyncio.sleep(3600)  # Sleep for an hour and try again
 
 
 @app.on_event('startup')
 async def startup_event():
     """Start background tasks on server startup."""
+    # Initialize shared schema and tables
+    try:
+        from server.utils.tenant import initialize_shared_schema
+        initialize_shared_schema()
+        logger.info('Initialized shared database schema')
+    except Exception as e:
+        logger.warning(f'Could not initialize shared schema: {e}')
+
     # Start background tasks
     asyncio.create_task(prune_old_logs())
     logger.info('Started background task for pruning old logs')
@@ -266,9 +349,6 @@ async def startup_event():
     # Start session monitor
     start_session_monitor()
     logger.info('Started session state monitor')
-
-    # No need to load API definitions on startup anymore
-    # They will be loaded on demand when needed
 
     # Initialize job queue from database
     await job_queue_initializer()

@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
 )
 from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
 from sqlalchemy.orm import declarative_base, relationship
@@ -34,7 +35,49 @@ class UUID(TypeDecorator):
         return uuid.UUID(value)
 
 
-class Target(Base):
+class TenantModel(Base):
+    """Database model for tenants (stored in shared schema)."""
+    __tablename__ = 'tenants'
+
+    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    subdomain = Column(String(100), nullable=False, unique=True, index=True)
+    schema_name = Column(String(100), nullable=False, unique=True)
+    status = Column(String(20), nullable=False, default='active')
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    # Secure API key storage
+    api_key_hash = Column(String(255), nullable=False)
+    api_key_salt = Column(String(255), nullable=False)
+    
+    # Optional settings as JSON
+    settings = Column(SQLiteJSON, nullable=False, default={})
+
+    # Add table arguments for shared schema
+    __table_args__ = {'schema': 'shared'}
+
+
+# Create a function to get tenant-specific base for models
+def get_tenant_base(schema_name: str = None):
+    """Get a base class for tenant-specific models."""
+    from sqlalchemy import MetaData
+    
+    if schema_name:
+        metadata = MetaData(schema=schema_name)
+    else:
+        # Use 'tenant' as placeholder - will be remapped dynamically
+        metadata = MetaData(schema='tenant')
+    
+    return declarative_base(metadata=metadata)
+
+
+# Update existing models to use tenant schema by default
+metadata = MetaData(schema='tenant')
+TenantBase = declarative_base(metadata=metadata)
+
+
+class Target(TenantBase):
     __tablename__ = 'targets'
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
@@ -59,7 +102,7 @@ class Target(Base):
     jobs = relationship('Job', back_populates='target', cascade='all, delete-orphan')
 
 
-class Session(Base):
+class Session(TenantBase):
     """Session model for storing session information."""
 
     __tablename__ = 'sessions'
@@ -91,7 +134,7 @@ class Session(Base):
     jobs = relationship('Job', back_populates='session', cascade='all, delete-orphan')
 
 
-class APIDefinition(Base):
+class APIDefinition(TenantBase):
     __tablename__ = 'api_definitions'
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
@@ -109,7 +152,7 @@ class APIDefinition(Base):
     )
 
 
-class APIDefinitionVersion(Base):
+class APIDefinitionVersion(TenantBase):
     __tablename__ = 'api_definition_versions'
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
@@ -131,7 +174,7 @@ class APIDefinitionVersion(Base):
     jobs = relationship('Job', back_populates='api_definition_version')
 
 
-class Job(Base):
+class Job(TenantBase):
     __tablename__ = 'jobs'
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
@@ -163,7 +206,7 @@ class Job(Base):
     )
 
 
-class JobLog(Base):
+class JobLog(TenantBase):
     __tablename__ = 'job_logs'
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
@@ -178,7 +221,7 @@ class JobLog(Base):
     job = relationship('Job', back_populates='logs')
 
 
-class JobMessage(Base):
+class JobMessage(TenantBase):
     __tablename__ = 'job_messages'
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
