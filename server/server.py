@@ -20,7 +20,7 @@ from server.routes import api_router, job_router, target_router
 from server.routes.diagnostics import diagnostics_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
-from server.utils.auth import get_api_key
+from server.utils.auth import api_key_header, api_key_query, vnc_cookie_auth
 from server.utils.job_execution import job_queue_initializer
 from server.utils.session_monitor import start_session_monitor
 from server.utils.telemetry import posthog_middleware
@@ -107,46 +107,8 @@ async def telemetry_middleware(request: Request, call_next):
     return await posthog_middleware(request, call_next)
 
 
-@app.middleware('http')
-async def auth_middleware(request: Request, call_next):
-    import re
-
-    # Allow CORS preflight requests (OPTIONS) to pass through without authentication
-    if request.method == 'OPTIONS':
-        return await call_next(request)
-
-    # auth whitelist (regex patterns)
-    whitelist_patterns = [
-        r'^/favicon\.ico$',  # Favicon requests
-        r'^/robots\.txt$',  # Robots.txt requests
-        r'^/sitemap\.xml$',  # Sitemap requests
-    ]
-
-    if settings.SHOW_DOCS:
-        whitelist_patterns.append(
-            r'^/redoc(/.*)?$'
-        )  # Matches /redoc and /redoc/anything
-        whitelist_patterns.append(r'^/openapi.json$')  # Needed for docs
-
-    # Check if request path matches any whitelist pattern
-    for pattern in whitelist_patterns:
-        if re.match(pattern, request.url.path):
-            return await call_next(request)
-
-    try:
-        api_key = await get_api_key(request)
-        if api_key == settings.API_KEY:
-            return await call_next(request)
-        else:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={'detail': 'Invalid API Key'},
-            )
-    except HTTPException as e:
-        return JSONResponse(
-            status_code=e.status_code,
-            content={'detail': e.detail},
-        )
+# Authentication is now handled via FastAPI dependencies on individual routes
+# Static files and documentation endpoints don't require authentication
 
 
 # Add CORS middleware
@@ -189,16 +151,28 @@ app.openapi_tags = [
 
 app.openapi_components = {
     'securitySchemes': {
-        'ApiKeyAuth': {
+        'ApiKeyHeader': {
             'type': 'apiKey',
             'in': 'header',
-            'name': settings.API_KEY_NAME,
-            'description': "API key authentication. Enter your API key in the format: 'your_api_key'",
+            'name': 'X-API-Key',
+            'description': "API key authentication via header. Enter your API key.",
+        },
+        'ApiKeyQuery': {
+            'type': 'apiKey',
+            'in': 'query',
+            'name': 'api_key',
+            'description': "API key authentication via query parameter.",
+        },
+        'VNCCookieAuth': {
+            'type': 'apiKey',
+            'in': 'cookie',
+            'name': 'vnc_auth_{session_id}',
+            'description': "VNC session authentication via cookie (for VNC endpoints only).",
         }
     }
 }
 
-app.openapi_security = [{'ApiKeyAuth': []}]
+# Security is now applied per-endpoint via dependencies rather than globally
 
 # Include API router
 app.include_router(api_router)

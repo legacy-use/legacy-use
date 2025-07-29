@@ -5,10 +5,11 @@ Target management routes.
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 
 from server.database import db
 from server.models.base import Target, TargetCreate, TargetUpdate
+from server.utils.auth import require_api_key
 from server.settings import settings
 from server.utils.telemetry import (
     capture_target_created,
@@ -21,7 +22,7 @@ target_router = APIRouter(prefix='/targets', tags=['Target Management'])
 
 
 @target_router.get('/', response_model=List[Target])
-async def list_targets(include_archived: bool = False):
+async def list_targets(include_archived: bool = False, _: str = require_api_key):
     """List all available targets."""
     targets = db.list_targets(include_archived)
 
@@ -45,7 +46,7 @@ async def list_targets(include_archived: bool = False):
 
 
 @target_router.post('/', response_model=Target)
-async def create_target(target: TargetCreate, request: Request):
+async def create_target(target: TargetCreate, request: Request, _: str = require_api_key):
     """Create a new target."""
     # Convert the Pydantic model to a dictionary and pass it to the database service
     result = db.create_target(target.dict())
@@ -54,7 +55,7 @@ async def create_target(target: TargetCreate, request: Request):
 
 
 @target_router.get('/{target_id}', response_model=Target)
-async def get_target(target_id: UUID):
+async def get_target(target_id: UUID, _: str = require_api_key):
     """Get details of a specific target."""
     target = db.get_target(target_id)
     if not target:
@@ -71,7 +72,7 @@ async def get_target(target_id: UUID):
 
 
 @target_router.put('/{target_id}', response_model=Target)
-async def update_target(target_id: UUID, target: TargetUpdate, request: Request):
+async def update_target(target_id: UUID, target: TargetUpdate, request: Request, _: str = require_api_key):
     """Update a target's configuration."""
     if not db.get_target(target_id):
         raise HTTPException(status_code=404, detail='Target not found')
@@ -93,7 +94,7 @@ async def update_target(target_id: UUID, target: TargetUpdate, request: Request)
 
 
 @target_router.delete('/{target_id}')
-async def delete_target(target_id: UUID, request: Request):
+async def delete_target(target_id: UUID, request: Request, _: str = require_api_key):
     """Archive a target (soft delete)."""
     if not db.get_target(target_id):
         raise HTTPException(status_code=404, detail='Target not found')
@@ -106,7 +107,7 @@ async def delete_target(target_id: UUID, request: Request):
     '/{target_id}/hard',
     include_in_schema=not settings.HIDE_INTERNAL_API_ENDPOINTS_IN_DOC,
 )
-async def hard_delete_target(target_id: UUID, request: Request):
+async def hard_delete_target(target_id: UUID, request: Request, _: str = require_api_key):
     """Permanently delete a target (hard delete)."""
     if not db.get_target(target_id):
         raise HTTPException(status_code=404, detail='Target not found')
