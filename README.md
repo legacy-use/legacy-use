@@ -72,7 +72,7 @@ make setup
 make docker-build
 
 # 5. Start all services
-make docker-start
+make docker-dev
 ```
 
 **🔑 API Key Generation Helper**

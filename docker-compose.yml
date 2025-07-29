@@ -38,6 +38,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+      - .env.local
 
   # Frontend Service
   frontend:
@@ -54,6 +55,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+      - .env.local
 
 volumes:
   postgres_data: 

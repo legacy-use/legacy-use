@@ -9,7 +9,9 @@ frontend:
 server-tests:
 	uv run pytest
 
-
+setup:
+	touch .env.local
+	uv run python generate_api_key.py
 
 # Docker Compose Commands
 docker-dev: 
@@ -25,15 +27,7 @@ docker-prod:
 		export DATABASE_URL=$$(aws secretsmanager get-secret-value --secret-id $$SECRET_NAME --query SecretString --output text); \
 	fi
 	@echo "🔧 Starting services in production mode..."
-	docker-compose up -d
-	
-
-
-
-
-
-
-
+	docker-compose up -d	
 
 docker-build:
 	# Build backend with both naming conventions
