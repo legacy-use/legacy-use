@@ -1,0 +1,59 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17-alpine
+    container_name: legacy-use-postgres
+    environment:
+      POSTGRES_DB: legacy_use
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: infra/docker/legacy-use-backend/Dockerfile
+    container_name: legacy-use-backend
+    user: root
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/legacy_use
+      - LEGACY_USE_DEBUG=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8088:8088"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    env_file:
+      - .env
+
+  # Frontend Service
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/docker/legacy-use-frontend/Dockerfile
+    container_name: legacy-use-frontend
+    environment:
+      - LEGACY_USE_DEBUG=0
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    env_file:
+      - .env
+
+volumes:
+  postgres_data: 

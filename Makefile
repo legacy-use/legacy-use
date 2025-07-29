@@ -1,4 +1,4 @@
-.PHONY: server frontend server-tests docker-start docker-linux-vm
+.PHONY: server frontend server-tests docker-start docker-linux-vm dev-docker prod stop logs
 
 server:
 	uv run uvicorn server.server:app --host 0.0.0.0 --port 8088 --reload --reload-dir server --reload-include .env
@@ -6,29 +6,34 @@ server:
 frontend:
 	npm run start
 
-
 server-tests:
 	uv run pytest
 
-setup:
-	touch .env.local
-	uv run python generate_api_key.py
 
-docker-start:
-	docker run -u root \
-		--env-file .env \
-		--env-file .env.local \
-		-v ${HOME}/.anthropic:/home/legacy-use-mgmt/.anthropic \
-		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v ${HOME}/.config/gcloud/application_default_credentials.json:/home/legacy-use-mgmt/.config/gcloud/application_default_credentials.json \
-		-p 8088:8088 \
-		-p 5173:5173 \
-		-e LEGACY_USE_DEBUG=1 \
-		-v ${PWD}/server:/home/legacy-use-mgmt/server/ \
-		-v ${PWD}/app:/home/legacy-use-mgmt/app/ \
-		-v ${PWD}/.env.local:/home/legacy-use-mgmt/.env.local \
-		--name legacy-use-mgmt \
-		--rm -it legacy-use-mgmt:local
+
+# Docker Compose Commands
+docker-dev: 
+	@echo "🚀 Starting legacy-use in DEVELOPMENT mode with hot-reloading..."
+	docker-compose -f docker-compose.yml -f docker-compose.dev-override.yml up
+
+docker-prod:
+	@echo "🚀 Starting legacy-use in PRODUCTION mode..."
+	@if curl -s --connect-timeout 1 http://169.254.169.254/latest/meta-data/ > /dev/null 2>&1; then \
+		echo "🌐 Detected AWS environment"; \
+		echo "🔐 Retrieving DATABASE_URL from AWS Secrets Manager"; \
+		SECRET_NAME="legacy-use-mgmt-database-url"; \
+		export DATABASE_URL=$$(aws secretsmanager get-secret-value --secret-id $$SECRET_NAME --query SecretString --output text); \
+	fi
+	@echo "🔧 Starting services in production mode..."
+	docker-compose up -d
+	
+
+
+
+
+
+
+
 
 docker-build:
 	# Build backend with both naming conventions

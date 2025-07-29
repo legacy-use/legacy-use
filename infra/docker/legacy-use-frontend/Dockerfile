@@ -21,6 +21,7 @@ RUN cd $HOME && npm install && npm cache clean --force
 COPY --chown=$USERNAME:$USERNAME app/ $HOME/app/
 COPY --chown=$USERNAME:$USERNAME public/ $HOME/public/
 COPY --chown=$USERNAME:$USERNAME index.html vite.config.js $HOME/
+COPY --chown=$USERNAME:$USERNAME tsconfig.json biome.json $HOME/
 
 # Final runtime stage
 FROM node:20-slim
@@ -37,9 +38,11 @@ WORKDIR $HOME
 
 # Copy all necessary files from builder stage
 COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/package.json $HOME/package-lock.json $HOME/
+COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/node_modules $HOME/node_modules
 COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/app $HOME/app
 COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/public $HOME/public
 COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/index.html $HOME/vite.config.js $HOME/
+COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/tsconfig.json $HOME/biome.json $HOME/
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\
