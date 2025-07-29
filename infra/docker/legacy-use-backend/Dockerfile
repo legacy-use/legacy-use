@@ -9,7 +9,6 @@ ENV HOME=/home/$USERNAME
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
-    sqlite3 \
     ca-certificates \
     gnupg  && \
     # Install Docker CLI

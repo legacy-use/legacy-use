@@ -78,8 +78,18 @@ def upgrade() -> None:
                 'jobs', sa.Column('api_definition_version_id', sa.TEXT(), nullable=True)
             )
 
-            # We'll skip adding the foreign key constraint for SQLite
-            # The ORM will still enforce the relationship
+            # Add foreign key constraint for PostgreSQL
+            try:
+                op.create_foreign_key(
+                    'fk_jobs_api_definition_version_id',
+                    'jobs',
+                    'api_definition_versions',
+                    ['api_definition_version_id'],
+                    ['id'],
+                    ondelete='SET NULL',
+                )
+            except Exception as e:
+                print(f'Note: Could not create foreign key constraint: {e}')
         except Exception as e:
             print(f'Error adding column: {e}')
             # If there's an error, it might be because the column already exists
@@ -92,8 +102,15 @@ def downgrade() -> None:
     # Drop foreign key and column from jobs table
     if column_exists('jobs', 'api_definition_version_id'):
         try:
-            # For SQLite, we can't drop constraints directly
-            # Just try to drop the column
+            # Drop the foreign key constraint first
+            try:
+                op.drop_constraint(
+                    'fk_jobs_api_definition_version_id', 'jobs', type_='foreignkey'
+                )
+            except Exception as e:
+                print(f'Note: Could not drop foreign key constraint: {e}')
+
+            # Then drop the column
             op.drop_column('jobs', 'api_definition_version_id')
         except Exception as e:
             print(f'Error dropping column: {e}')

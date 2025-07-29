@@ -259,6 +259,26 @@ async def prune_old_logs():
 @app.on_event('startup')
 async def startup_event():
     """Start background tasks on server startup."""
+    # Check for SQLite database URL and abort if found
+    database_url = settings.DATABASE_URL.lower()
+    if 'sqlite' in database_url:
+        error_message = """
+SQLite support has been removed from this version of Legacy Use.
+
+To migrate your data:
+1. Restore the previous build that supported SQLite
+2. Export your data using the API endpoints or database tools
+3. Set up a PostgreSQL database
+4. Import your data into PostgreSQL
+5. Update your DATABASE_URL to point to PostgreSQL
+
+Example PostgreSQL URL: postgresql://username:password@localhost:5432/database_name
+
+For more information, please refer to the migration documentation.
+"""
+        logger.error(error_message)
+        raise SystemExit(1)
+
     # Start background tasks
     asyncio.create_task(prune_old_logs())
     logger.info('Started background task for pruning old logs')

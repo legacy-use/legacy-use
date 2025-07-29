@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     FASTAPI_SERVER_HOST: str = '0.0.0.0'
     FASTAPI_SERVER_PORT: int = 8088
 
-    DATABASE_URL: str = 'sqlite:///server/server.db'
+    DATABASE_URL: str = 'postgresql://postgres:postgres@localhost:5432/legacy_use'
 
     API_KEY: str = 'not-secure-api-key'
     VITE_API_KEY: str | None = None

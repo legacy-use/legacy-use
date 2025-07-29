@@ -37,25 +37,21 @@ def upgrade() -> None:
             'jobs', sa.Column('target_id', sa.String(length=36), nullable=True)
         )
 
-    # SQLite doesn't support adding foreign keys with ALTER TABLE directly
-    # So we'll only attempt to create the foreign key constraint if not using SQLite
-    context = op.get_bind().dialect.name
-    if context != 'sqlite':
-        # Check if the foreign key constraint already exists
-        # Note: This is a simplified check and might need to be adjusted based on your DB engine
-        try:
-            # Create foreign key (this won't work in SQLite but will work in other DBs)
-            op.create_foreign_key(
-                'fk_jobs_target_id',
-                'jobs',
-                'targets',
-                ['target_id'],
-                ['id'],
-                ondelete='SET NULL',
-            )
-        except Exception as e:
-            # If the constraint already exists or there's another issue, log it but continue
-            print(f'Note: Could not create foreign key constraint: {e}')
+    # PostgreSQL supports adding foreign keys with ALTER TABLE
+    # Check if the foreign key constraint already exists
+    try:
+        # Create foreign key
+        op.create_foreign_key(
+            'fk_jobs_target_id',
+            'jobs',
+            'targets',
+            ['target_id'],
+            ['id'],
+            ondelete='SET NULL',
+        )
+    except Exception as e:
+        # If the constraint already exists or there's another issue, log it but continue
+        print(f'Note: Could not create foreign key constraint: {e}')
 
     # Data migration
     # Bind a connection to use for data migration
@@ -92,14 +88,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Determine if we're using SQLite
-    context = op.get_bind().dialect.name
-    if context != 'sqlite':
-        # Try to drop the foreign key constraint first (only for non-SQLite databases)
-        try:
-            op.drop_constraint('fk_jobs_target_id', 'jobs', type_='foreignkey')
-        except Exception as e:
-            print(f'Note: Could not drop foreign key constraint: {e}')
+    # Try to drop the foreign key constraint first
+    try:
+        op.drop_constraint('fk_jobs_target_id', 'jobs', type_='foreignkey')
+    except Exception as e:
+        print(f'Note: Could not drop foreign key constraint: {e}')
 
     # Check if target_id column exists before trying to drop it
     connection = op.get_bind()
@@ -108,5 +101,5 @@ def downgrade() -> None:
 
     # Only drop the column if it exists
     if 'target_id' in columns:
-        # Then drop the column (works in SQLite and other DBs)
+        # Then drop the column
         op.drop_column('jobs', 'target_id')

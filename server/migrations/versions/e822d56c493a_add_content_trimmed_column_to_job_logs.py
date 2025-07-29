@@ -10,7 +10,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'e822d56c493a'
@@ -27,22 +27,11 @@ def upgrade() -> None:
 
     # Only proceed if the column doesn't already exist
     if 'content_trimmed' not in columns:
-        # Handle differently based on database dialect
-        context = op.get_context()
-        dialect = context.dialect.name
-
-        if dialect == 'sqlite':
-            # SQLite implementation
-            with op.batch_alter_table('job_logs') as batch_op:
-                batch_op.add_column(
-                    sa.Column('content_trimmed', sqlite.JSON(), nullable=True)
-                )
-        else:
-            # PostgreSQL implementation
-            op.add_column(
-                'job_logs',
-                sa.Column('content_trimmed', postgresql.JSONB(), nullable=True),
-            )
+        # PostgreSQL implementation
+        op.add_column(
+            'job_logs',
+            sa.Column('content_trimmed', postgresql.JSONB(), nullable=True),
+        )
     else:
         print("Column 'content_trimmed' already exists in 'job_logs' table. Skipping.")
 
@@ -55,17 +44,8 @@ def downgrade() -> None:
 
     # Only attempt to drop the column if it exists
     if 'content_trimmed' in columns:
-        # Handle differently based on database dialect
-        context = op.get_context()
-        dialect = context.dialect.name
-
-        if dialect == 'sqlite':
-            # SQLite implementation
-            with op.batch_alter_table('job_logs') as batch_op:
-                batch_op.drop_column('content_trimmed')
-        else:
-            # PostgreSQL implementation
-            op.drop_column('job_logs', 'content_trimmed')
+        # PostgreSQL implementation
+        op.drop_column('job_logs', 'content_trimmed')
     else:
         print(
             "Column 'content_trimmed' does not exist in 'job_logs' table. Skipping downgrade."

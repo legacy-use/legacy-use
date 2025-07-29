@@ -35,16 +35,8 @@ def upgrade() -> None:
 
     # Drop mapped_port column if it exists
     if column_exists('sessions', 'mapped_port'):
-        bind = op.get_bind()
-        dialect_name = bind.dialect.name
-
-        if dialect_name == 'postgresql':
-            # PostgreSQL supports dropping columns directly
-            op.drop_column('sessions', 'mapped_port')
-        else:
-            # For SQLite, dropping columns is complex and would require table recreation
-            # For this migration, we'll skip this step as it's development/deployment scenario
-            pass
+        # PostgreSQL supports dropping columns directly
+        op.drop_column('sessions', 'mapped_port')
     # ### end Alembic commands ###
 
 
@@ -56,13 +48,6 @@ def downgrade() -> None:
 
     # Drop container_ip column in downgrade
     if column_exists('sessions', 'container_ip'):
-        bind = op.get_bind()
-        dialect_name = bind.dialect.name
-
-        if dialect_name == 'postgresql':
-            # PostgreSQL supports dropping columns directly
-            op.drop_column('sessions', 'container_ip')
-        else:
-            # For SQLite, we would need table recreation but skip for simplicity
-            pass
+        # PostgreSQL supports dropping columns directly
+        op.drop_column('sessions', 'container_ip')
     # ### end Alembic commands ###

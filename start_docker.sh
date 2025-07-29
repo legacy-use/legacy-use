@@ -5,9 +5,6 @@ set -e
 # Default to debug mode if not specified
 export LEGACY_USE_DEBUG=${LEGACY_USE_DEBUG:-0}
 
-# Default SQLITE_PATH if not specified
-export SQLITE_PATH=${SQLITE_PATH:-$(pwd)/server.db}
-
 # Check if we're running in an AWS environment
 # This checks for the EC2 metadata service
 IS_AWS=0
@@ -55,9 +52,8 @@ if [ "$LEGACY_USE_DEBUG" = "1" ]; then
     -v $(pwd)/.env.local:/home/legacy-use-mgmt/.env.local"
 else
     echo "Running in PRODUCTION mode without directory mounts"
-    # Mount only the SQLite database file in production mode
+    # No database file mounting needed for PostgreSQL
     DOCKER_CMD="$DOCKER_CMD \
-    -v $SQLITE_PATH:/home/legacy-use-mgmt/server/server.db \
     -v $(pwd)/.env.local:/home/legacy-use-mgmt/.env.local"
 fi
 

@@ -26,8 +26,8 @@ def compute_job_metrics(
 
     # Ensure timezone consistency - make naive datetimes timezone-aware if needed
     if created_at.tzinfo is None:
-        # SQLite datetimes are naive (no timezone), so we need to make datetime.now() naive too
-        now = datetime.now()
+        # Make naive datetimes timezone-aware
+        now = datetime.now(timezone.utc)
     else:
         # PostgreSQL datetimes are timezone-aware, so we need to make datetime.now() aware too
         now = datetime.now(timezone.utc)

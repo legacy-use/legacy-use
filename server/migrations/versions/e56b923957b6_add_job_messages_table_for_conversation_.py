@@ -14,8 +14,6 @@ from alembic import op
 # Import inspect for checking table existence
 from sqlalchemy import inspect
 
-# Import SQLite dialect if needed for JSON type, though sa.JSON should work
-
 # revision identifiers, used by Alembic.
 revision: str = 'e56b923957b6'
 down_revision: Union[str, None] = 'e822d56c493a'

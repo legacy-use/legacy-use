@@ -12,8 +12,6 @@ RUN apt-get update && \
     gnupg \
     python3 \
     gunicorn \
-    # Database reqs
-    sqlite3 \
     # PPA req
     software-properties-common && \
     apt-get clean && \

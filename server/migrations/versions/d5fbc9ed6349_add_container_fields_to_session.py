@@ -38,18 +38,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Check if we can drop columns (PostgreSQL supports this, SQLite doesn't)
-    bind = op.get_bind()
-    dialect_name = bind.dialect.name
-
-    if dialect_name == 'postgresql':
-        # PostgreSQL supports dropping columns directly
-        if column_exists('sessions', 'mapped_port'):
-            op.drop_column('sessions', 'mapped_port')
-        if column_exists('sessions', 'container_id'):
-            op.drop_column('sessions', 'container_id')
-    else:
-        # For SQLite and other databases that don't support dropping columns
-        # we would need to recreate the table, but for simplicity mark as no-op
-        # since this is a development/deployment scenario
-        pass
+    # PostgreSQL supports dropping columns directly
+    if column_exists('sessions', 'mapped_port'):
+        op.drop_column('sessions', 'mapped_port')
+    if column_exists('sessions', 'container_id'):
+        op.drop_column('sessions', 'container_id')

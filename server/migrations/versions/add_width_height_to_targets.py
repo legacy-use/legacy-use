@@ -44,22 +44,10 @@ def upgrade():
     op.execute("UPDATE targets SET width = '1024' WHERE width IS NULL")
     op.execute("UPDATE targets SET height = '768' WHERE height IS NULL")
 
-    # SQLite doesn't support ALTER COLUMN for changing column constraints
-    # So we'll rely on the model definition to enforce the NOT NULL constraint
-
 
 def downgrade():
-    # Check if we can drop columns (PostgreSQL supports this, SQLite doesn't)
-    bind = op.get_bind()
-    dialect_name = bind.dialect.name
-
-    if dialect_name == 'postgresql':
-        # PostgreSQL supports dropping columns directly
-        if column_exists('targets', 'height'):
-            op.drop_column('targets', 'height')
-        if column_exists('targets', 'width'):
-            op.drop_column('targets', 'width')
-    else:
-        # For SQLite, dropping columns is complex and would require table recreation
-        # For simplicity, mark as no-op since this is development/deployment scenario
-        pass
+    # PostgreSQL supports dropping columns directly
+    if column_exists('targets', 'height'):
+        op.drop_column('targets', 'height')
+    if column_exists('targets', 'width'):
+        op.drop_column('targets', 'width')

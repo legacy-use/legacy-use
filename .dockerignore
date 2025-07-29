@@ -51,9 +51,9 @@ coverage/
 logs/
 
 # Database files
-*.db
-*.sqlite
-*.sqlite3
+# *.db
+# *.sqlite
+# *.sqlite3
 
 # Docker files
 docker-compose.override.yml
