@@ -55,15 +55,6 @@ cover/
 *.mo
 *.pot
 
-# Django stuff:
-*.log
-local_settings.py
-# db.sqlite3
-# db.sqlite3-journal
-
-# Database
-# server/server.db
-
 # Flask stuff:
 instance/
 .webassets-cache
