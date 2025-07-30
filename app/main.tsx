@@ -18,6 +18,10 @@ Sentry.init({
 });
 
 const App = () => {
+  if (import.meta.env.VITE_PUBLIC_DISABLE_TRACKING === 'true') {
+    return <AppComponent />;
+  }
+
   return <AppComponent />;
 };
 
