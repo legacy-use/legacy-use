@@ -20,4 +20,4 @@ services:
       - ./index.html:/home/legacy-use-mgmt/index.html
       - ./public:/home/legacy-use-mgmt/public
       - ./tsconfig.json:/home/legacy-use-mgmt/tsconfig.json
-      - ./biome.json:/home/legacy-use-mgmt/biome.json 
+      - ./biome.json:/home/legacy-use-mgmt/biome.json

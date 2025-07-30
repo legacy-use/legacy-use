@@ -58,4 +58,4 @@ services:
       - .env.local
 
 volumes:
-  postgres_data: 
+  postgres_data:
