@@ -50,7 +50,6 @@ coverage/
 *.log
 logs/
 
-# Database files
 
 # Docker files
 docker-compose.override.yml
