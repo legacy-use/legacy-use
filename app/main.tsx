@@ -2,7 +2,7 @@ import * as Sentry from '@sentry/react';
 import { browserTracingIntegration, replayIntegration } from '@sentry/react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App';
+import { default as AppComponent } from './App';
 
 // Initialize Sentry
 Sentry.init({
@@ -16,6 +16,10 @@ Sentry.init({
   environment: import.meta.env.MODE,
   debug: false, // Enable debug mode to see more logs
 });
+
+const App = () => {
+  return <AppComponent />;
+};
 
 // biome-ignore lint/style/noNonNullAssertion: root is always present
 createRoot(document.getElementById('root')!).render(
