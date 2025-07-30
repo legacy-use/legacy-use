@@ -52,7 +52,6 @@ if [ "$LEGACY_USE_DEBUG" = "1" ]; then
     -v $(pwd)/.env.local:/home/legacy-use-mgmt/.env.local"
 else
     echo "Running in PRODUCTION mode without directory mounts"
-    # No database file mounting needed for PostgreSQL
     DOCKER_CMD="$DOCKER_CMD \
     -v $(pwd)/.env.local:/home/legacy-use-mgmt/.env.local"
 fi
