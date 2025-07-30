@@ -1,5 +1,5 @@
 import type { PostHogConfig } from 'posthog-js';
-import { PostHogProvider } from 'posthog-js/react';
+import { PostHogProvider as PostHogProviderBase } from 'posthog-js/react';
 
 const posthogOptions: Partial<PostHogConfig> = {
   api_host: 'https://eu.i.posthog.com',
@@ -12,10 +12,10 @@ const posthogOptions: Partial<PostHogConfig> = {
 
 const posthogApiKey = 'phc_i1lWRELFSWLrbwV8M8sddiFD83rVhWzyZhP27T3s6V8';
 
-export const PostHog = ({ children }: { children: React.ReactNode }) => {
+export const PostHogProvider = ({ children }: { children: React.ReactNode }) => {
   return (
-    <PostHogProvider apiKey={posthogApiKey} options={posthogOptions}>
+    <PostHogProviderBase apiKey={posthogApiKey} options={posthogOptions}>
       {children}
-    </PostHogProvider>
+    </PostHogProviderBase>
   );
 };
