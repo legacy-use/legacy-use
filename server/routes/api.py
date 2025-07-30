@@ -6,13 +6,14 @@ import logging
 import traceback
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
 from server.core import APIGatewayCore
 from server.database import db
 from server.models.base import APIDefinition, Parameter
 from server.settings import settings
+from server.utils.auth import require_api_key
 from server.utils.telemetry import (
     capture_api_created,
     capture_api_deleted,
@@ -32,7 +33,7 @@ api_router = APIRouter(prefix='/api')  # Removed the tags=["API"] to prevent dup
 @api_router.get(
     '/definitions', response_model=List[APIDefinition], tags=['API Definitions']
 )
-async def get_api_definitions(include_archived: bool = False):
+async def get_api_definitions(include_archived: bool = False, _: str = require_api_key):
     """Get all available API definitions."""
     # Get API definitions from database
 
@@ -67,7 +68,7 @@ async def get_api_response_example(api_def):
 @api_router.get(
     '/definitions/{api_name}', response_model=APIDefinition, tags=['API Definitions']
 )
-async def get_api_definition(api_name: str):
+async def get_api_definition(api_name: str, _: str = require_api_key):
     """Get a specific API definition by name."""
     # Load API definitions fresh from the database
     api_definitions = await core.load_api_definitions()
@@ -91,7 +92,7 @@ async def get_api_definition(api_name: str):
     response_model=Dict[str, Dict[str, Any]],
     tags=['API Definitions'],
 )
-async def export_api_definition(api_name: str):
+async def export_api_definition(api_name: str, _: str = require_api_key):
     """Get a specific API definition in its raw format for export/backup purposes."""
 
     # First, check if the API exists and if it's archived
@@ -150,7 +151,7 @@ async def export_api_definition(api_name: str):
     tags=['API Definitions'],
     include_in_schema=not settings.HIDE_INTERNAL_API_ENDPOINTS_IN_DOC,
 )
-async def get_api_definition_versions(api_name: str):
+async def get_api_definition_versions(api_name: str, _: str = require_api_key):
     """Get all versions of a specific API definition."""
 
     # Get the API definition
@@ -200,7 +201,7 @@ async def get_api_definition_versions(api_name: str):
     tags=['API Definitions'],
     include_in_schema=not settings.HIDE_INTERNAL_API_ENDPOINTS_IN_DOC,
 )
-async def get_api_definition_version(api_name: str, version_id: str):
+async def get_api_definition_version(api_name: str, version_id: str, _: str = require_api_key):
     """Get a specific version of an API definition."""
 
     # Get the API definition
@@ -245,7 +246,7 @@ class ImportApiDefinitionRequest(BaseModel):
 @api_router.post(
     '/definitions/import', response_model=Dict[str, str], tags=['API Definitions']
 )
-async def import_api_definition(body: ImportApiDefinitionRequest, request: Request):
+async def import_api_definition(body: ImportApiDefinitionRequest, request: Request, _: str = require_api_key):
     """Import an API definition from a JSON file."""
     try:
         api_def = body.api_definition
@@ -323,7 +324,7 @@ async def import_api_definition(body: ImportApiDefinitionRequest, request: Reque
     '/definitions/{api_name}', response_model=Dict[str, str], tags=['API Definitions']
 )
 async def update_api_definition(
-    api_name: str, body: ImportApiDefinitionRequest, request: Request
+    api_name: str, body: ImportApiDefinitionRequest, request: Request, _: str = require_api_key
 ):
     """Update an API definition."""
     try:
@@ -408,7 +409,7 @@ async def update_api_definition(
 @api_router.delete(
     '/definitions/{api_name}', response_model=Dict[str, str], tags=['API Definitions']
 )
-async def archive_api_definition(api_name: str, request: Request):
+async def archive_api_definition(api_name: str, request: Request, _: str = require_api_key):
     """Archive an API definition (soft delete)."""
     try:
         # Get the API definition
@@ -447,7 +448,7 @@ async def archive_api_definition(api_name: str, request: Request):
     response_model=Dict[str, str],
     tags=['API Definitions'],
 )
-async def unarchive_api_definition(api_name: str):
+async def unarchive_api_definition(api_name: str, _: str = require_api_key):
     """Unarchive an API definition."""
     try:
         # Get the API definition by name
@@ -481,7 +482,7 @@ async def unarchive_api_definition(api_name: str):
     response_model=Dict[str, Any],
     tags=['API Definitions'],
 )
-async def get_api_definition_metadata(api_name: str):
+async def get_api_definition_metadata(api_name: str, _: str = require_api_key):
     """Get metadata for a specific API definition, including archived status."""
 
     # Get the API definition

@@ -10,7 +10,7 @@ from uuid import UUID
 
 import requests
 import websockets
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -18,6 +18,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from server.config.default_ports import DEFAULT_PORTS
 from server.database import db
 from server.models.base import Session, SessionCreate, SessionUpdate
+from server.utils.auth import require_api_key
 from server.utils.docker_manager import (
     get_container_status,
     launch_container,
@@ -39,7 +40,7 @@ websocket_router = APIRouter(prefix='/sessions', tags=['WebSocket Endpoints'])
 
 
 @session_router.get('/')
-async def list_sessions(include_archived: bool = False):
+async def list_sessions(include_archived: bool = False, _: str = require_api_key):
     """List all active sessions."""
     sessions = db.list_sessions(include_archived)
 
@@ -56,7 +57,7 @@ async def list_sessions(include_archived: bool = False):
 
 @session_router.post('/', response_model=Session)
 async def create_session(
-    session: SessionCreate, request: Request, get_or_create: bool = False
+    session: SessionCreate, request: Request, get_or_create: bool = False, _: str = require_api_key
 ):
     """
     Create a new session for a target.
@@ -179,7 +180,7 @@ async def create_session(
 
 
 @session_router.get('/{session_id}')
-async def get_session(session_id: UUID):
+async def get_session(session_id: UUID, _: str = require_api_key):
     """Get details of a specific session."""
     if session := db.get_session(session_id):
         # If the session has a container_id, get container status
@@ -195,7 +196,7 @@ async def get_session(session_id: UUID):
 
 
 @session_router.put('/{session_id}')
-async def update_session(session_id: UUID, session: SessionUpdate):
+async def update_session(session_id: UUID, session: SessionUpdate, _: str = require_api_key):
     """Update a session's configuration."""
     if not db.get_session(session_id):
         raise HTTPException(status_code=404, detail='Session not found')
@@ -214,7 +215,7 @@ async def update_session(session_id: UUID, session: SessionUpdate):
 
 
 @session_router.delete('/{session_id}')
-async def delete_session(session_id: UUID, request: Request):
+async def delete_session(session_id: UUID, request: Request, _: str = require_api_key):
     """Archive a session."""
     # Check if session exists
     session = db.get_session(session_id)
@@ -245,7 +246,7 @@ async def delete_session(session_id: UUID, request: Request):
 
 
 @session_router.delete('/{session_id}/hard')
-async def hard_delete_session(session_id: UUID, request: Request):
+async def hard_delete_session(session_id: UUID, request: Request, _: str = require_api_key):
     """Permanently delete a session and stop its container (hard delete)."""
     # Get session
     session = db.get_session(session_id)
@@ -266,7 +267,7 @@ async def hard_delete_session(session_id: UUID, request: Request):
 
 @session_router.post('/{session_id}/execute', response_model=Dict[str, Any])
 async def execute_api_on_session(
-    session_id: UUID, api_request: Dict[str, Any], request: Request
+    session_id: UUID, api_request: Dict[str, Any], request: Request, _: str = require_api_key
 ):
     """
     Execute an API call on the session's container.
@@ -297,7 +298,7 @@ async def execute_api_on_session(
 
 
 @session_router.get('/{session_id}/vnc/{path:path}', include_in_schema=True)
-async def proxy_vnc(session_id: UUID, path: str, request: Request):
+async def proxy_vnc(session_id: UUID, path: str, request: Request, _: str = require_api_key):
     """
     Proxy VNC viewer requests to the container running the session.
 
@@ -527,7 +528,7 @@ async def proxy_vnc_websocket(websocket: WebSocket, session_id: UUID):
 
 # Add a new endpoint to update session state
 @session_router.put('/{session_id}/state')
-async def update_session_state(session_id: UUID, state: str):
+async def update_session_state(session_id: UUID, state: str, _: str = require_api_key):
     """Update the state of a session."""
     # Check if session exists
     session = db.get_session(session_id)

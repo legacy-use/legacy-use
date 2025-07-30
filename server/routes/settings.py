@@ -4,7 +4,7 @@ Settings management routes.
 
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from server.computer_use.config import (
@@ -12,6 +12,7 @@ from server.computer_use.config import (
     get_default_model_name,
 )
 from server.settings import settings
+from server.utils.auth import require_api_key
 
 
 def obscure_api_key(api_key: Optional[str]) -> Optional[str]:
@@ -60,7 +61,7 @@ settings_router = APIRouter(prefix='/settings', tags=['Settings'])
 
 
 @settings_router.get('/providers', response_model=ProvidersResponse)
-async def get_providers():
+async def get_providers(_: str = require_api_key):
     """Get available VLM providers and their configurations."""
 
     # workaround to reload settings after updating the provider
@@ -146,7 +147,7 @@ async def get_providers():
 
 
 @settings_router.post('/providers', response_model=Dict[str, str])
-async def update_provider_settings(request: UpdateProviderRequest):
+async def update_provider_settings(request: UpdateProviderRequest, _: str = require_api_key):
     """Update provider configuration and set as active provider."""
 
     # Validate provider

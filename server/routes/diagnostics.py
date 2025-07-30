@@ -12,9 +12,10 @@ import traceback
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from server.database import db
+from server.utils.auth import require_api_key
 from server.utils.job_execution import (
     job_processor_task,
     job_queue,
@@ -31,7 +32,7 @@ diagnostics_router = APIRouter(tags=['Diagnostics'])
 
 
 @diagnostics_router.get('/diagnostics/queue')
-async def diagnose_job_queue():
+async def diagnose_job_queue(_: str = require_api_key):
     """Get diagnostic information about the job queue and running jobs.
 
     This is a temporary endpoint to help diagnose issues with the job processing system.
@@ -158,7 +159,7 @@ async def diagnose_job_queue():
 
 
 @diagnostics_router.post('/diagnostics/queue/start')
-async def start_job_processor():
+async def start_job_processor(_: str = require_api_key):
     """Manually start the job queue processor.
 
     This endpoint can be used to manually start the job queue processor if it's
@@ -208,7 +209,7 @@ async def start_job_processor():
 
 
 @diagnostics_router.get('/diagnostics/targets/{target_id}/sessions')
-async def check_target_sessions(target_id: UUID):
+async def check_target_sessions(target_id: UUID, _: str = require_api_key):
     """Check if a target has available sessions.
 
     This can help diagnose why jobs for a specific target might be stuck in the QUEUED state.
