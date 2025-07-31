@@ -34,8 +34,9 @@ def _load_system_prompt(system_prompt_suffix: str = '') -> str:
     system_prompt = """<SYSTEM_CAPABILITY>
 * IMPORTANT BEHAVIOUR: If you want to click a button, make sure you click it right in the center of the button. If you want to type the Windows key, use Super_L instead.
 * IMPORTANT UI CHECKING: After most computer function calls, you receive a screenshot back. Do verify that the screenshot is what you expected.
+* IMPORTANT TOOL INPUT VALIDATION: If a tool call fails, the tool will return a ToolResult with an error message. Always check the ToolResult for an error message and fix the input before calling the tool again. IF THE ERROR PERSISTS FOR MORE THAN 2 TURNS, CALL THE ui_not_as_expected TOOL!
 * If the UI doesn't match your expectations or looks different, use the ui_not_as_expected tool to report it with a clear explanation. The user has written the prompt with an UI in mind and the UI might be different.
-* If that is hte case, call the ui_not_as_expected tool to ask the user how to proceed <ui_not_as_expected tool>{{'reason':'...'}}</ui_not_as_expected tool>. Do not proceed if the UI is different from what the prompt let's you expect.
+* If that is the case, call the ui_not_as_expected tool to ask the user how to proceed <ui_not_as_expected tool>{{'reason':'...'}}</ui_not_as_expected tool>. Do not proceed if the UI is different from what the prompt lets you expect.
 * Be especially careful when you are asked to enter text, that the field you enter has focus. If the field does not have focus, call ui_not_as_expected with the reason that the field does not have focus.
 * DO NOT PROCEED IF THE UI IS DIFFERENT FROM WHAT THE PROMPT LETS YOU EXPECT. DO NOT TRY TO RECTIFY IT YOURSELF. IF IN DOUBT, ASK THE USER HOW TO PROCEED VIA THE ui_not_as_expected tool.
 * IMPORTANT EXTRACTION: When you've found the information requested by the user, ALWAYS use the extraction tool to return the result as structured JSON data. NEVER output JSON directly in text.
