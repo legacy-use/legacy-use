@@ -17,6 +17,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from server.computer_use import APIProvider
 from server.database import db
 from server.routes import api_router, job_router, target_router
+from server.routes.custom_docs import docs_router
 from server.routes.diagnostics import diagnostics_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
@@ -133,6 +134,10 @@ async def auth_middleware(request: Request, call_next):
             r'^/redoc(/.*)?$'
         )  # Matches /redoc and /redoc/anything
         whitelist_patterns.append(r'^/openapi.json$')  # Needed for docs
+        # Add custom documentation endpoints to whitelist
+        whitelist_patterns.append(r'^/custom-api-docs(/.*)?$')  # Custom API docs
+        whitelist_patterns.append(r'^/custom-openapi.json$')  # Custom OpenAPI schema
+        whitelist_patterns.append(r'^/api-definitions-summary$')  # API summary
 
     # Check if request path matches any whitelist pattern
     for pattern in whitelist_patterns:
@@ -230,6 +235,9 @@ app.include_router(
 
 # Include settings router
 app.include_router(settings_router, prefix=api_prefix)
+
+# Include custom documentation router (without prefix for cleaner URLs)
+app.include_router(docs_router)
 
 
 # Root endpoint
