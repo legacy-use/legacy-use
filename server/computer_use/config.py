@@ -4,6 +4,8 @@ Configuration for Computer Use API Gateway.
 
 from enum import StrEnum
 
+from server.computer_use.tools.groups import ToolVersion
+
 # Beta feature flags
 COMPUTER_USE_BETA_FLAG = 'computer-use-2024-10-22'
 PROMPT_CACHING_BETA_FLAG = 'prompt-caching-2024-07-31'
@@ -51,7 +53,7 @@ def get_default_model_name(provider: APIProvider) -> str:
     return PROVIDER_TO_DEFAULT_MODEL_NAME[provider]
 
 
-def get_tool_version(model_name: str) -> str:
+def get_tool_version(model_name: str) -> ToolVersion:
     """
     Get the tool version for a given model name.
     """

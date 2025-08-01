@@ -1,9 +1,9 @@
-export const formatDuration = durationSeconds => {
+export const formatDuration = (durationSeconds: number) => {
   if (durationSeconds === null || durationSeconds === undefined) return 'N/A';
 
-  // Round to 2 decimal places for sub-minute durations
+  // Round to 0 decimal places for sub-minute durations
   if (durationSeconds < 60) {
-    return `${durationSeconds.toFixed(2)}s`;
+    return `${durationSeconds.toFixed(0)}s`;
   }
 
   const hours = Math.floor(durationSeconds / 3600);

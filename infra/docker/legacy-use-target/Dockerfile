@@ -16,6 +16,9 @@ RUN apt-get update && \
     sudo \
     x11vnc \
     autocutsel \
+    # Input monitoring tools
+    xinput \
+    x11-utils \
     # Network tools
     net-tools \
     netcat-openbsd \
@@ -29,7 +32,9 @@ RUN apt-get update && \
     python3 \
     python3-pip \
     python3-venv \
-    tightvncserver && \
+    tightvncserver \
+    # Video recording
+    ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /tmp/* /var/tmp/*

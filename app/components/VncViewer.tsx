@@ -6,7 +6,7 @@ import { useContext, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SessionContext } from '../App';
 
-const VncViewer = () => {
+const VncViewer = ({ viewOnly = true }: { viewOnly?: boolean }) => {
   const location = useLocation();
   const { selectedSessionId, currentSession } = useContext(SessionContext);
   const [sessionId, setSessionId] = useState(null);
@@ -119,7 +119,7 @@ const VncViewer = () => {
   // Remove any leading slashes to avoid double slashes
   const websocketPath = combinedWebsocketPath.replace(/^\/+/, '');
 
-  const vncParams = `resize=scale&autoconnect=1&view_only=1&reconnect=1&reconnect_delay=2000&path=${websocketPath}`;
+  const vncParams = `resize=scale&autoconnect=1&view_only=${viewOnly ? 1 : 0}&reconnect=1&reconnect_delay=2000&path=${websocketPath}`;
 
   const vncUrl = `${baseApiUrl}/${proxyPath}/vnc.html?${vncParams}`;
 

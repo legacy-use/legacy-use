@@ -10,6 +10,7 @@ from computer import (
     ComputerTool20250124,
     run,
 )
+from recording import router as recording_router
 
 # Create FastAPI app
 app = FastAPI(
@@ -17,6 +18,9 @@ app = FastAPI(
     description='API for interacting with the computer (mouse, keyboard, screen)',
     version='1.0.0',
 )
+
+# Include recording router
+app.include_router(recording_router)
 
 # Get target type from environment variable, defaulting to "generic"
 REMOTE_CLIENT_TYPE = os.getenv('REMOTE_CLIENT_TYPE', 'generic')

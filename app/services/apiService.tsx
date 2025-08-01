@@ -1,5 +1,17 @@
 import axios from 'axios';
-import { listSessionsSessionsGet, type Session } from '../gen/endpoints';
+import {
+  analyzeVideoAiAnalyzePost,
+  createJobTargetsTargetIdJobsPost,
+  getSessionRecordingStatusSessionsSessionIdRecordingStatusGet,
+  type ImportApiDefinitionRequest,
+  importApiDefinitionApiDefinitionsImportPost,
+  type JobCreate,
+  listSessionsSessionsGet,
+  type RecordingRequest,
+  type Session,
+  startSessionRecordingSessionsSessionIdRecordingStartPost,
+  stopSessionRecordingSessionsSessionIdRecordingStopPost,
+} from '../gen/endpoints';
 import { forwardDistinctId } from './telemetryService';
 
 // Always use the API_URL from environment variables
@@ -142,16 +154,8 @@ export const exportApiDefinition = async apiName => {
   }
 };
 
-export const importApiDefinition = async apiDefinition => {
-  try {
-    const response = await apiClient.post('/api/definitions/import', {
-      api_definition: apiDefinition,
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error importing API definition:', error);
-    throw error;
-  }
+export const importApiDefinition = async (apiDefinition: ImportApiDefinitionRequest) => {
+  return importApiDefinitionApiDefinitionsImportPost(apiDefinition);
 };
 
 export const getApiDefinitionDetails = async apiName => {
@@ -329,14 +333,8 @@ export const getJob = async (targetId, jobId) => {
   }
 };
 
-export const createJob = async (targetId, jobData) => {
-  try {
-    const response = await apiClient.post(`/targets/${targetId}/jobs/`, jobData);
-    return response.data;
-  } catch (error) {
-    console.error('Error creating job on target:', error);
-    throw error;
-  }
+export const createJob = async (targetId: string, jobData: JobCreate) => {
+  return createJobTargetsTargetIdJobsPost(targetId, jobData);
 };
 
 export const interruptJob = async (targetId, jobId) => {
@@ -477,4 +475,22 @@ export const resumeJob = async (targetId, jobId) => {
     console.error('Error resuming job:', error);
     throw error;
   }
+};
+
+// Recording functions
+export const startRecording = async (sessionId: string, options: RecordingRequest) => {
+  return startSessionRecordingSessionsSessionIdRecordingStartPost(sessionId, options);
+};
+
+export const stopRecording = async (sessionId: string) => {
+  return stopSessionRecordingSessionsSessionIdRecordingStopPost(sessionId);
+};
+
+// AI Analysis
+export const analyzeVideo = async (videoFile: Blob) => {
+  return analyzeVideoAiAnalyzePost({ video: videoFile });
+};
+
+export const getRecordingStatus = async (sessionId: string) => {
+  return getSessionRecordingStatusSessionsSessionIdRecordingStatusGet(sessionId);
 };

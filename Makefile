@@ -14,7 +14,7 @@ setup:
 	uv run python generate_api_key.py
 
 # Docker Compose Commands
-docker-dev: 
+docker-dev:
 	@echo "🚀 Starting legacy-use in DEVELOPMENT mode with hot-reloading..."
 	docker-compose -f docker-compose.yml -f docker-compose.dev-override.yml up
 
@@ -27,9 +27,12 @@ docker-prod:
 		export DATABASE_URL=$$(aws secretsmanager get-secret-value --secret-id $$SECRET_NAME --query SecretString --output text); \
 	fi
 	@echo "🔧 Starting services in production mode..."
-	docker-compose up -d	
+	docker-compose up -d
 
-docker-build:
+docker-build-target:
+	docker build -t legacy-use-target:local -f infra/docker/legacy-use-target/Dockerfile .
+
+docker-build: docker-build-target
 	# Build backend with both naming conventions
 	docker build -t legacy-use-backend:local -f infra/docker/legacy-use-backend/Dockerfile .
 	docker tag legacy-use-backend:local legacy-use-core-backend:local
@@ -44,7 +47,6 @@ docker-build:
 
 	# Build other images (keeping original names)
 	docker build -t legacy-use-mgmt:local -f infra/docker/legacy-use-mgmt/Dockerfile .
-	docker build -t legacy-use-target:local -f infra/docker/legacy-use-target/Dockerfile .
 
 	docker build -t legacy-use-demo-db:local -f infra/docker/legacy-use-demo-db/Dockerfile .
 	docker tag legacy-use-demo-db:local legacy-use-core-demo-db:local

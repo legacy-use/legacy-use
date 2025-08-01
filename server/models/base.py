@@ -3,7 +3,7 @@ Base models for the API Gateway.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID, uuid4
 
@@ -222,6 +222,56 @@ class APIResponse(BaseModel):
     reason: Optional[str] = None
     extraction: Optional[Dict[str, Any]] = None
     exchanges: List[Dict[str, Any]] = []
+
+
+# Recording Models
+class RecordingRequest(BaseModel):
+    """Request model for starting a recording"""
+
+    framerate: Optional[int] = 30
+    quality: Optional[str] = (
+        'ultrafast'  # ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+    )
+    format: Optional[str] = 'mp4'  # mp4, avi, mkv
+    capture_vnc_input: Optional[bool] = True
+
+
+class InputLogEntry(BaseModel):
+    """Model for individual input log entries"""
+
+    timestamp: str
+    session_id: str
+    source: str  # 'api' or 'vnc'
+    action_type: str
+    details: Dict[str, Any]
+
+
+class RecordingStatus(StrEnum):
+    STARTED = 'started'
+    STOPPED = 'stopped'
+    COMPLETED = 'completed'
+    RECORDING = 'recording'
+
+
+class RecordingResultResponse(BaseModel):
+    status: RecordingStatus
+    message: str
+    recording_id: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    duration_seconds: Optional[float] = None
+    base64_video: str
+    input_logs: Optional[List[InputLogEntry]] = None
+
+
+class RecordingStatusResponse(BaseModel):
+    status: RecordingStatus
+    message: str
+    recording_id: Optional[str] = None
+    vnc_monitoring: Optional[bool] = None
+    session_id: Optional[str] = None
+    file_path: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    start_time: Optional[str] = None
 
 
 class Job(BaseModel):
