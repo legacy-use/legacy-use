@@ -13,6 +13,11 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["app/*"]
+    },
 
     "strict": true,
     "noUnusedLocals": true,

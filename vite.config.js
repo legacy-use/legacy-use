@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react-swc';
 import { defineConfig } from 'vite';
+import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -9,6 +10,11 @@ export default defineConfig({
       plugins: [['@swc/plugin-emotion', {}]],
     }),
   ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './app'),
+    },
+  },
   build: {
     outDir: 'build',
   },
