@@ -1,5 +1,47 @@
 import axios from 'axios';
-import { listSessionsSessionsGet, type Session } from '../gen/endpoints';
+import { 
+  listSessionsSessionsGet, 
+  type Session,
+  getApiDefinitionsApiDefinitionsGet,
+  exportApiDefinitionApiDefinitionsApiNameExportGet,
+  importApiDefinitionApiDefinitionsImportPost,
+  getApiDefinitionMetadataApiDefinitionsApiNameMetadataGet,
+  getApiDefinitionVersionsApiDefinitionsApiNameVersionsGet,
+  getApiDefinitionVersionApiDefinitionsApiNameVersionsVersionIdGet,
+  updateApiDefinitionApiDefinitionsApiNamePut,
+  archiveApiDefinitionApiDefinitionsApiNameDelete,
+  unarchiveApiDefinitionApiDefinitionsApiNameUnarchivePost,
+  type ImportApiDefinitionRequest,
+  getSessionSessionsSessionIdGet,
+  createSessionSessionsPost,
+  deleteSessionSessionsSessionIdDelete,
+  hardDeleteSessionSessionsSessionIdHardDelete,
+  type SessionCreate,
+  listAllJobsJobsGet,
+  listTargetJobsTargetsTargetIdJobsGet,
+  createJobTargetsTargetIdJobsPost,
+  getJobTargetsTargetIdJobsJobIdGet,
+  getQueueStatusJobsQueueStatusGet,
+  interruptJobTargetsTargetIdJobsJobIdInterruptPost,
+  cancelJobTargetsTargetIdJobsJobIdCancelPost,
+  getJobLogsTargetsTargetIdJobsJobIdLogsGet,
+  getJobHttpExchangesTargetsTargetIdJobsJobIdHttpExchangesGet,
+  resolveJobTargetsTargetIdJobsJobIdResolvePost,
+  resumeJobTargetsTargetIdJobsJobIdResumePost,
+  type JobCreate,
+  type JobLogEntry,
+  listTargetsTargetsGet,
+  createTargetTargetsPost,
+  getTargetTargetsTargetIdGet,
+  updateTargetTargetsTargetIdPut,
+  deleteTargetTargetsTargetIdDelete,
+  hardDeleteTargetTargetsTargetIdHardDelete,
+  type TargetCreate,
+  type TargetUpdate,
+  getProvidersSettingsProvidersGet,
+  updateProviderSettingsSettingsProvidersPost,
+  type UpdateProviderRequest
+} from '../gen/endpoints';
 import { forwardDistinctId } from './telemetryService';
 
 // Always use the API_URL from environment variables
@@ -68,8 +110,7 @@ export const testApiKey = async (apiKey: string) => {
 // Function to get provider configuration
 export const getProviders = async () => {
   try {
-    const response = await apiClient.get('/settings/providers');
-    return response.data;
+    return await getProvidersSettingsProvidersGet();
   } catch (error) {
     console.error('Error fetching providers:', error);
     throw error;
@@ -77,13 +118,13 @@ export const getProviders = async () => {
 };
 
 // Function to update provider settings
-export const updateProviderSettings = async (provider, credentials) => {
+export const updateProviderSettings = async (provider: string, credentials: { [key: string]: string }) => {
   try {
-    const response = await apiClient.post('/settings/providers', {
+    const request: UpdateProviderRequest = {
       provider,
       credentials,
-    });
-    return response.data;
+    };
+    return await updateProviderSettingsSettingsProvidersPost(request);
   } catch (error) {
     console.error('Error updating provider settings:', error);
     throw error;
@@ -122,48 +163,44 @@ export const checkApiProviderConfiguration = async () => {
 // API Definitions
 export const getApiDefinitions = async (include_archived = false) => {
   try {
-    const response = await apiClient.get('/api/definitions', {
-      params: { include_archived },
-    });
-    return response.data;
+    return await getApiDefinitionsApiDefinitionsGet({ include_archived });
   } catch (error) {
     console.error('Error fetching API definitions:', error);
     throw error;
   }
 };
 
-export const exportApiDefinition = async apiName => {
+export const exportApiDefinition = async (apiName: string) => {
   try {
-    const response = await apiClient.get(`/api/definitions/${apiName}/export`);
-    return response.data;
+    return await exportApiDefinitionApiDefinitionsApiNameExportGet(apiName);
   } catch (error) {
     console.error(`Error exporting API definition for ${apiName}:`, error);
     throw error;
   }
 };
 
-export const importApiDefinition = async apiDefinition => {
+export const importApiDefinition = async (apiDefinition: any) => {
   try {
-    const response = await apiClient.post('/api/definitions/import', {
+    const request: ImportApiDefinitionRequest = {
       api_definition: apiDefinition,
-    });
-    return response.data;
+    };
+    return await importApiDefinitionApiDefinitionsImportPost(request);
   } catch (error) {
     console.error('Error importing API definition:', error);
     throw error;
   }
 };
 
-export const getApiDefinitionDetails = async apiName => {
+export const getApiDefinitionDetails = async (apiName: string) => {
   try {
     // First, get the metadata to check if the API is archived
-    const metadataResponse = await apiClient.get(`/api/definitions/${apiName}/metadata`);
-    const isArchived = metadataResponse.data.is_archived;
+    const metadataResponse = await getApiDefinitionMetadataApiDefinitionsApiNameMetadataGet(apiName);
+    const isArchived = metadataResponse.is_archived;
 
     // For both archived and non-archived APIs, use the export endpoint
     // The backend should handle returning the correct data
-    const response = await apiClient.get(`/api/definitions/${apiName}/export`);
-    const apiDefinition = response.data.api_definition;
+    const response = await exportApiDefinitionApiDefinitionsApiNameExportGet(apiName);
+    const apiDefinition = response.api_definition;
 
     // Return the API definition with the archived status
     return {
@@ -191,52 +228,50 @@ export const getApiDefinitionDetails = async apiName => {
   }
 };
 
-export const getApiDefinitionVersions = async apiName => {
+export const getApiDefinitionVersions = async (apiName: string) => {
   try {
-    const response = await apiClient.get(`/api/definitions/${apiName}/versions`);
-    return response.data.versions;
+    const response = await getApiDefinitionVersionsApiDefinitionsApiNameVersionsGet(apiName);
+    return response.versions;
   } catch (error) {
     console.error(`Error fetching API definition versions for ${apiName}:`, error);
     throw error;
   }
 };
 
-export const getApiDefinitionVersion = async (apiName, versionId) => {
+export const getApiDefinitionVersion = async (apiName: string, versionId: string) => {
   try {
-    const response = await apiClient.get(`/api/definitions/${apiName}/versions/${versionId}`);
-    return response.data.version;
+    const response = await getApiDefinitionVersionApiDefinitionsApiNameVersionsVersionIdGet(apiName, versionId);
+    return response.version;
   } catch (error) {
     console.error(`Error fetching API definition version for ${apiName} (${versionId}):`, error);
     throw error;
   }
 };
 
-export const updateApiDefinition = async (apiName, apiDefinition) => {
+export const updateApiDefinition = async (apiName: string, apiDefinition: any) => {
   try {
-    const response = await apiClient.put(`/api/definitions/${apiName}`, {
+    const request: ImportApiDefinitionRequest = {
       api_definition: apiDefinition,
-    });
-    return response.data;
+    };
+    return await updateApiDefinitionApiDefinitionsApiNamePut(apiName, request);
   } catch (error) {
     console.error(`Error updating API definition for ${apiName}:`, error);
     throw error;
   }
 };
 
-export const archiveApiDefinition = async apiName => {
+export const archiveApiDefinition = async (apiName: string) => {
   try {
-    const response = await apiClient.delete(`/api/definitions/${apiName}`);
-    return response.data;
+    return await archiveApiDefinitionApiDefinitionsApiNameDelete(apiName);
   } catch (error) {
     console.error(`Error archiving API definition for ${apiName}:`, error);
     throw error;
   }
 };
 
-export const unarchiveApiDefinition = async apiName => {
+export const unarchiveApiDefinition = async (apiName: string) => {
   try {
-    const response = await apiClient.post(`/api/definitions/${apiName}/unarchive`);
-    return response.data;
+    return await unarchiveApiDefinitionApiDefinitionsApiNameUnarchivePost(apiName);
   } catch (error) {
     console.error(`Error unarchiving API definition for ${apiName}:`, error);
     throw error;
@@ -248,31 +283,31 @@ export const getSessions = async (include_archived = false): Promise<Session[]> 
   return listSessionsSessionsGet({ include_archived });
 };
 
-export const getSession = async sessionId => {
+export const getSession = async (sessionId: string) => {
   try {
-    const response = await apiClient.get(`/sessions/${sessionId}`);
-    return response.data;
+    return await getSessionSessionsSessionIdGet(sessionId);
   } catch (error) {
     console.error(`Error fetching session ${sessionId}:`, error);
     throw error;
   }
 };
 
-export const createSession = async sessionData => {
+export const createSession = async (sessionData: SessionCreate) => {
   try {
-    const response = await apiClient.post('/sessions/', sessionData);
-    return response.data;
+    return await createSessionSessionsPost(sessionData);
   } catch (error) {
     console.error('Error creating session:', error);
     throw error;
   }
 };
 
-export const deleteSession = async (sessionId, hardDelete = false) => {
+export const deleteSession = async (sessionId: string, hardDelete = false) => {
   try {
-    const endpoint = hardDelete ? `/sessions/${sessionId}/hard` : `/sessions/${sessionId}`;
-    const response = await apiClient.delete(endpoint);
-    return response.data;
+    if (hardDelete) {
+      return await hardDeleteSessionSessionsSessionIdHardDelete(sessionId);
+    } else {
+      return await deleteSessionSessionsSessionIdDelete(sessionId);
+    }
   } catch (error) {
     console.error('Error deleting session:', error);
     throw error;
@@ -280,10 +315,9 @@ export const deleteSession = async (sessionId, hardDelete = false) => {
 };
 
 // Jobs
-export const getJobs = async targetId => {
+export const getJobs = async (targetId: string) => {
   try {
-    const response = await apiClient.get(`/targets/${targetId}/jobs/`);
-    return response.data;
+    return await listTargetJobsTargetsTargetIdJobsGet(targetId);
   } catch (error) {
     console.error(`Error fetching jobs for target ${targetId}:`, error);
     throw error;
@@ -292,8 +326,7 @@ export const getJobs = async targetId => {
 
 export const getJobQueueStatus = async () => {
   try {
-    const response = await apiClient.get('/jobs/queue/status');
-    return response.data;
+    return await getQueueStatusJobsQueueStatusGet();
   } catch (error) {
     console.error('Error fetching job queue status:', error);
     throw error;
@@ -308,10 +341,7 @@ export const getAllJobs = async (limit = 10, offset = 0, filters = {}) => {
       ...filters, // Include any additional filters: status, target_id, api_name
     };
 
-    const response = await apiClient.get('/jobs/', { params });
-
-    // Return the full response - it contains a jobs array and total_count
-    return response.data;
+    return await listAllJobsJobsGet(params);
   } catch (error) {
     console.error('Error fetching all jobs:', error);
     // Return an empty response with default values to avoid null errors
@@ -319,55 +349,48 @@ export const getAllJobs = async (limit = 10, offset = 0, filters = {}) => {
   }
 };
 
-export const getJob = async (targetId, jobId) => {
+export const getJob = async (targetId: string, jobId: string) => {
   try {
-    const response = await apiClient.get(`/targets/${targetId}/jobs/${jobId}`);
-    return response.data;
+    return await getJobTargetsTargetIdJobsJobIdGet(targetId, jobId);
   } catch (error) {
     console.error('Error fetching job:', error);
     throw error;
   }
 };
 
-export const createJob = async (targetId, jobData) => {
+export const createJob = async (targetId: string, jobData: JobCreate) => {
   try {
-    const response = await apiClient.post(`/targets/${targetId}/jobs/`, jobData);
-    return response.data;
+    return await createJobTargetsTargetIdJobsPost(targetId, jobData);
   } catch (error) {
     console.error('Error creating job on target:', error);
     throw error;
   }
 };
 
-export const interruptJob = async (targetId, jobId) => {
+export const interruptJob = async (targetId: string, jobId: string) => {
   try {
-    const response = await apiClient.post(`/targets/${targetId}/jobs/${jobId}/interrupt/`);
-    return response.data;
+    return await interruptJobTargetsTargetIdJobsJobIdInterruptPost(targetId, jobId);
   } catch (error) {
     console.error('Error interrupting job:', error);
     throw error;
   }
 };
 
-export const cancelJob = async (targetId, jobId) => {
+export const cancelJob = async (targetId: string, jobId: string) => {
   try {
-    const response = await apiClient.post(`/targets/${targetId}/jobs/${jobId}/cancel/`);
-    return response.data;
+    return await cancelJobTargetsTargetIdJobsJobIdCancelPost(targetId, jobId);
   } catch (error) {
     console.error('Error canceling job:', error);
     throw error;
   }
 };
 
-export const getJobLogs = async (targetId, jobId) => {
+export const getJobLogs = async (targetId: string, jobId: string) => {
   try {
-    const response = await apiClient.get(`/targets/${targetId}/jobs/${jobId}/logs/`);
-
-    // The response is now a direct array of log objects
-    const logs = response.data || [];
+    const logs = await getJobLogsTargetsTargetIdJobsJobIdLogsGet(targetId, jobId);
 
     // Convert log_type to type for compatibility with LogViewer
-    return logs.map(log => ({
+    return logs.map((log: JobLogEntry) => ({
       ...log,
       type: log.log_type, // Add type property while preserving log_type
     }));
@@ -377,17 +400,9 @@ export const getJobLogs = async (targetId, jobId) => {
   }
 };
 
-export const getJobHttpExchanges = async (targetId, jobId) => {
+export const getJobHttpExchanges = async (targetId: string, jobId: string) => {
   try {
-    const response = await apiClient.get(`/targets/${targetId}/jobs/${jobId}/http_exchanges/`);
-
-    // Handle the new response format where the endpoint directly returns an array
-    // instead of a nested structure with http_exchanges key
-    const httpExchanges = Array.isArray(response.data)
-      ? response.data
-      : response.data.http_exchanges || [];
-
-    return httpExchanges;
+    return await getJobHttpExchangesTargetsTargetIdJobsJobIdHttpExchangesGet(targetId, jobId);
   } catch (error) {
     console.error('Error fetching job HTTP exchanges:', error);
     throw error;
@@ -397,49 +412,47 @@ export const getJobHttpExchanges = async (targetId, jobId) => {
 // Targets
 export const getTargets = async (include_archived = false) => {
   try {
-    const response = await apiClient.get('/targets/', { params: { include_archived } });
-    return response.data;
+    return await listTargetsTargetsGet({ include_archived });
   } catch (error) {
     console.error('Error fetching targets:', error);
     throw error;
   }
 };
 
-export const createTarget = async targetData => {
+export const createTarget = async (targetData: TargetCreate) => {
   try {
-    const response = await apiClient.post('/targets/', targetData);
-    return response.data;
+    return await createTargetTargetsPost(targetData);
   } catch (error) {
     console.error('Error creating target:', error);
     throw error;
   }
 };
 
-export const getTarget = async targetId => {
+export const getTarget = async (targetId: string) => {
   try {
-    const response = await apiClient.get(`/targets/${targetId}`);
-    return response.data;
+    return await getTargetTargetsTargetIdGet(targetId);
   } catch (error) {
     console.error('Error fetching target:', error);
     throw error;
   }
 };
 
-export const updateTarget = async (targetId, targetData) => {
+export const updateTarget = async (targetId: string, targetData: TargetUpdate) => {
   try {
-    const response = await apiClient.put(`/targets/${targetId}`, targetData);
-    return response.data;
+    return await updateTargetTargetsTargetIdPut(targetId, targetData);
   } catch (error) {
     console.error('Error updating target:', error);
     throw error;
   }
 };
 
-export const deleteTarget = async (targetId, hardDelete = false) => {
+export const deleteTarget = async (targetId: string, hardDelete = false) => {
   try {
-    const endpoint = hardDelete ? `/targets/${targetId}/hard` : `/targets/${targetId}`;
-    const response = await apiClient.delete(endpoint);
-    return response.data;
+    if (hardDelete) {
+      return await hardDeleteTargetTargetsTargetIdHardDelete(targetId);
+    } else {
+      return await deleteTargetTargetsTargetIdDelete(targetId);
+    }
   } catch (error) {
     console.error('Error deleting target:', error);
     throw error;
@@ -447,10 +460,9 @@ export const deleteTarget = async (targetId, hardDelete = false) => {
 };
 
 // Resolve a job (set to success with custom result)
-export const resolveJob = async (targetId, jobId, result) => {
+export const resolveJob = async (targetId: string, jobId: string, result: any) => {
   try {
-    const response = await apiClient.post(`/targets/${targetId}/jobs/${jobId}/resolve/`, result);
-    return response.data;
+    return await resolveJobTargetsTargetIdJobsJobIdResolvePost(targetId, jobId, result);
   } catch (error) {
     console.error('Error resolving job:', error);
     throw error;
@@ -469,10 +481,9 @@ export const checkTargetHealth = async containerIp => {
 };
 
 // Resume Job Function (New)
-export const resumeJob = async (targetId, jobId) => {
+export const resumeJob = async (targetId: string, jobId: string) => {
   try {
-    const response = await apiClient.post(`/targets/${targetId}/jobs/${jobId}/resume/`);
-    return response.data;
+    return await resumeJobTargetsTargetIdJobsJobIdResumePost(targetId, jobId);
   } catch (error) {
     console.error('Error resuming job:', error);
     throw error;
