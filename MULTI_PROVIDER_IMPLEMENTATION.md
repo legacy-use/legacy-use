@@ -1,8 +1,8 @@
-# Multi-Provider Sampling Loop Implementation
+# Simplified Multi-Provider Sampling Loop Implementation
 
 ## Overview
 
-This implementation extends the existing Anthropic-based sampling loop to support multiple model providers with minimal code modifications. The solution uses the `instructor` library to provide a unified interface across different AI providers.
+This simplified implementation extends the existing Anthropic-based sampling loop to support multiple model providers with minimal code modifications. The solution provides a lightweight abstraction layer that maintains full compatibility with the existing sampling loop.
 
 ## Supported Providers
 
@@ -15,24 +15,22 @@ This implementation extends the existing Anthropic-based sampling loop to suppor
 
 ## Key Components
 
-### 1. Multi-Provider Client (`server/computer_use/multi_provider_client.py`)
+### 1. Simplified Multi-Provider Client (`server/computer_use/multi_provider_client.py`)
 
-This is the core abstraction layer that provides:
+This is a lightweight abstraction layer that provides:
 
-- **ProviderClient**: Abstract base class for all provider clients
-- **AnthropicProviderClient**: Wrapper for Anthropic clients with instructor support
-- **OpenAIProviderClient**: OpenAI client with message/tool format conversion
-- **UITarsProviderClient**: UI-TARS client with HTTP-based communication
-- **MultiProviderClientFactory**: Factory for creating provider clients
-- **MultiProviderWrapper**: Compatibility wrapper for existing sampling loop
+- **MultiProviderClient**: Single client class supporting all providers
+- **BetaInterface**: Compatibility wrapper for existing sampling loop
+- **Format Conversion**: Simple message/tool format conversion for OpenAI/UI-TARS
+- **Mock Response Classes**: Minimal compatibility layer for non-Anthropic providers
 
 #### Key Features:
 
-- **Unified Interface**: All providers expose the same `create_message()` method
+- **Single Client Class**: One class handles all providers with simple initialization
 - **Format Conversion**: Automatic conversion between Anthropic and OpenAI/UI-TARS message formats
 - **Tool Support**: Full tool calling support across all providers
-- **Instructor Integration**: Structured outputs using the instructor library
-- **Backward Compatibility**: Drop-in replacement for existing Anthropic clients
+- **Minimal Dependencies**: Uses only essential libraries (anthropic, openai, httpx)
+- **Drop-in Compatibility**: Works seamlessly with existing sampling loop
 
 ### 2. Updated Configuration (`server/computer_use/config.py`)
 
@@ -58,20 +56,19 @@ PROVIDER_TO_DEFAULT_MODEL_NAME = {
 
 Minimal changes to support multi-provider clients:
 
-- Added import for multi-provider factory
-- Enhanced client initialization logic to use factory for new providers
+- Added import for MultiProviderClient
+- Enhanced client initialization logic to use MultiProviderClient for new providers
 - Maintained full backward compatibility with existing providers
 
-### 4. Comprehensive Tests (`server/computer_use/test_multi_provider_sampling.py`)
+### 4. Simplified Tests (`server/computer_use/test_multi_provider_sampling.py`)
 
-Full test suite including:
+Streamlined test suite including:
 
-- **Provider Factory Tests**: Verify client creation for all providers
-- **Anthropic Provider Tests**: Existing functionality with tool use
+- **Client Creation Tests**: Verify MultiProviderClient initialization for all providers
 - **OpenAI Provider Tests**: Mock OpenAI API responses and tool calling
 - **UI-TARS Provider Tests**: Mock HTTP-based API interactions
-- **Error Handling Tests**: API errors, health check failures
-- **Mock Infrastructure**: Complete mocking of external dependencies
+- **Error Handling Tests**: API error scenarios
+- **Mock Infrastructure**: Essential mocking of external dependencies
 
 ## Dependencies Added
 
@@ -80,7 +77,6 @@ Updated `pyproject.toml` with:
 ```toml
 dependencies = [
     # ... existing dependencies ...
-    "instructor>=1.6.0",  # Multi-provider structured outputs
     "openai>=1.0.0",      # OpenAI API client
 ]
 ```
@@ -90,6 +86,7 @@ dependencies = [
 ### OpenAI Provider
 
 ```python
+# Usage is identical to existing Anthropic usage
 from server.computer_use.sampling_loop import sampling_loop
 from server.computer_use.config import APIProvider
 
@@ -130,12 +127,12 @@ result, exchanges = await sampling_loop(
 
 ## Implementation Benefits
 
-1. **Minimal Code Changes**: Existing sampling loop required only ~20 lines of changes
+1. **Minimal Code Changes**: Existing sampling loop required only ~10 lines of changes
 2. **Full Backward Compatibility**: All existing functionality preserved
 3. **Unified Tool Support**: All providers support the same tool calling interface
-4. **Structured Output Ready**: Instructor library enables structured outputs when needed
+4. **Lightweight Design**: Single client class with minimal dependencies
 5. **Extensible Design**: Easy to add new providers in the future
-6. **Comprehensive Testing**: Full test coverage with mocked external dependencies
+6. **Simple Testing**: Streamlined test coverage with essential mocking
 
 ## Architecture Decisions
 

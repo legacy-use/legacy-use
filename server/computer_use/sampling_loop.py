@@ -32,10 +32,7 @@ from server.computer_use.config import (
     PROMPT_CACHING_BETA_FLAG,
     APIProvider,
 )
-from server.computer_use.multi_provider_client import (
-    MultiProviderClientFactory,
-    MultiProviderWrapper,
-)
+from server.computer_use.multi_provider_client import MultiProviderClient
 from server.computer_use.logging import logger
 from server.computer_use.tools import (
     TOOL_GROUPS_BY_VERSION,
@@ -172,7 +169,7 @@ async def sampling_loop(
         # reload pydantic variables
         settings.__init__()
         
-        # Use multi-provider abstraction for new providers
+        # Use multi-provider client for new providers
         if provider in [APIProvider.OPENAI, APIProvider.UITARS]:
             client_kwargs = {}
             
@@ -183,12 +180,7 @@ async def sampling_loop(
                 # UI-TARS configuration
                 client_kwargs['base_url'] = getattr(settings, 'UITARS_BASE_URL', 'https://api.uitars.com')
                 
-            provider_client = MultiProviderClientFactory.create_client(
-                provider=provider,
-                api_key=api_key,
-                **client_kwargs
-            )
-            client = MultiProviderWrapper(provider_client)
+            client = MultiProviderClient(provider, api_key, **client_kwargs)
             
         elif provider == APIProvider.ANTHROPIC:
             # Use AsyncAnthropic instead of Anthropic
