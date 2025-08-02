@@ -32,6 +32,10 @@ from server.computer_use.config import (
     PROMPT_CACHING_BETA_FLAG,
     APIProvider,
 )
+from server.computer_use.multi_provider_client import (
+    MultiProviderClientFactory,
+    MultiProviderWrapper,
+)
 from server.computer_use.logging import logger
 from server.computer_use.tools import (
     TOOL_GROUPS_BY_VERSION,
@@ -163,11 +167,30 @@ async def sampling_loop(
         if token_efficient_tools_beta:
             betas.append('token-efficient-tools-2025-02-19')
         image_truncation_threshold = 1
-        # --- Client Initialization (remains the same) ---
+        # --- Client Initialization (Multi-Provider) ---
         # TODO: Does this need to be done for every iteration?
         # reload pydantic variables
         settings.__init__()
-        if provider == APIProvider.ANTHROPIC:
+        
+        # Use multi-provider abstraction for new providers
+        if provider in [APIProvider.OPENAI, APIProvider.UITARS]:
+            client_kwargs = {}
+            
+            if provider == APIProvider.OPENAI:
+                # OpenAI configuration
+                client_kwargs['base_url'] = getattr(settings, 'OPENAI_BASE_URL', None)
+            elif provider == APIProvider.UITARS:
+                # UI-TARS configuration
+                client_kwargs['base_url'] = getattr(settings, 'UITARS_BASE_URL', 'https://api.uitars.com')
+                
+            provider_client = MultiProviderClientFactory.create_client(
+                provider=provider,
+                api_key=api_key,
+                **client_kwargs
+            )
+            client = MultiProviderWrapper(provider_client)
+            
+        elif provider == APIProvider.ANTHROPIC:
             # Use AsyncAnthropic instead of Anthropic
             client = AsyncAnthropic(api_key=api_key, max_retries=4)
             enable_prompt_caching = True
