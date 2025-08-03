@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { 
-  listSessionsSessionsGet, 
+import {
+  listSessionsSessionsGet,
   type Session,
   getProvidersSettingsProvidersGet,
   updateProviderSettingsSettingsProvidersPost,
@@ -33,7 +33,7 @@ import {
   hardDeleteTargetTargetsTargetIdHardDelete,
   resolveJobTargetsTargetIdJobsJobIdResolvePost,
   resumeJobTargetsTargetIdJobsJobIdResumePost,
-  listTargetJobsTargetsTargetIdJobsGet
+  listTargetJobsTargetsTargetIdJobsGet,
 } from '../gen/endpoints';
 import { forwardDistinctId } from './telemetryService';
 
@@ -165,7 +165,10 @@ export const getApiDefinitionVersions = async apiName => {
 };
 
 export const getApiDefinitionVersion = async (apiName, versionId) => {
-  const response = await getApiDefinitionVersionApiDefinitionsApiNameVersionsVersionIdGet(apiName, versionId);
+  const response = await getApiDefinitionVersionApiDefinitionsApiNameVersionsVersionIdGet(
+    apiName,
+    versionId,
+  );
   return response.version;
 };
 
@@ -259,13 +262,14 @@ export const getJobLogs = async (targetId, jobId) => {
 };
 
 export const getJobHttpExchanges = async (targetId, jobId) => {
-  const response = await getJobHttpExchangesTargetsTargetIdJobsJobIdHttpExchangesGet(targetId, jobId);
+  const response = await getJobHttpExchangesTargetsTargetIdJobsJobIdHttpExchangesGet(
+    targetId,
+    jobId,
+  );
 
   // Handle the new response format where the endpoint directly returns an array
   // instead of a nested structure with http_exchanges key
-  const httpExchanges = Array.isArray(response)
-    ? response
-    : response.http_exchanges || [];
+  const httpExchanges = Array.isArray(response) ? response : response.http_exchanges || [];
 
   return httpExchanges;
 };
