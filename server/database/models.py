@@ -37,6 +37,56 @@ class Tenant(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
 
+    # Relationships
+    user_assignments = relationship('UserTenant', back_populates='tenant')
+
+
+class User(Base):
+    """User model for authentication and authorization."""
+
+    __tablename__ = 'users'
+    __table_args__ = ({'schema': 'shared'},)
+
+    id = Column(PostgresUUID, primary_key=True, default=uuid.uuid4)
+    email = Column(String(256), nullable=False, unique=True, index=True)
+    hashed_password = Column(String(255), nullable=True)  # For local auth
+    auth_provider_user_id = Column(
+        String(255), nullable=True
+    )  # For external auth providers
+    auth_provider = Column(String(50), default='local')  # 'local', 'cognito', etc.
+    is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    tenant_assignments = relationship(
+        'UserTenant', back_populates='user', cascade='all, delete-orphan'
+    )
+
+
+class UserTenant(Base):
+    """User-Tenant relationship for multi-tenant access control."""
+
+    __tablename__ = 'user_tenants'
+    __table_args__ = ({'schema': 'shared'},)
+
+    id = Column(PostgresUUID, primary_key=True, default=uuid.uuid4)
+    user_id = Column(PostgresUUID, ForeignKey('shared.users.id'), nullable=False)
+    tenant_id = Column(PostgresUUID, ForeignKey('shared.tenants.id'), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship('User', back_populates='tenant_assignments')
+    tenant = relationship('Tenant', back_populates='user_assignments')
+
+    __table_args__ = (
+        Index('ix_user_tenant_user_id', 'user_id'),
+        Index('ix_user_tenant_tenant_id', 'tenant_id'),
+        Index('ix_user_tenant_unique', 'user_id', 'tenant_id', unique=True),
+    )
+
 
 class Target(Base):
     __tablename__ = 'targets'

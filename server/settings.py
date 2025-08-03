@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     API_KEY_NAME: str = 'X-API-Key'
 
+    # JWT Authentication
+    SECRET_KEY: str = 'your-secret-key-change-in-production'
+
     LEGACYUSE_PROXY_BASE_URL: str = 'https://api.legacy-use.com/'
 
     ENVIRONMENT: str = 'development'
