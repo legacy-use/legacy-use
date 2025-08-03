@@ -5,15 +5,18 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Enum,
     ForeignKey,
     Index,
     Integer,
     String,
     MetaData,
-    Enum,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PostgresUUID
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from fastapi_users.db import SQLAlchemyBaseUserTable
+from uuid import UUID
 
 # Import enum types from base models
 from server.models.base import TargetType, JobStatus
@@ -41,7 +44,7 @@ class Tenant(Base):
     user_assignments = relationship('UserTenant', back_populates='tenant')
 
 
-class User(Base):
+class User(Base, SQLAlchemyBaseUserTable[UUID]):
     """User model for authentication and authorization."""
 
     __tablename__ = 'users'
@@ -69,7 +72,12 @@ class UserTenant(Base):
     """User-Tenant relationship for multi-tenant access control."""
 
     __tablename__ = 'user_tenants'
-    __table_args__ = ({'schema': 'shared'},)
+    __table_args__ = (
+        Index('ix_user_tenant_user_id', 'user_id'),
+        Index('ix_user_tenant_tenant_id', 'tenant_id'),
+        Index('ix_user_tenant_unique', 'user_id', 'tenant_id', unique=True),
+        {'schema': 'shared'},
+    )
 
     id = Column(PostgresUUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(PostgresUUID, ForeignKey('shared.users.id'), nullable=False)
@@ -80,12 +88,6 @@ class UserTenant(Base):
     # Relationships
     user = relationship('User', back_populates='tenant_assignments')
     tenant = relationship('Tenant', back_populates='user_assignments')
-
-    __table_args__ = (
-        Index('ix_user_tenant_user_id', 'user_id'),
-        Index('ix_user_tenant_tenant_id', 'tenant_id'),
-        Index('ix_user_tenant_unique', 'user_id', 'tenant_id', unique=True),
-    )
 
 
 class Target(Base):

@@ -11,10 +11,9 @@ from fastapi_users.authentication import (
     JWTStrategy,
 )
 from fastapi_users.db import SQLAlchemyUserDatabase
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.auth.models import User, UserCreate, UserUpdate
-from server.database import get_async_session
+from server.database.models import User
+from server.database import db_shared
 from server.settings import settings
 
 
@@ -41,9 +40,13 @@ class UserManager(BaseUserManager[User, UUID]):
         print(f'Verification requested for user {user.id}. Verification token: {token}')
 
 
-async def get_user_db(session: AsyncSession = Depends(get_async_session)):
+def get_user_db():
     """Get user database session."""
-    yield SQLAlchemyUserDatabase(session, User)
+    session = db_shared.Session()
+    try:
+        yield SQLAlchemyUserDatabase(session, User)
+    finally:
+        session.close()
 
 
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):
@@ -73,9 +76,6 @@ jwt_authentication = AuthenticationBackend(
 fastapi_users = FastAPIUsers[User, UUID](
     get_user_manager,
     [jwt_authentication],
-    UserCreate,
-    UserUpdate,
-    User,
 )
 
 # Current user dependency

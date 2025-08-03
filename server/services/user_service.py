@@ -32,7 +32,7 @@ class UserService:
                 result[column.name] = value
         return result
 
-    async def create_user(
+    def create_user(
         self,
         email: str,
         hashed_password: str = None,
@@ -58,7 +58,7 @@ class UserService:
             logger.error(f'Error creating user: {e}')
             raise
 
-    async def get_user(self, user_id: UUID) -> Optional[Dict[str, Any]]:
+    def get_user(self, user_id: UUID) -> Optional[Dict[str, Any]]:
         """Get a user by ID."""
         try:
             user = self.session.query(User).filter(User.id == user_id).first()
@@ -67,7 +67,7 @@ class UserService:
             logger.error(f'Error getting user {user_id}: {e}')
             raise
 
-    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Get a user by email."""
         try:
             user = self.session.query(User).filter(User.email == email).first()
@@ -76,7 +76,7 @@ class UserService:
             logger.error(f'Error getting user by email {email}: {e}')
             raise
 
-    async def get_users(self) -> List[Dict[str, Any]]:
+    def get_users(self) -> List[Dict[str, Any]]:
         """Get all users."""
         try:
             users = self.session.query(User).all()
@@ -85,7 +85,7 @@ class UserService:
             logger.error(f'Error getting users: {e}')
             raise
 
-    async def update_user(
+    def update_user(
         self, user_id: UUID, user_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Update a user."""
@@ -106,7 +106,7 @@ class UserService:
             logger.error(f'Error updating user {user_id}: {e}')
             raise
 
-    async def delete_user(self, user_id: UUID) -> bool:
+    def delete_user(self, user_id: UUID) -> bool:
         """Delete a user."""
         try:
             user = self.session.query(User).filter(User.id == user_id).first()
@@ -120,9 +120,7 @@ class UserService:
             logger.error(f'Error deleting user {user_id}: {e}')
             raise
 
-    async def assign_user_to_tenant(
-        self, user_id: UUID, tenant_id: UUID
-    ) -> Dict[str, Any]:
+    def assign_user_to_tenant(self, user_id: UUID, tenant_id: UUID) -> Dict[str, Any]:
         """Assign a user to a tenant."""
         try:
             # Check if assignment already exists
@@ -148,7 +146,7 @@ class UserService:
             logger.error(f'Error assigning user {user_id} to tenant {tenant_id}: {e}')
             raise
 
-    async def get_user_tenants(self, user_id: UUID) -> List[Dict[str, Any]]:
+    def get_user_tenants(self, user_id: UUID) -> List[Dict[str, Any]]:
         """Get all tenant assignments for a user."""
         try:
             user_tenants = (
@@ -161,7 +159,7 @@ class UserService:
             logger.error(f'Error getting user tenants for user {user_id}: {e}')
             raise
 
-    async def remove_user_from_tenant(self, user_id: UUID, tenant_id: UUID) -> bool:
+    def remove_user_from_tenant(self, user_id: UUID, tenant_id: UUID) -> bool:
         """Remove a user from a tenant."""
         try:
             user_tenant = (
@@ -182,7 +180,7 @@ class UserService:
             logger.error(f'Error removing user {user_id} from tenant {tenant_id}: {e}')
             raise
 
-    async def get_user_tenant_access(
+    def get_user_tenant_access(
         self, user_id: UUID, tenant_id: UUID
     ) -> Optional[Dict[str, Any]]:
         """Get user's access level for a specific tenant."""

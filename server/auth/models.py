@@ -4,10 +4,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi_users import schemas
-from fastapi_users.db import SQLAlchemyBaseUserTable
 from pydantic import BaseModel, EmailStr
-
-from server.database.models import User as UserModel
 
 
 class UserRead(schemas.BaseUser[UUID]):
@@ -52,9 +49,3 @@ class UserTenantRead(BaseModel):
     tenant_id: UUID
     created_at: str
     updated_at: str
-
-
-class User(UserModel, SQLAlchemyBaseUserTable[UUID]):
-    """User model for FastAPI Users."""
-
-    pass

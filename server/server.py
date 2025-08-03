@@ -15,6 +15,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from server.computer_use import APIProvider
 from server.routes import api_router, job_router, target_router
+from server.routes.auth import auth_router
 from server.routes.diagnostics import diagnostics_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
@@ -145,23 +146,49 @@ async def auth_middleware(request: Request, call_next):
         if re.match(pattern, request.url.path):
             return await call_next(request)
 
-    try:
-        api_key = await get_api_key(request)
-
-        # Get tenant by host header
-        tenant = get_tenant(request)
-        tenant_schema = tenant['schema']
-
-        # Check if API key matches tenant-specific API key
-        tenant_api_key = get_tenant_setting(tenant_schema, 'API_KEY')
-
-        if api_key == tenant_api_key:
+    # Check if this is an auth endpoint (allow access to auth endpoints)
+    auth_patterns = [
+        r'^/auth/.*$',  # All auth endpoints
+    ]
+    for pattern in auth_patterns:
+        if re.match(pattern, request.url.path):
             return await call_next(request)
-        else:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={'detail': 'Invalid API Key'},
-            )
+
+    try:
+        # Try API key authentication first
+        try:
+            api_key = await get_api_key(request)
+
+            # Get tenant by host header
+            tenant = get_tenant(request)
+            tenant_schema = tenant['schema']
+
+            # Check if API key matches tenant-specific API key
+            tenant_api_key = get_tenant_setting(tenant_schema, 'API_KEY')
+
+            if api_key == tenant_api_key:
+                return await call_next(request)
+        except HTTPException:
+            # API key not found or invalid, try JWT authentication
+            pass
+
+        # Try JWT authentication
+        try:
+            from server.auth.manager import current_active_user
+
+            # This will raise an exception if JWT is invalid or missing
+            user = await current_active_user(request)
+            if user and user.is_active:
+                return await call_next(request)
+        except Exception:
+            # JWT authentication failed
+            pass
+
+        # Both authentication methods failed
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={'detail': 'Invalid API Key or JWT token'},
+        )
     except HTTPException as e:
         return JSONResponse(
             status_code=e.status_code,
@@ -219,7 +246,13 @@ app.openapi_components = {
             'in': 'header',
             'name': settings.API_KEY_NAME,
             'description': "API key authentication. Enter your API key in the format: 'your_api_key'",
-        }
+        },
+        'JWTAuth': {
+            'type': 'http',
+            'scheme': 'bearer',
+            'bearerFormat': 'JWT',
+            'description': 'JWT token authentication. Enter your JWT token in the format: Bearer <token>',
+        },
     }
 }
 
@@ -251,10 +284,13 @@ async def tenant_inactive_handler(request: Request, exc: TenantInactiveError):
     )
 
 
-app.openapi_security = [{'ApiKeyAuth': []}]
+app.openapi_security = [{'ApiKeyAuth': []}, {'JWTAuth': []}]
 
 # Include API router
 app.include_router(api_router, prefix=api_prefix)
+
+# Include auth router
+app.include_router(auth_router, prefix=api_prefix)
 
 # Include core routers
 app.include_router(target_router, prefix=api_prefix)
