@@ -18,6 +18,128 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Hatchet PostgreSQL Database
+  hatchet-postgres:
+    image: postgres:15.6
+    command: postgres -c 'max_connections=200'
+    restart: always
+    hostname: "hatchet-postgres"
+    environment:
+      - POSTGRES_USER=hatchet
+      - POSTGRES_PASSWORD=hatchet
+      - POSTGRES_DB=hatchet
+    ports:
+      - "5435:5432"
+    volumes:
+      - hatchet_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d hatchet -U hatchet"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # RabbitMQ for Hatchet
+  hatchet-rabbitmq:
+    image: "rabbitmq:3-management"
+    hostname: "hatchet-rabbitmq"
+    ports:
+      - "5673:5672" # RabbitMQ
+      - "15673:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: "hatchet"
+      RABBITMQ_DEFAULT_PASS: "hatchet"
+    volumes:
+      - "hatchet_rabbitmq_data:/var/lib/rabbitmq"
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Hatchet Migration
+  hatchet-migration:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-migrate:latest
+    environment:
+      DATABASE_URL: "postgres://hatchet:hatchet@hatchet-postgres:5432/hatchet"
+    depends_on:
+      hatchet-postgres:
+        condition: service_healthy
+
+  # Hatchet Setup Config
+  hatchet-setup-config:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-admin:latest
+    command: /hatchet/hatchet-admin quickstart --skip certs --generated-config-dir /hatchet/config --overwrite=false
+    environment:
+      DATABASE_URL: "postgres://hatchet:hatchet@hatchet-postgres:5432/hatchet"
+      SERVER_TASKQUEUE_RABBITMQ_URL: amqp://hatchet:hatchet@hatchet-rabbitmq:5672/
+      SERVER_AUTH_COOKIE_DOMAIN: localhost:8080
+      SERVER_AUTH_COOKIE_INSECURE: "t"
+      SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
+      SERVER_GRPC_INSECURE: "t"
+      SERVER_GRPC_BROADCAST_ADDRESS: localhost:7077
+    volumes:
+      - hatchet_certs:/hatchet/certs
+      - hatchet_config:/hatchet/config
+    depends_on:
+      hatchet-migration:
+        condition: service_completed_successfully
+      hatchet-rabbitmq:
+        condition: service_healthy
+      hatchet-postgres:
+        condition: service_healthy
+
+  # Hatchet Engine
+  hatchet-engine:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-engine:latest
+    command: /hatchet/hatchet-engine --config /hatchet/config
+    restart: on-failure
+    depends_on:
+      hatchet-setup-config:
+        condition: service_completed_successfully
+      hatchet-migration:
+        condition: service_completed_successfully
+    ports:
+      - "7077:7070"
+    environment:
+      DATABASE_URL: "postgres://hatchet:hatchet@hatchet-postgres:5432/hatchet"
+      SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
+      SERVER_GRPC_INSECURE: "t"
+    volumes:
+      - hatchet_certs:/hatchet/certs
+      - hatchet_config:/hatchet/config
+
+  # Hatchet API
+  hatchet-api:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-api:latest
+    command: /hatchet/hatchet-api --config /hatchet/config
+    restart: on-failure
+    depends_on:
+      hatchet-setup-config:
+        condition: service_completed_successfully
+      hatchet-migration:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: "postgres://hatchet:hatchet@hatchet-postgres:5432/hatchet"
+    volumes:
+      - hatchet_certs:/hatchet/certs
+      - hatchet_config:/hatchet/config
+
+  # Hatchet Frontend
+  hatchet-frontend:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-frontend:latest
+
+  # Hatchet Caddy Proxy
+  hatchet-caddy:
+    image: caddy:2.7.6-alpine
+    ports:
+      - 8081:8080
+    volumes:
+      - ./Hatchetfile:/etc/caddy/Caddyfile
+    depends_on:
+      - hatchet-api
+      - hatchet-frontend
+
   # Backend Service
   backend:
     build:
@@ -28,6 +150,10 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/legacy_use
       - LEGACY_USE_DEBUG=0
+      - HATCHET_CLIENT_TOKEN=${HATCHET_CLIENT_TOKEN:-}
+      - HATCHET_CLIENT_TLS_STRATEGY=none
+      - HATCHET_CLIENT_HOST=hatchet-engine
+      - HATCHET_CLIENT_PORT=7070
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
@@ -35,6 +161,36 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      hatchet-engine:
+        condition: service_started
+    restart: unless-stopped
+    env_file:
+      - .env
+
+  # Hatchet Worker Service
+  hatchet-worker:
+    build:
+      context: .
+      dockerfile: infra/docker/legacy-use-backend/Dockerfile
+    container_name: legacy-use-hatchet-worker
+    user: root
+    command: python server/hatchet_worker.py
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/legacy_use
+      - LEGACY_USE_DEBUG=0
+      - HATCHET_CLIENT_TOKEN=${HATCHET_CLIENT_TOKEN:-}
+      - HATCHET_CLIENT_TLS_STRATEGY=none
+      - HATCHET_CLIENT_HOST=hatchet-engine
+      - HATCHET_CLIENT_PORT=7070
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      hatchet-engine:
+        condition: service_started
+      backend:
+        condition: service_started
     restart: unless-stopped
     env_file:
       - .env
@@ -57,3 +213,7 @@ services:
 
 volumes:
   postgres_data:
+  hatchet_postgres_data:
+  hatchet_rabbitmq_data:
+  hatchet_config:
+  hatchet_certs:

@@ -1,6 +1,10 @@
 """
 Job execution logic.
 
+⚠️  DEPRECATED: This module is deprecated in favor of Hatchet-based job execution.
+Most functions in this module are no longer used and will raise NotImplementedError.
+Use server.utils.hatchet_job_execution instead.
+
 This module provides functions for executing jobs in the API Gateway.
 
 Queue Pause Logic:

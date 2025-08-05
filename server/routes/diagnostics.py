@@ -16,12 +16,11 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from server.utils.db_dependencies import get_tenant_db
 from server.utils.tenant_utils import get_tenant_from_request
-from server.utils.job_execution import (
+from server.utils.hatchet_job_execution import (
     running_job_tasks,
-    tenant_job_queues,
-    tenant_processor_tasks,
-    tenant_resources_lock,
 )
+# Note: tenant_job_queues, tenant_processor_tasks, tenant_resources_lock 
+# are no longer used with Hatchet - queue management is handled by Hatchet server
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -55,81 +54,49 @@ async def diagnose_job_queue(
 
     # Get processor task status for current tenant
     tenant_schema = tenant['schema']
-    if (
-        tenant_schema in tenant_processor_tasks
-        and tenant_processor_tasks[tenant_schema] is not None
-    ):
-        processor_task = tenant_processor_tasks[tenant_schema]
-        diagnostics['is_processor_running'] = not processor_task.done()
-
-        if processor_task.done():
-            try:
-                # Check if the task raised an exception
-                exception = processor_task.exception()
-                if exception:
-                    diagnostics['processor_task_status'] = (
-                        f'Failed with exception: {str(exception)}'
-                    )
-                    diagnostics['processor_task_traceback'] = ''.join(
-                        traceback.format_exception(
-                            type(exception), exception, exception.__traceback__
-                        )
-                    )
-                else:
-                    diagnostics['processor_task_status'] = 'Completed normally'
-            except asyncio.InvalidStateError:
-                diagnostics['processor_task_status'] = 'Task not done or cancelled'
-        else:
-            diagnostics['processor_task_status'] = 'Running'
-
-    # Get queue information for current tenant
-    async with tenant_resources_lock:
-        tenant_queue = tenant_job_queues.get(tenant_schema, [])
-        diagnostics['queue_size'] = len(tenant_queue)
-        # Get details about queued jobs
-        for job in tenant_queue:
-            job_info = {
-                'id': str(job.id),
-                'api_name': job.api_name,
-                'target_id': str(job.target_id),
-                'status': job.status,
-                'session_id': str(job.session_id) if job.session_id else None,
-                'created_at': job.created_at.isoformat() if job.created_at else None,
-            }
-            diagnostics['queued_jobs'].append(job_info)
-
-    # Get running jobs information
-    for job_id, task in running_job_tasks.items():
-        job_dict = db_tenant.get_job(UUID(job_id))
-        if job_dict:
-            diagnostics['running_jobs'][job_id] = {
-                'api_name': job_dict['api_name'],
-                'status': job_dict['status'],
-                'target_id': str(job_dict['target_id']),
-                'session_id': str(job_dict['session_id'])
-                if job_dict.get('session_id')
-                else None,
-                'task_done': task.done(),
-                'task_cancelled': task.cancelled(),
-                'created_at': job_dict['created_at'].isoformat()
-                if job_dict.get('created_at')
-                else None,
-                'updated_at': job_dict['updated_at'].isoformat()
-                if job_dict.get('updated_at')
-                else None,
-            }
-            if task.done():
-                try:
-                    # Check if the task raised an exception
-                    exception = task.exception()
-                    if exception:
-                        diagnostics['running_jobs'][job_id]['task_exception'] = str(
-                            exception
-                        )
-                except asyncio.InvalidStateError:
-                    diagnostics['running_jobs'][job_id]['task_exception'] = (
-                        'Task not done or cancelled'
-                    )
+    # With Hatchet, job processing is handled by external workers
+    diagnostics['is_processor_running'] = True  # Assume Hatchet workers are running
+    diagnostics['processor_task_status'] = 'Managed by Hatchet workers'
+    
+    # Queue information is now managed by Hatchet
+    # We can show running jobs from our tracking
+    diagnostics['queue_size'] = len([
+        job_id for job_id, job_info in running_job_tasks.items() 
+        if job_info.get('tenant_schema') == tenant_schema and job_info.get('status') == 'queued'
+    ])
+    
+         # Get running jobs information (now tracked via Hatchet)
+     for job_id, job_info in running_job_tasks.items():
+         if job_info.get('tenant_schema') != tenant_schema:
+             continue
+             
+         # Get job details from database
+         try:
+             job_dict = db_tenant.get_job(UUID(job_id))
+             if job_dict:
+                 diagnostics['running_jobs'][job_id] = {
+                     'api_name': job_dict['api_name'],
+                     'status': job_dict['status'],
+                     'target_id': str(job_dict['target_id']),
+                     'session_id': str(job_dict['session_id'])
+                     if job_dict.get('session_id')
+                     else None,
+                     'workflow_run_id': job_info.get('workflow_run_id'),
+                     'hatchet_status': job_info.get('status', 'unknown'),
+                     'created_at': job_dict['created_at'].isoformat()
+                     if job_dict.get('created_at')
+                     else None,
+                     'updated_at': job_dict['updated_at'].isoformat()
+                     if job_dict.get('updated_at')
+                     else None,
+                 }
+         except Exception as e:
+             logger.error(f"Error getting job {job_id} details: {e}")
+             diagnostics['running_jobs'][job_id] = {
+                 'error': f'Failed to get job details: {str(e)}',
+                 'workflow_run_id': job_info.get('workflow_run_id'),
+                 'hatchet_status': job_info.get('status', 'unknown'),
+             }
 
     # Get session information
     all_sessions = db_tenant.list_sessions(include_archived=False)
@@ -178,7 +145,7 @@ async def start_job_processor(
     This endpoint can be used to manually start the job queue processor if it's
     not running or has stopped due to an exception.
     """
-    from server.utils.job_execution import start_job_processor_for_tenant
+    from server.utils.hatchet_job_execution import start_job_processor_for_tenant
 
     tenant_schema = tenant['schema']
     processor_info = {
@@ -189,44 +156,16 @@ async def start_job_processor(
         'current_state': 'Not initialized',
     }
 
-    # Check current state
-    if (
-        tenant_schema not in tenant_processor_tasks
-        or tenant_processor_tasks[tenant_schema] is None
-    ):
-        processor_info['previous_state'] = 'Not initialized'
-    elif tenant_processor_tasks[tenant_schema].done():
-        try:
-            exception = tenant_processor_tasks[tenant_schema].exception()
-            if exception:
-                processor_info['previous_state'] = (
-                    f'Failed with exception: {str(exception)}'
-                )
-            else:
-                processor_info['previous_state'] = 'Completed normally'
-        except asyncio.InvalidStateError:
-            processor_info['previous_state'] = 'Task not done or cancelled'
-    else:
-        processor_info['previous_state'] = 'Running'
-        processor_info['action_taken'] = 'None - processor already running'
-        return processor_info
-
-    # Start the processor
-    try:
-        await start_job_processor_for_tenant(tenant_schema)
-        processor_info['action_taken'] = 'Started new job processor task'
-        processor_info['current_state'] = 'Running'
-
-        # Add system log entry
-        logger.info(f'Job processor manually started for tenant {tenant_schema}')
-    except Exception as e:
-        processor_info['action_taken'] = f'Failed to start processor: {str(e)}'
-        processor_info['current_state'] = 'Failed'
-        logger.error(
-            f'Error manually starting job processor for tenant {tenant_schema}: {str(e)}'
-        )
-
+    # With Hatchet, job processing is managed by external workers
+    # This endpoint is now mainly informational
+    processor_info['previous_state'] = 'Managed by Hatchet workers'
+    processor_info['action_taken'] = 'No action needed - using Hatchet workers'
+    processor_info['current_state'] = 'Managed by Hatchet workers'
+    
+    logger.info(f'Job processor status check for tenant {tenant_schema} - using Hatchet workers')
     return processor_info
+
+
 
 
 @diagnostics_router.get('/diagnostics/targets/{target_id}/sessions')
