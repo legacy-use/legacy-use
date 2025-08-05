@@ -2,6 +2,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ListAltIcon from '@mui/icons-material/ListAlt';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import {
   Alert,
@@ -18,6 +19,8 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import { useState } from 'react';
+import SessionContainerLogsModal from './SessionContainerLogsModal';
 
 const SessionDetailsCard = ({
   selectedSession,
@@ -32,6 +35,8 @@ const SessionDetailsCard = ({
   getContainerName,
   getStateBadgeColor,
 }) => {
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
+
   if (!selectedSession) return null;
   return (
     <>
@@ -51,14 +56,25 @@ const SessionDetailsCard = ({
             <Chip label="Archived" size="small" color="default" sx={{ ml: 2 }} />
           )}
         </Box>
-        <Button
-          variant="contained"
-          color="error"
-          startIcon={<DeleteIcon />}
-          onClick={handleDeleteClick}
-        >
-          {selectedSession.is_archived ? 'Permanently Delete' : 'Archive Session'}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {selectedSession.container_id && (
+            <Button
+              variant="outlined"
+              startIcon={<ListAltIcon />}
+              onClick={() => setLogsModalOpen(true)}
+            >
+              Container Logs
+            </Button>
+          )}
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={handleDeleteClick}
+          >
+            {selectedSession.is_archived ? 'Permanently Delete' : 'Archive Session'}
+          </Button>
+        </Box>
       </Box>
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -239,6 +255,13 @@ const SessionDetailsCard = ({
           Session ID copied to clipboard
         </Alert>
       </Snackbar>
+
+      <SessionContainerLogsModal
+        open={logsModalOpen}
+        onClose={() => setLogsModalOpen(false)}
+        sessionId={selectedSession.id}
+        sessionName={selectedSession.name}
+      />
     </>
   );
 };

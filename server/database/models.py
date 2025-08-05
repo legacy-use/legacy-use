@@ -71,6 +71,9 @@ class Session(Base):
     # Relationships
     target = relationship('Target', back_populates='sessions')
     jobs = relationship('Job', back_populates='session', cascade='all, delete-orphan')
+    logs = relationship(
+        'SessionLog', back_populates='session', cascade='all, delete-orphan'
+    )
 
 
 class APIDefinition(Base):
@@ -160,6 +163,18 @@ class JobLog(Base):
     )  # Trimmed content without images for lighter processing
 
     job = relationship('Job', back_populates='logs')
+
+
+class SessionLog(Base):
+    __tablename__ = 'session_logs'
+
+    id = Column(PostgresUUID, primary_key=True, default=uuid.uuid4)
+    session_id = Column(PostgresUUID, ForeignKey('sessions.id'))
+    timestamp = Column(DateTime, default=datetime.now)
+    log_type = Column(String)  # container, system, error
+    content = Column(JSONB)
+
+    session = relationship('Session', back_populates='logs')
 
 
 class JobMessage(Base):

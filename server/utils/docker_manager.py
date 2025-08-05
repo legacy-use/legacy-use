@@ -328,3 +328,76 @@ async def get_container_status(container_id: str, state: str) -> Dict:
     except Exception as e:
         logger.error(f'Error getting container status: {str(e)}')
         return {'id': container_id, 'state': {'Status': 'error', 'Error': str(e)}}
+
+
+def get_container_logs(container_id: str, lines: int = 100) -> dict:
+    """
+    Get logs from a Docker container.
+
+    Args:
+        container_id: ID of the container
+        lines: Number of log lines to retrieve (default: 100)
+
+    Returns:
+        Dictionary with logs and metadata. If there is an error,
+        the dictionary will contain an 'error' field with the error message.
+    """
+    try:
+        logger.info(f'Getting logs for container {container_id} (last {lines} lines)')
+
+        result = subprocess.run(
+            ['docker', 'logs', '--tail', str(lines), '--timestamps', container_id],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        # Parse logs into structured format
+        log_lines = []
+        for line in result.stdout.strip().split('\n'):
+            if line.strip():
+                # Try to parse timestamp if present
+                parts = line.split(' ', 1)
+                if len(parts) >= 2:
+                    timestamp_str = parts[0]
+                    content = parts[1] if len(parts) > 1 else ''
+                    log_lines.append(
+                        {
+                            'timestamp': timestamp_str,
+                            'content': content,
+                            'stream': 'stdout',
+                        }
+                    )
+                else:
+                    log_lines.append(
+                        {'timestamp': '', 'content': line, 'stream': 'stdout'}
+                    )
+
+        # Add stderr logs if any
+        for line in result.stderr.strip().split('\n'):
+            if line.strip():
+                log_lines.append({'timestamp': '', 'content': line, 'stream': 'stderr'})
+
+        return {
+            'container_id': container_id,
+            'logs': log_lines,
+            'total_lines': len(log_lines),
+            'requested_lines': lines,
+        }
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f'Error getting container logs: {e.stderr}')
+        return {
+            'container_id': container_id,
+            'error': f'Container not found or not accessible: {e.stderr}',
+            'logs': [],
+            'total_lines': 0,
+        }
+    except Exception as e:
+        logger.error(f'Error getting container logs: {str(e)}')
+        return {
+            'container_id': container_id,
+            'error': str(e),
+            'logs': [],
+            'total_lines': 0,
+        }

@@ -356,3 +356,9 @@ export const analyzeVideo = async (videoFile: Blob) => {
 export const getRecordingStatus = async (sessionId: string) => {
   return getSessionRecordingStatusSessionsSessionIdRecordingStatusGet(sessionId);
 };
+
+// Session Container Logs
+export const getSessionContainerLogs = async (sessionId: string, lines: number = 100) => {
+  const response = await apiClient.get(`/sessions/${sessionId}/container/logs?lines=${lines}`);
+  return response.data;
+};

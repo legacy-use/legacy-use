@@ -16,6 +16,7 @@ from .models import (
     JobLog,
     JobMessage,
     Session,
+    SessionLog,
     Target,
 )
 
@@ -518,6 +519,30 @@ class DatabaseService:
             )
             session.commit()
             return deleted_count
+        finally:
+            session.close()
+
+    # Session Log methods
+    def create_session_log(self, log_data):
+        session = self.Session()
+        try:
+            log = SessionLog(**log_data)
+            session.add(log)
+            session.commit()
+            return self._to_dict(log)
+        finally:
+            session.close()
+
+    def list_session_logs(self, session_id):
+        session = self.Session()
+        try:
+            logs = (
+                session.query(SessionLog)
+                .filter(SessionLog.session_id == session_id)
+                .order_by(SessionLog.timestamp)
+                .all()
+            )
+            return [self._to_dict(log) for log in logs]
         finally:
             session.close()
 

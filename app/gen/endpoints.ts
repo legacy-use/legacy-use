@@ -535,6 +535,10 @@ export type UpdateSessionStateSessionsSessionIdStatePutParams = {
   state: string;
 };
 
+export type GetSessionContainerLogsSessionsSessionIdContainerLogsGetParams = {
+  lines?: number;
+};
+
 export type ListAllJobsJobsGetParams = {
   limit?: number;
   offset?: number;
@@ -895,6 +899,21 @@ export const getSessionRecordingStatusSessionsSessionIdRecordingStatusGet = (ses
 };
 
 /**
+ * Get container logs for a specific session.
+ * @summary Get Session Container Logs
+ */
+export const getSessionContainerLogsSessionsSessionIdContainerLogsGet = (
+  sessionId: string,
+  params?: GetSessionContainerLogsSessionsSessionIdContainerLogsGetParams,
+) => {
+  return customInstance<unknown>({
+    url: `/sessions/${sessionId}/container/logs`,
+    method: 'GET',
+    params,
+  });
+};
+
+/**
  * List all jobs across all targets with pagination and filtering options.
  * @summary List All Jobs
  */
@@ -1186,6 +1205,9 @@ export type StopSessionRecordingSessionsSessionIdRecordingStopPostResult = NonNu
 >;
 export type GetSessionRecordingStatusSessionsSessionIdRecordingStatusGetResult = NonNullable<
   Awaited<ReturnType<typeof getSessionRecordingStatusSessionsSessionIdRecordingStatusGet>>
+>;
+export type GetSessionContainerLogsSessionsSessionIdContainerLogsGetResult = NonNullable<
+  Awaited<ReturnType<typeof getSessionContainerLogsSessionsSessionIdContainerLogsGet>>
 >;
 export type ListAllJobsJobsGetResult = NonNullable<Awaited<ReturnType<typeof listAllJobsJobsGet>>>;
 export type ListTargetJobsTargetsTargetIdJobsGetResult = NonNullable<

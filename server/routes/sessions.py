@@ -27,6 +27,7 @@ from server.models.base import (
     SessionUpdate,
 )
 from server.utils.docker_manager import (
+    get_container_logs,
     get_container_status,
     launch_container,
     stop_container,
@@ -668,3 +669,41 @@ async def get_session_recording_status(session_id: UUID) -> RecordingStatusRespo
         raise HTTPException(
             status_code=503, detail=f'Failed to connect to session container: {str(e)}'
         )
+
+
+@session_router.get('/{session_id}/container/logs')
+async def get_session_container_logs(session_id: UUID, lines: int = 100):
+    """Get container logs for a specific session."""
+    # Check if session exists
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail='Session not found')
+
+    # Check if session has a container
+    container_id = session.get('container_id')
+    if not container_id:
+        raise HTTPException(
+            status_code=400, detail='Session has no associated container'
+        )
+
+    # Get container logs
+    logs_data = get_container_logs(container_id, lines)
+
+    # Store logs in database for persistence
+    if not logs_data.get('error') and logs_data.get('logs'):
+        try:
+            log_entry = {
+                'session_id': session_id,
+                'log_type': 'container',
+                'content': {
+                    'container_id': container_id,
+                    'logs': logs_data['logs'],
+                    'total_lines': logs_data['total_lines'],
+                    'requested_lines': lines,
+                },
+            }
+            db.create_session_log(log_entry)
+        except Exception as e:
+            logger.warning(f'Failed to store session logs in database: {str(e)}')
+
+    return logs_data
