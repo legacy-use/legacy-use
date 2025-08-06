@@ -61,6 +61,318 @@ from server.utils.docker_manager import check_target_container_health
 db = DatabaseService()
 
 
+# TODO: Move helper functions to a separate file
+# Helper functions for the sampling loop
+async def _fetch_message_history(
+    db: DatabaseService, job_id: UUID
+) -> tuple[list[BetaMessageParam], int]:
+    """
+    Fetch current message history from the database.
+
+    Returns:
+        Tuple of (messages for API, next sequence number)
+    """
+    try:
+        db_messages = db.get_job_messages(job_id)
+        current_messages_for_api = [
+            _job_message_to_beta_message_param(msg) for msg in db_messages
+        ]
+        # Calculate next sequence based on fetched history
+        next_sequence = (db_messages[-1]['sequence'] + 1) if db_messages else 1
+        return current_messages_for_api, next_sequence
+    except Exception as e:
+        logger.error(
+            f'Failed to fetch or deserialize messages for job {job_id}: {e}',
+            exc_info=True,
+        )
+        # Cannot continue without message history
+        raise ValueError(f'Failed to load message history for job {job_id}') from e
+
+
+def _initialize_api_client(
+    provider: APIProvider,
+    api_key: str,
+    tool_version: ToolVersion,
+    token_efficient_tools_beta: bool,
+) -> tuple[Any, list[str], bool, int]:
+    """
+    Initialize the appropriate API client based on provider.
+
+    Returns:
+        Tuple of (client, betas list, enable_prompt_caching, image_truncation_threshold)
+    """
+    tool_group = TOOL_GROUPS_BY_VERSION[tool_version]
+    enable_prompt_caching = False
+    betas = [tool_group.beta_flag] if tool_group.beta_flag else []
+    if token_efficient_tools_beta:
+        betas.append('token-efficient-tools-2025-02-19')
+    image_truncation_threshold = 1
+
+    # reload pydantic variables
+    settings.__init__()
+
+    if provider == APIProvider.ANTHROPIC:
+        client = AsyncAnthropic(api_key=api_key, max_retries=4)
+        enable_prompt_caching = True
+    elif provider == APIProvider.VERTEX:
+        client = AsyncAnthropicVertex()
+    elif provider == APIProvider.BEDROCK:
+        # AWS credentials should be set in environment variables
+        aws_region = settings.AWS_REGION
+        aws_access_key = settings.AWS_ACCESS_KEY_ID
+        aws_secret_key = settings.AWS_SECRET_ACCESS_KEY
+        aws_session_token = settings.AWS_SESSION_TOKEN
+
+        # Initialize with available credentials
+        bedrock_kwargs = {'aws_region': aws_region}
+        if aws_access_key and aws_secret_key:
+            bedrock_kwargs['aws_access_key'] = aws_access_key
+            bedrock_kwargs['aws_secret_key'] = aws_secret_key
+            if aws_session_token:
+                bedrock_kwargs['aws_session_token'] = aws_session_token
+
+        client = AsyncAnthropicBedrock(**bedrock_kwargs)
+        logger.info(f'Using AsyncAnthropicBedrock client with region: {aws_region}')
+    elif provider == APIProvider.LEGACYUSE_PROXY:
+        client = LegacyUseClient(api_key=settings.LEGACYUSE_PROXY_API_KEY)
+    else:
+        raise ValueError(f'Unknown provider: {provider}')
+
+    if enable_prompt_caching:
+        betas.append(PROMPT_CACHING_BETA_FLAG)
+
+    return client, betas, enable_prompt_caching, image_truncation_threshold
+
+
+def _prepare_api_messages(
+    messages: list[BetaMessageParam],
+    system: BetaTextBlockParam,
+    enable_prompt_caching: bool,
+    only_n_most_recent_images: Optional[int],
+    image_truncation_threshold: int,
+) -> None:
+    """
+    Prepare messages for API call (inject caching, filter images).
+    Modifies messages and system in-place.
+    """
+    if enable_prompt_caching:
+        _inject_prompt_caching(messages)
+        system['cache_control'] = {'type': 'ephemeral'}
+
+    if only_n_most_recent_images:
+        _maybe_filter_to_n_most_recent_images(
+            messages,
+            only_n_most_recent_images,
+            min_removal_threshold=image_truncation_threshold,
+        )
+
+
+async def _check_cancellation(context: str) -> None:
+    """Check if the task has been cancelled."""
+    try:
+        await asyncio.sleep(0)
+    except asyncio.CancelledError:
+        logger.info(f'Sampling loop cancelled {context}')
+        raise
+
+
+async def _make_api_call(
+    client: Any,
+    max_tokens: int,
+    messages: list[BetaMessageParam],
+    model: str,
+    system: BetaTextBlockParam,
+    tool_collection: ToolCollection,
+    betas: list[str],
+    api_response_callback: Optional[Callable],
+    job_id: UUID,
+) -> tuple[Any, dict[str, Any]]:
+    """
+    Make the API call and handle responses.
+
+    Returns:
+        Tuple of (response, exchange dict)
+    """
+    try:
+        raw_response = await client.beta.messages.with_raw_response.create(
+            max_tokens=max_tokens,
+            messages=messages,
+            model=model,
+            system=[system],
+            tools=tool_collection.to_params(),
+            betas=betas,
+            temperature=0.0,
+        )
+
+        if api_response_callback:
+            api_response_callback(
+                raw_response.http_response.request, raw_response.http_response, None
+            )
+
+        exchange = {
+            'request': raw_response.http_response.request,
+            'response': raw_response.http_response,
+        }
+
+        return raw_response.parse(), exchange
+
+    except (APIStatusError, APIResponseValidationError) as e:
+        if e.response.status_code == 403 and 'API Credits Exceeded' in str(e):
+            logger.error(f'Job {job_id}: API Credits Exceeded')
+            raise APIError(
+                message='API Credits Exceeded', request=e.request, body=str(e)
+            )
+        # For other API errors, handle as before
+        if api_response_callback:
+            api_response_callback(e.request, e.response, e)
+        logger.error(f'Job {job_id}: API call failed with error: {e.message}')
+        raise ValueError(e.message) from e
+
+    except APIError as e:
+        if api_response_callback:
+            api_response_callback(e.request, e.body, e)
+        raise ValueError(e.message) from e
+
+
+def _save_message_to_db(
+    db: DatabaseService,
+    job_id: UUID,
+    sequence: int,
+    message: BetaMessageParam,
+    message_type: str,
+) -> None:
+    """Save a message to the database."""
+    try:
+        serialized_message = _beta_message_param_to_job_message_content(message)
+        db.add_job_message(
+            job_id=job_id,
+            sequence=sequence,
+            role=message['role'],
+            content=serialized_message,
+        )
+        logger.info(f'Saved {message_type} message seq {sequence} for job {job_id}')
+    except Exception as e:
+        logger.error(
+            f'Failed to save {message_type} message for job {job_id}: {e}',
+            exc_info=True,
+        )
+        raise ValueError(
+            f'Failed to save {message_type} message history for job {job_id}'
+        ) from e
+
+
+async def _perform_health_check(
+    db: DatabaseService,
+    session_id: Optional[str],
+    job_id: UUID,
+) -> tuple[bool, str]:
+    """
+    Perform health check on target container.
+
+    Returns:
+        Tuple of (is_healthy, reason)
+    """
+    if not session_id:
+        reason = 'Health check prerequisites not met (session_id missing).'
+        logger.warning(
+            f'Job {job_id}: Cannot perform health check, session_id is missing.'
+        )
+        return False, reason
+
+    try:
+        session_details = db.get_session(UUID(session_id))
+        if session_details and session_details.get('container_ip'):
+            container_ip = session_details['container_ip']
+            health_status = await check_target_container_health(container_ip)
+            return health_status['healthy'], health_status['reason']
+        else:
+            reason = f'Could not retrieve container_ip for session {session_id}.'
+            logger.warning(f'Job {job_id}: {reason}')
+            return False, reason
+    except Exception as e:
+        reason = f'Error retrieving session details for health check: {str(e)}'
+        logger.error(f'Job {job_id}: {reason}')
+        return False, reason
+
+
+async def _process_tool_use(
+    content_block: dict[str, Any],
+    tool_collection: ToolCollection,
+    session_id: Optional[str],
+    db: DatabaseService,
+    job_id: UUID,
+    next_sequence: int,
+    tool_output_callback: Callable,
+    extractions: list[Any],
+    exchanges: list[dict[str, Any]],
+) -> tuple[Optional[dict], int]:
+    """
+    Process a tool use block.
+
+    Returns:
+        Tuple of (error_result or None, updated next_sequence)
+    """
+    # Perform health check
+    health_check_ok, health_check_reason = await _perform_health_check(
+        db, session_id, job_id
+    )
+
+    if not health_check_ok:
+        logger.warning(
+            f'Job {job_id}: Target health check failed: {health_check_reason}'
+        )
+        return {
+            'success': False,
+            'error': 'Target Health Check Failed',
+            'error_description': health_check_reason,
+        }, next_sequence
+
+    # Execute tool
+    result = await tool_collection.run(
+        name=content_block['name'],
+        tool_input=cast(dict[str, Any], content_block['input']),
+        session_id=session_id,
+    )
+
+    # Save tool result to DB
+    tool_result_block = _make_api_tool_result(result, content_block['id'])
+    resulting_message = BetaMessageParam(content=[tool_result_block], role='user')
+    _save_message_to_db(db, job_id, next_sequence, resulting_message, 'tool result')
+    next_sequence += 1
+
+    # Handle special tool cases
+    if content_block['name'] == 'ui_not_as_expected':
+        reasoning = result.output
+        logger.warning(f'Job {job_id}: UI Mismatch Detected: {reasoning}')
+        return {
+            'success': False,
+            'error': 'UI Mismatch Detected',
+            'error_description': reasoning,
+        }, next_sequence
+
+    # Handle extraction tool results
+    if content_block['name'] == 'extraction':
+        logger.info(f'Processing extraction tool result: {result}')
+        if result.output:
+            try:
+                extraction_data = json.loads(result.output)
+                logger.info(f'Successfully parsed extraction data: {extraction_data}')
+
+                # Store only the result field from the extraction data
+                if isinstance(extraction_data, dict) and 'result' in extraction_data:
+                    extractions.append(extraction_data['result'])
+                else:
+                    extractions.append(extraction_data)
+                logger.info(
+                    f'Added extraction data: {extraction_data} (total: {len(extractions)})'
+                )
+            except json.JSONDecodeError as e:
+                logger.error(f'Failed to parse extraction result: {e}')
+
+    tool_output_callback(result, content_block['id'])
+    return None, next_sequence
+
+
 async def sampling_loop(
     *,
     # Add job_id and db service parameters
@@ -108,27 +420,23 @@ async def sampling_loop(
     Returns:
         (result, exchanges): The final result and list of API exchanges
     """
-
+    # Initialize tool collection
     tool_group = TOOL_GROUPS_BY_VERSION[tool_version]
     tool_collection = ToolCollection(*(ToolCls() for ToolCls in tool_group.tools))
 
-    # Use the original variable name 'system'
+    # Create system prompt
     system = BetaTextBlockParam(
         type='text',
         text=_load_system_prompt(system_prompt_suffix),
     )
 
-    # Keep track of all exchanges for logging
+    # Initialize tracking variables
     exchanges = []
-
-    # Store extractions and track API completion
     extractions = []
-    is_completed = False
 
+    # Add initial messages to database
     current_sequence = db.get_next_message_sequence(job_id)
-    initial_messages_to_add = messages  # Use the passed messages argument
-
-    for init_message in initial_messages_to_add:
+    for init_message in messages:
         serialized_content = _beta_message_param_to_job_message_content(init_message)
         db.add_job_message(
             job_id=job_id,
@@ -139,175 +447,66 @@ async def sampling_loop(
         logger.info(f'Added initial message seq {current_sequence} for job {job_id}')
         current_sequence += 1
 
-    # TODO: Split up this very long loop into smaller functions
+    # Main processing loop
     while True:
-        # --- Fetch current history from DB --- START
-        try:
-            db_messages = db.get_job_messages(job_id)
-            current_messages_for_api = [
-                _job_message_to_beta_message_param(msg) for msg in db_messages
-            ]
-            # Calculate next sequence based on fetched history
-            next_sequence = (db_messages[-1]['sequence'] + 1) if db_messages else 1
-        except Exception as e:
-            logger.error(
-                f'Failed to fetch or deserialize messages for job {job_id}: {e}',
-                exc_info=True,
+        # Fetch current message history
+        current_messages_for_api, next_sequence = await _fetch_message_history(
+            db, job_id
+        )
+
+        # Initialize API client (TODO: Consider caching this between iterations)
+        client, betas, enable_prompt_caching, image_truncation_threshold = (
+            _initialize_api_client(
+                provider, api_key, tool_version, token_efficient_tools_beta
             )
-            # Cannot continue without message history
-            raise ValueError(f'Failed to load message history for job {job_id}') from e
-        # --- Fetch current history from DB --- END
+        )
 
-        enable_prompt_caching = False
-        betas = [tool_group.beta_flag] if tool_group.beta_flag else []
-        if token_efficient_tools_beta:
-            betas.append('token-efficient-tools-2025-02-19')
-        image_truncation_threshold = 1
-        # --- Client Initialization (remains the same) ---
-        # TODO: Does this need to be done for every iteration?
-        # reload pydantic variables
-        settings.__init__()
-        if provider == APIProvider.ANTHROPIC:
-            # Use AsyncAnthropic instead of Anthropic
-            client = AsyncAnthropic(api_key=api_key, max_retries=4)
-            enable_prompt_caching = True
-        elif provider == APIProvider.VERTEX:
-            # Use AsyncAnthropicVertex instead of AnthropicVertex
-            client = AsyncAnthropicVertex()
-        elif provider == APIProvider.BEDROCK:
-            # AWS credentials should be set in environment variables
-            # by the server.py initialization
-            aws_region = settings.AWS_REGION
-            aws_access_key = settings.AWS_ACCESS_KEY_ID
-            aws_secret_key = settings.AWS_SECRET_ACCESS_KEY
-            aws_session_token = settings.AWS_SESSION_TOKEN
-
-            # Initialize with available credentials
-            bedrock_kwargs = {'aws_region': aws_region}
-            if aws_access_key and aws_secret_key:
-                bedrock_kwargs['aws_access_key'] = aws_access_key
-                bedrock_kwargs['aws_secret_key'] = aws_secret_key
-                if aws_session_token:
-                    bedrock_kwargs['aws_session_token'] = aws_session_token
-
-            # Use AsyncAnthropicBedrock instead of AnthropicBedrock
-            client = AsyncAnthropicBedrock(**bedrock_kwargs)
-            logger.info(f'Using AsyncAnthropicBedrock client with region: {aws_region}')
-        elif provider == APIProvider.LEGACYUSE_PROXY:
-            client = LegacyUseClient(api_key=settings.LEGACYUSE_PROXY_API_KEY)
-        if enable_prompt_caching:
-            betas.append(PROMPT_CACHING_BETA_FLAG)
-            _inject_prompt_caching(
-                current_messages_for_api
-            )  # Inject into current history
-            # only_n_most_recent_images = 0
-            system['cache_control'] = {'type': 'ephemeral'}
-        # No need for else block or system_block variable
-
-        if only_n_most_recent_images:
-            _maybe_filter_to_n_most_recent_images(
-                current_messages_for_api,  # Filter current history
-                only_n_most_recent_images,
-                min_removal_threshold=image_truncation_threshold,
-            )
+        # Prepare messages for API call
+        _prepare_api_messages(
+            current_messages_for_api,
+            system,
+            enable_prompt_caching,
+            only_n_most_recent_images,
+            image_truncation_threshold,
+        )
 
         # Check for cancellation before API call
+        await _check_cancellation('before API call')
+
+        # Make API call
         try:
-            await asyncio.sleep(0)
-            # If we get here, the task hasn't been cancelled
-        except asyncio.CancelledError:
-            logger.info('Sampling loop cancelled before API call')
-            raise
-
-        try:
-            # Use original 'system' variable
-            raw_response = await client.beta.messages.with_raw_response.create(
-                max_tokens=max_tokens,
-                messages=current_messages_for_api,
-                model=model,
-                system=[system],  # Pass original system dict
-                tools=tool_collection.to_params(),
-                betas=betas,
-                temperature=0.0,
+            response, exchange = await _make_api_call(
+                client,
+                max_tokens,
+                current_messages_for_api,
+                model,
+                system,
+                tool_collection,
+                betas,
+                api_response_callback,
+                job_id,
             )
-
-            if api_response_callback:
-                api_response_callback(
-                    raw_response.http_response.request, raw_response.http_response, None
-                )
-
-            # Add exchange to the list
-            exchanges.append(
-                {
-                    'request': raw_response.http_response.request,
-                    'response': raw_response.http_response,
-                }
-            )
-
-        except (APIStatusError, APIResponseValidationError) as e:
-            if e.response.status_code == 403 and 'API Credits Exceeded' in str(e):
-                logger.error(f'Job {job_id}: API Credits Exceeded')
+            exchanges.append(exchange)
+        except APIError as e:
+            # Handle special case of API Credits Exceeded
+            if 'API Credits Exceeded' in str(e):
                 return {
                     'success': False,
                     'error': 'API Credits Exceeded',
                     'error_description': str(e),
                 }, exchanges
-            # For other API errors, handle as before
-            if api_response_callback:
-                api_response_callback(e.request, e.response, e)
-            logger.error(f'Job {job_id}: API call failed with error: {e.message}')
-            raise ValueError(e.message) from e
-
-        except APIError as e:
-            if api_response_callback:
-                api_response_callback(e.request, e.body, e)
-            # Return extractions if we have them, otherwise raise an error
-            raise ValueError(e.message) from e
-
-        except asyncio.CancelledError:
-            logger.info('API call cancelled')
             raise
 
         # Check for cancellation after API call
-        try:
-            # Use asyncio.sleep(0) to allow cancellation to be processed
-            await asyncio.sleep(0)
-            # If we get here, the task hasn't been cancelled
-        except asyncio.CancelledError:
-            logger.info('Sampling loop cancelled after API call')
-            raise
+        await _check_cancellation('after API call')
 
-        response = raw_response.parse()
+        # Process response
         response_params = _response_to_params(response)
 
-        # --- Save Assistant Message to DB --- START
-        try:
-            resulting_message = BetaMessageParam(
-                content=response_params, role='assistant'
-            )
-            serialized_message = _beta_message_param_to_job_message_content(
-                resulting_message
-            )
-            db.add_job_message(
-                job_id=job_id,
-                sequence=next_sequence,
-                role=resulting_message[
-                    'role'
-                ],  # Tool results are sent back as user role
-                content=serialized_message,
-            )
-            logger.info(f'Saved assistant message seq {next_sequence} for job {job_id}')
-            next_sequence += 1  # Increment sequence for potential tool results
-        except Exception as e:
-            logger.error(
-                f'Failed to save assistant message for job {job_id}: {e}', exc_info=True
-            )
-            # Decide how to proceed. Maybe raise, maybe just log and continue?
-            # Raising error for now as history persistence failed.
-            raise ValueError(
-                f'Failed to save assistant message history for job {job_id}'
-            ) from e
-        # --- Save Assistant Message to DB --- END
+        # Save assistant message to database
+        assistant_message = BetaMessageParam(content=response_params, role='assistant')
+        _save_message_to_db(db, job_id, next_sequence, assistant_message, 'assistant')
+        next_sequence += 1
 
         # Check if the model ended its turn
         is_completed = response.stop_reason == 'end_turn'
@@ -315,142 +514,42 @@ async def sampling_loop(
             f'API response stop_reason: {response.stop_reason}, is_completed: {is_completed}'
         )
 
+        # Process response content blocks
         found_tool_use = False
         for content_block in response_params:
             output_callback(content_block)
+
             if content_block['type'] == 'tool_use':
                 found_tool_use = True
 
-                # --- Target Health Check --- START
-                health_check_ok = False
-                health_check_reason = (
-                    'Health check prerequisites not met (session_id missing).'
-                )
-                if session_id:
-                    try:
-                        session_details = db.get_session(UUID(session_id))
-                        if session_details and session_details.get('container_ip'):
-                            container_ip = session_details['container_ip']
-                            health_status = await check_target_container_health(
-                                container_ip
-                            )
-                            health_check_ok = health_status['healthy']
-                            health_check_reason = health_status['reason']
-                        else:
-                            health_check_reason = f'Could not retrieve container_ip for session {session_id}.'
-                            logger.warning(f'Job {job_id}: {health_check_reason}')
-                    except Exception as e:
-                        health_check_reason = f'Error retrieving session details for health check: {str(e)}'
-                        logger.error(f'Job {job_id}: {health_check_reason}')
-                else:
-                    logger.warning(
-                        f'Job {job_id}: Cannot perform health check, session_id is missing.'
-                    )
-
-                if not health_check_ok:
-                    # REMOVE DB update, just return the specific dict
-                    # db.update_job_status(job_id, "paused") # REMOVED
-                    logger.warning(
-                        f'Job {job_id}: Target health check failed: {health_check_reason}'
-                    )
-                    return {
-                        'success': False,  # Keep success=False marker
-                        'error': 'Target Health Check Failed',
-                        'error_description': health_check_reason,
-                    }, exchanges
-                # --- Target Health Check --- END
-
-                result = await tool_collection.run(
-                    name=content_block['name'],
-                    tool_input=cast(dict[str, Any], content_block['input']),
-                    session_id=session_id,
+                # Process tool use
+                error_result, next_sequence = await _process_tool_use(
+                    content_block,
+                    tool_collection,
+                    session_id,
+                    db,
+                    job_id,
+                    next_sequence,
+                    tool_output_callback,
+                    extractions,
+                    exchanges,
                 )
 
-                # --- Save Tool Result Message to DB --- START
-                try:
-                    tool_result_block = _make_api_tool_result(
-                        result, content_block['id']
-                    )
-                    resulting_message = BetaMessageParam(
-                        content=[tool_result_block], role='user'
-                    )
-                    serialized_message = _beta_message_param_to_job_message_content(
-                        resulting_message
-                    )
-                    db.add_job_message(
-                        job_id=job_id,
-                        sequence=next_sequence,
-                        role=resulting_message[
-                            'role'
-                        ],  # Tool results are sent back as user role
-                        content=serialized_message,
-                    )
-                    logger.info(
-                        f'Saved tool result message seq {next_sequence} for tool {content_block["name"]} job {job_id}'
-                    )
-                    next_sequence += 1  # Increment sequence for next potential message
-                except Exception as e:
-                    logger.error(
-                        f'Failed to save tool result message for job {job_id}: {e}',
-                        exc_info=True,
-                    )
-                    raise ValueError(
-                        f'Failed to save tool result history for job {job_id}'
-                    ) from e
-                # --- Save Tool Result Message to DB --- END
+                # Return early if there was an error
+                if error_result:
+                    return error_result, exchanges
 
-                # Special handling for UI not as expected tool
-                if content_block['name'] == 'ui_not_as_expected':
-                    reasoning = result.output
-                    # REMOVE DB update, just return the specific dict
-                    # db.update_job_status(job_id, "paused") # REMOVED
-                    logger.warning(f'Job {job_id}: UI Mismatch Detected: {reasoning}')
-                    return {
-                        'success': False,  # Keep success=False marker
-                        'error': 'UI Mismatch Detected',
-                        'error_description': reasoning,
-                    }, exchanges
-
-                # Handle extraction tool results
-                if content_block['name'] == 'extraction':
-                    logger.info(f'Processing extraction tool result: {result}')
-                    if result.output:
-                        try:
-                            # Parse the extraction data
-                            extraction_data = json.loads(result.output)
-                            logger.info(
-                                f'Successfully parsed extraction data: {extraction_data}'
-                            )
-
-                            # Store only the result field from the extraction data
-                            if (
-                                isinstance(extraction_data, dict)
-                                and 'result' in extraction_data
-                            ):
-                                extractions.append(extraction_data['result'])
-                            else:
-                                extractions.append(extraction_data)
-                            logger.info(
-                                f'Added extraction data: {extraction_data} (total: {len(extractions)})'
-                            )
-                        except json.JSONDecodeError as e:
-                            logger.error(f'Failed to parse extraction result: {e}')
-
-                tool_output_callback(result, content_block['id'])
-
-        # Check if loop should terminate
+        # Check loop termination conditions
         if not found_tool_use:
             if is_completed:
                 logger.info(
                     f'Model ended turn with {len(extractions)} extractions and no further tool use.'
                 )
                 if extractions:
-                    # Loop finished successfully with extraction, return the result.
-                    # Status update will be handled by the caller.
+                    # Loop finished successfully with extraction
                     return extractions[-1], exchanges
                 else:
-                    # Loop finished but no extraction - this is an error condition.
-                    # Raise exception, status update handled by caller's except block.
+                    # Loop finished but no extraction - error condition
                     logger.error(
                         f'Job {job_id}: Model ended turn without providing required extraction.'
                     )
@@ -458,22 +557,15 @@ async def sampling_loop(
                         'Model ended its turn without providing any extractions'
                     )
             else:
-                # Model has more to say (e.g., text response without tool use), continue loop.
+                # Model has more to say, continue loop
                 logger.info(f'Job {job_id}: Model has more to say, continuing loop')
                 continue
-        # else: If tools were used, the loop automatically continues.
 
-        # Check for cancellation before potential next iteration
-        try:
-            await asyncio.sleep(0)
-        except asyncio.CancelledError:
-            logger.info('Sampling loop cancelled at end of loop iteration')
-            raise
+        # Check for cancellation before next iteration
+        await _check_cancellation('at end of loop iteration')
 
-    # Code should not typically reach here unless loop is broken unexpectedly.
-    # Let caller handle this via timeout or other means.
+    # Should not reach here under normal circumstances
     logger.warning(
         f'Sampling loop for job {job_id} exited unexpectedly without reaching a defined end state.'
     )
-    # Raise an error to indicate unexpected exit.
     raise RuntimeError('Sampling loop exited unexpectedly')
