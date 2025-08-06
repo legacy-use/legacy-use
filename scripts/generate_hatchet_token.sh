@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# Script to generate Hatchet client token
+# Script to generate Hatchet client token for Hatchet Lite
 # Run this after docker-compose up to get the token for your .env file
 
 echo "Generating Hatchet client token..."
 
-# Wait for Hatchet services to be ready
-echo "Waiting for Hatchet services to start..."
-sleep 10
+# Wait for Hatchet Lite to be ready
+echo "Waiting for Hatchet Lite to start..."
+sleep 15
 
-# Generate token using the setup-config container
-TOKEN=$(docker compose run --no-deps --rm hatchet-setup-config /hatchet/hatchet-admin token create --config /hatchet/config --tenant-id 707d0855-80ab-4e1f-a156-f1c4546cbf52 2>/dev/null | tail -1 | tr -d '\r\n')
+# Generate token using the hatchet container
+TOKEN=$(docker compose exec -T hatchet /hatchet/hatchet-admin token create --tenant-id 707d0855-80ab-4e1f-a156-f1c4546cbf52 2>/dev/null | tail -1 | tr -d '\r\n')
 
 if [ -n "$TOKEN" ]; then
     echo ""
@@ -23,7 +23,7 @@ if [ -n "$TOKEN" ]; then
     echo "echo 'HATCHET_CLIENT_TOKEN=$TOKEN' >> .env"
     echo ""
 else
-    echo "❌ Failed to generate token. Make sure Hatchet services are running."
-    echo "Try: docker-compose up -d"
+    echo "❌ Failed to generate token. Make sure Hatchet Lite is running."
+    echo "Try: docker-compose up -d hatchet"
     exit 1
 fi

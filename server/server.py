@@ -20,7 +20,7 @@ from server.routes import (
     job_router,
     target_router,
 )
-from server.routes.diagnostics import diagnostics_router
+
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
 from server.utils.auth import get_api_key
@@ -281,13 +281,6 @@ app.include_router(job_router, prefix=api_prefix)
 
 # Include WebSocket router
 app.include_router(websocket_router, prefix=api_prefix)
-
-# Include diagnostics router
-app.include_router(
-    diagnostics_router,
-    prefix=api_prefix,
-    include_in_schema=not settings.HIDE_INTERNAL_API_ENDPOINTS_IN_DOC,
-)
 
 # Include settings router
 app.include_router(settings_router, prefix=api_prefix)

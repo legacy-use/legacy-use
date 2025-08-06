@@ -1,6 +1,6 @@
 # Hatchet Migration Guide
 
-This document explains the migration from the self-built queue system to Hatchet for job processing.
+This document explains the migration from the self-built queue system to Hatchet Lite for job processing.
 
 ## What Changed
 
@@ -11,25 +11,32 @@ This document explains the migration from the self-built queue system to Hatchet
 - Jobs could get stuck or lost if the server crashed
 - Difficult to debug and monitor queue state
 - No support for distributed workers
+- Complex diagnostics endpoints needed
 
-### After (Hatchet Integration)
-- Jobs are managed by Hatchet server with PostgreSQL persistence
-- Queue state is automatically persisted across restarts
+### After (Hatchet Lite Integration)
+- Jobs are managed by Hatchet Lite with PostgreSQL persistence
+- Queue state is automatically persisted across restarts  
+- Uses existing PostgreSQL database (no additional database needed)
 - Distributed workers can process jobs from any instance
 - Built-in monitoring and debugging via Hatchet dashboard
 - Fault-tolerant job processing
 - Scalable worker architecture
+- Simplified setup with just one additional Docker container
 
 ## Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   FastAPI App   │───▶│  Hatchet Server │───▶│ Hatchet Workers │
+│   FastAPI App   │───▶│  Hatchet Lite   │───▶│ Hatchet Workers │
 │                 │    │                 │    │                 │
 │ - Job Creation  │    │ - Queue Mgmt    │    │ - Job Execution │
 │ - Status Check  │    │ - Persistence   │    │ - Fault Tolerant│
 │ - Cancellation  │    │ - Monitoring    │    │ - Scalable      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
+                       │                 │
+                       │ Uses existing   │
+                       │ PostgreSQL DB   │
+                       └─────────────────┘
 ```
 
 ## Setup Instructions
@@ -37,7 +44,7 @@ This document explains the migration from the self-built queue system to Hatchet
 ### 1. Start Services
 
 ```bash
-# Start all services including Hatchet
+# Start all services including Hatchet Lite
 docker-compose up -d
 ```
 
@@ -59,28 +66,21 @@ The Hatchet worker needs to run as a separate process:
 # In production, run this as a service
 python server/hatchet_worker.py
 
-# Or in Docker (add to docker-compose if needed)
-docker run -it --rm \
-  --network legacy-use_default \
-  -e HATCHET_CLIENT_TOKEN=$HATCHET_CLIENT_TOKEN \
-  -e DATABASE_URL=$DATABASE_URL \
-  -e HATCHET_CLIENT_TLS_STRATEGY=none \
-  -e HATCHET_CLIENT_HOST=hatchet-engine \
-  -e HATCHET_CLIENT_PORT=7070 \
-  your-app-image python server/hatchet_worker.py
+# Or use the included Docker service
+docker-compose up -d hatchet-worker
 ```
 
 ## Monitoring
 
 ### Hatchet Dashboard
-- Access at: http://localhost:8081
-- Login: admin@example.com / Admin123!!
+- Access at: http://localhost:8080
 - View workflows, jobs, and worker status
+- No login required for Hatchet Lite
 
 ### API Endpoints
 - Job queue status: `GET /jobs/queue/status`
-- Diagnostics: `GET /diagnostics`
 - Queue resync: `POST /jobs/queue/resync` (now informational only)
+- Note: Diagnostics endpoints have been removed as they are obsolete
 
 ## Key Files Changed
 
@@ -89,17 +89,16 @@ docker run -it --rm \
 - `server/utils/hatchet_job_execution.py` - New job execution interface
 - `server/hatchet_worker.py` - Dedicated worker process
 - `scripts/generate_hatchet_token.sh` - Token generation script
-- `Hatchetfile` - Caddy configuration for Hatchet UI
 
 ### Modified Files
-- `docker-compose.yml` - Added Hatchet services
+- `docker-compose.yml` - Added Hatchet Lite service
 - `pyproject.toml` - Added hatchet-sdk dependency
 - `server/routes/jobs.py` - Updated to use Hatchet
-- `server/routes/diagnostics.py` - Updated diagnostics
 - `server/server.py` - Updated imports
 
-### Deprecated Files
-- `server/utils/job_execution.py` - Still exists but most functions deprecated
+### Removed Files
+- `server/utils/job_execution.py` - Legacy queue system (removed)
+- `server/routes/diagnostics.py` - Obsolete diagnostics endpoints (removed)
 
 ## Migration Benefits
 
@@ -112,23 +111,23 @@ docker run -it --rm \
 
 ## Rollback Plan
 
-If needed, you can rollback by:
+⚠️ **Note**: Legacy files have been removed for simplicity. Rollback would require:
 
-1. Stop Hatchet services
+1. Restore files from git history
 2. Revert imports in `server/routes/jobs.py` and `server/server.py`
-3. Use original `server/utils/job_execution.py`
-4. Remove Hatchet services from docker-compose.yml
+3. Remove Hatchet Lite service from docker-compose.yml
+4. Restore diagnostics endpoints if needed
 
 ## Troubleshooting
 
 ### Worker Not Starting
 - Check `HATCHET_CLIENT_TOKEN` is set
-- Verify Hatchet services are running
-- Check network connectivity to hatchet-engine:7070
+- Verify Hatchet Lite is running: `docker-compose ps hatchet`
+- Check network connectivity to hatchet:7070
 
 ### Jobs Not Processing
-- Check worker logs
-- Verify worker is registered in Hatchet dashboard
+- Check worker logs: `docker-compose logs hatchet-worker`
+- Verify worker is registered in Hatchet dashboard at http://localhost:8080
 - Check job status in database vs Hatchet
 
 ### Token Issues
@@ -142,6 +141,6 @@ Required for Hatchet integration:
 ```bash
 HATCHET_CLIENT_TOKEN=your-token-here
 HATCHET_CLIENT_TLS_STRATEGY=none
-HATCHET_CLIENT_HOST=hatchet-engine
+HATCHET_CLIENT_HOST=hatchet
 HATCHET_CLIENT_PORT=7070
 ```
