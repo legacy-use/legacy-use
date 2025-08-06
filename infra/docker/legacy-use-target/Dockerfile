@@ -77,7 +77,7 @@ RUN case "$TARGETARCH" in \
 
     curl -L -o /tmp/rustdesk.deb "https://github.com/rustdesk/rustdesk/releases/download/1.4.1/rustdesk-1.4.1-${RUSTDESK_ARCH}.deb"
 RUN sudo apt-get update --fix-missing && \
-    sudo apt install -fy /tmp/rustdesk.deb && \
+    sudo apt-get install -fy /tmp/rustdesk.deb && \
     rm /tmp/rustdesk.deb && \
     sudo apt-get clean && \
     rm -rf /var/lib/apt/lists/*
