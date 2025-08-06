@@ -39,34 +39,9 @@ RUN uv sync --locked --no-cache
 # Copy backend application code
 COPY --chown=$USERNAME:$USERNAME server/ $HOME/server/
 
-# Create entrypoint script
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-# Handle .env.local file persistence using mounted volume\n\
-mkdir -p "$HOME/persistent-config"\n\
-if [ ! -f "$HOME/persistent-config/.env.local" ]; then\n\
-    touch "$HOME/persistent-config/.env.local"\n\
-fi\n\
-# Create symlink to the expected location (remove existing file/link first)\n\
-rm -f "$HOME/.env.local"\n\
-ln -sf "$HOME/persistent-config/.env.local" "$HOME/.env.local"\n\
-\n\
-echo "Running migrations"\n\
-uv run alembic -c server/alembic.ini upgrade head\n\
-\n\
-echo "Starting FastAPI server"\n\
-FASTAPI_SERVER_PORT=8088\n\
-\n\
-# Check if debug mode is enabled\n\
-if [ "${LEGACY_USE_DEBUG:-0}" = "1" ]; then\n\
-    echo "Debug mode enabled: Using hot reload"\n\
-    exec uv run uvicorn server.server:app --host 0.0.0.0 --port $FASTAPI_SERVER_PORT --reload --reload-dir server\n\
-else\n\
-    echo "Production mode: Using workers without reload"\n\
-    exec uv run gunicorn -w 1 -k uvicorn.workers.UvicornH11Worker server.server:app --threads 4 --bind 0.0.0.0:$FASTAPI_SERVER_PORT\n\
-fi' > $HOME/entrypoint.sh && \
-    chmod +x $HOME/entrypoint.sh
+# Copy entrypoint script
+COPY --chown=$USERNAME:$USERNAME infra/docker/legacy-use-backend/entrypoint.sh $HOME/entrypoint.sh
+RUN chmod +x $HOME/entrypoint.sh
 
 EXPOSE 8088
 
