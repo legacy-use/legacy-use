@@ -40,6 +40,9 @@ const LogViewer = ({ logs }) => {
     while (i < logsToGroup.length) {
       const currentLog = logsToGroup[i];
 
+      // print but without imagesx
+      console.log('currentLog without images', currentLog);
+
       // For ui_not_as_expected, we want to keep both messages separate
       if (
         currentLog?.type === 'message' &&
@@ -269,6 +272,8 @@ const LogViewer = ({ logs }) => {
       return log;
     } else if (typeof log === 'object' && log !== null) {
       // Handle API execution logs
+
+      // print log but without images
       if (log.type === 'system') {
         if (log.content?.message_type === 'initial_prompt') {
           return `Initial Prompt:\n${log.content.prompt}`;
@@ -297,6 +302,10 @@ const LogViewer = ({ logs }) => {
         if (log.content?.includes('API Credits Exceeded')) {
           return "You've run out of credits...\nBook a demo with us -> https://legacy-use.com/";
         }
+        if (log.content?.includes('Agent Diverged')) {
+          console.log('log.content Diverged', log.content);
+          return `Agent Diverged: ${log.content.reason || 'No reason provided'}`;
+        }
         if (typeof log.content === 'string') {
           return log.content;
         }
@@ -305,6 +314,11 @@ const LogViewer = ({ logs }) => {
       // Handle text messages
       if (log.type === 'message' && log.content && log.content.type === 'text') {
         return log.content.text;
+      }
+
+      // Handle agent diverged tool
+      if (log.type === 'message' && log.content && log.content.type === 'tool_use' && log.content.name === 'agent_diverged') {
+        return `Agent Diverged: ${log.content.input?.reason || 'No reason provided'}`;
       }
 
       // Handle tool uses
@@ -391,6 +405,11 @@ const LogViewer = ({ logs }) => {
         // Check for ui_not_as_expected tool results
         if (log.content?.output) {
           return log.content.output;
+        }
+
+        // Check for agent diverged tool results
+        if (log.content?.system === 'Agent Diverged') {
+          return `Agent Diverged: ${log.content.error || 'No reason provided'}`;
         }
 
         // Check for extraction tool results specifically

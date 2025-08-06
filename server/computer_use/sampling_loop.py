@@ -139,6 +139,8 @@ async def sampling_loop(
         logger.info(f'Added initial message seq {current_sequence} for job {job_id}')
         current_sequence += 1
 
+    tool_use_count = 0
+
     # TODO: Split up this very long loop into smaller functions
     while True:
         # --- Fetch current history from DB --- START
@@ -360,11 +362,30 @@ async def sampling_loop(
                     }, exchanges
                 # --- Target Health Check --- END
 
-                result = await tool_collection.run(
-                    name=content_block['name'],
-                    tool_input=cast(dict[str, Any], content_block['input']),
-                    session_id=session_id,
-                )
+                # check before using the tool if diverged - check for every 2nd tool use
+                tool_use_count += 1
+                diverged = False
+                reason = None
+                if tool_use_count % 2 == 0:
+                    diverged, reason = True, 'Mock up reason'
+                    logger.warning(f'Job {job_id}: Diverged, skipping tool use')
+
+                result = None
+                if not diverged:
+                    result = await tool_collection.run(
+                        name=content_block['name'],
+                        tool_input=cast(dict[str, Any], content_block['input']),
+                        session_id=session_id,
+                    )
+                else:
+                    logger.warning(
+                        f'Job {job_id}: The tool {content_block["name"]} is diverged, skipping tool use'
+                    )
+                    result = ToolResult(
+                        output=reason,
+                        system='Agent Diverged',
+                        error=reason,
+                    )
 
                 # --- Save Tool Result Message to DB --- START
                 try:
@@ -409,6 +430,15 @@ async def sampling_loop(
                         'success': False,  # Keep success=False marker
                         'error': 'UI Mismatch Detected',
                         'error_description': reasoning,
+                    }, exchanges
+
+                # Special handling for agent diverged tool
+                if result.system == 'Agent Diverged':
+                    logger.warning(f'Job {job_id}: Agent Diverged: {result.output}')
+                    return {
+                        'success': False,  # Keep success=False marker
+                        'error': 'Agent Diverged',
+                        'error_description': result.output,
                     }, exchanges
 
                 # Handle extraction tool results

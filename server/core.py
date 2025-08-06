@@ -190,6 +190,7 @@ class APIGatewayCore:
                     'Target Health Check Failed',
                     'UI Mismatch Detected',
                     'API Credits Exceeded',
+                    'Agent Diverged',
                 ]:
                     final_status = JobStatus.PAUSED
                     logger.info(f'Job {job_id} paused due to: {result.get("error")}')
