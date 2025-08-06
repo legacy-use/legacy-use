@@ -3,7 +3,7 @@ Minimal Hatchet client for job queue management.
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional
 from hatchet_sdk import Hatchet
 
 logger = logging.getLogger(__name__)
@@ -25,30 +25,31 @@ def get_hatchet_client() -> Hatchet:
     return _hatchet_client
 
 
-def enqueue_job_with_hatchet(
-    job_id: str, tenant_schema: str, job_data: Dict[str, Any]
-) -> str:
+def enqueue_job_with_hatchet(job_id: str, tenant_schema: str, target_id: str) -> str:
     """
-    Enqueue a job using Hatchet.
+    Enqueue a job using Hatchet with the execute_job task.
 
     Args:
         job_id: The job ID
         tenant_schema: The tenant schema
-        job_data: Job data to enqueue
+        target_id: The target ID for concurrency control
 
     Returns:
-        The Hatchet job ID
+        The Hatchet task run ID
     """
-    client = get_hatchet_client()
+    from server.utils.hatchet_tasks import execute_job, JobExecutionInput
 
-    # Create a simple job with the job data
-    job = client.job(
-        name=f'legacy-use-job-{job_id}',
-        data={'job_id': job_id, 'tenant_schema': tenant_schema, **job_data},
+    # Create input for the job execution task
+    task_input = JobExecutionInput(
+        job_id=job_id, tenant_schema=tenant_schema, target_id=target_id
     )
 
-    # Enqueue the job
-    result = job.enqueue()
-    logger.info(f'Enqueued job {job_id} with Hatchet job ID: {result.id}')
+    # Trigger the task
+    result = execute_job.run(input=task_input)
 
-    return result.id
+    logger.info(
+        f'Enqueued job {job_id} for tenant {tenant_schema} target {target_id} '
+        f'with Hatchet task result: {result}'
+    )
+
+    return str(result)
