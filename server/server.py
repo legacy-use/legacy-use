@@ -20,13 +20,12 @@ from server.routes import (
     job_router,
     target_router,
 )
-from server.routes.diagnostics import diagnostics_router
+
 from server.routes.hatchet_test import hatchet_test_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
 from server.utils.auth import get_api_key
 from server.utils.tenant_utils import get_tenant_from_request
-from server.utils.job_execution import job_queue_initializer
 from server.utils.log_pruning import scheduled_log_pruning
 from server.utils.session_monitor import start_session_monitor
 from server.utils.telemetry import posthog_middleware
@@ -283,12 +282,6 @@ app.include_router(job_router, prefix=api_prefix)
 # Include WebSocket router
 app.include_router(websocket_router, prefix=api_prefix)
 
-# Include diagnostics router
-app.include_router(
-    diagnostics_router,
-    prefix=api_prefix,
-    include_in_schema=not settings.HIDE_INTERNAL_API_ENDPOINTS_IN_DOC,
-)
 
 # Include settings router
 app.include_router(settings_router, prefix=api_prefix)
@@ -337,10 +330,6 @@ For more information, please refer to the migration documentation.
 
     # No need to load API definitions on startup anymore
     # They will be loaded on demand when needed
-
-    # Initialize job queue from database
-    await job_queue_initializer()
-    logger.info('Initialized job queue from database')
 
 
 if __name__ == '__main__':
