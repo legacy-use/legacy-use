@@ -50,6 +50,10 @@ sleep 5
 echo "Setting RustDesk password..."
 rustdesk --password "$RUSTDESK_PASSWORD" || true
 
+echo "Setting RustDesk password with sudo..."
+sudo whoami
+sudo -E rustdesk --password "$RUSTDESK_PASSWORD" || true
+
 # Display connection information
 echo "========================================="
 echo "RustDesk is running in headless mode"
