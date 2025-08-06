@@ -3,10 +3,10 @@ Simple Hatchet test endpoint.
 """
 
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
-from server.utils.hatchet_tasks import SimpleInput, hatchet
+from server.utils.hatchet_tasks import SimpleInput, simple
 
 logger = logging.getLogger(__name__)
 
@@ -30,23 +30,23 @@ async def test_hatchet_task(request: TestRequest) -> TestResponse:
 
     This endpoint enqueues a simple task that transforms the input message to lowercase.
     """
-    try:
-        # Create the input for the task
-        task_input = SimpleInput(message=request.message)
+    # Create the input for the task
+    task_input = SimpleInput(message=request.message)
 
-        # Enqueue the task (non-blocking)
-        logger.info(f'Enqueuing Hatchet task with message: {request.message}')
+    # Enqueue the task (non-blocking)
+    logger.info(f'Enqueuing Hatchet task with message: {request.message}')
 
-        # Use the workflow trigger instead of direct run
-        # This will enqueue the task and return immediately
-        workflow_run = hatchet.workflow('SimpleTask').trigger(task_input)
+    # Use the workflow trigger instead of direct run
+    # This will enqueue the task and return immediately
 
-        logger.info(f'Hatchet task enqueued with run ID: {workflow_run.id}')
+    result = simple.run(
+        input=task_input,
+    )
 
-        return TestResponse(
-            job_id=workflow_run.id, message='Task enqueued successfully'
-        )
+    logger.info(f'taks result {result}')
 
-    except Exception as e:
-        logger.error(f'Error executing Hatchet task: {e}')
-        raise HTTPException(status_code=500, detail=f'Task execution failed: {str(e)}')
+    return TestResponse(job_id='123', message='Task enqueued successfully')
+
+    # except Exception as e:
+    #    logger.error(f'Error executing Hatchet task: {e}')
+    #    raise HTTPException(status_code=500, detail=f'Task execution failed: {str(e)}')

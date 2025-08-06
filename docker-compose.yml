@@ -34,7 +34,7 @@ services:
       SERVER_GRPC_INSECURE: "t"
       SERVER_GRPC_BROADCAST_ADDRESS: host.docker.internal:7077
       SERVER_GRPC_PORT: "7077"
-      SERVER_URL: http://localhost:8888
+      SERVER_URL: http://hatchet-lite:8888
       SERVER_AUTH_SET_EMAIL_VERIFIED: "t"
       SERVER_DEFAULT_ENGINE_VERSION: "V1"
       SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS: hatchet-lite:7077      
