@@ -21,6 +21,7 @@ from server.routes import (
     target_router,
 )
 from server.routes.diagnostics import diagnostics_router
+from server.routes.hatchet_test import hatchet_test_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
 from server.utils.auth import get_api_key
@@ -291,6 +292,9 @@ app.include_router(
 
 # Include settings router
 app.include_router(settings_router, prefix=api_prefix)
+
+# Include hatchet test router
+app.include_router(hatchet_test_router, prefix=api_prefix)
 
 
 # Root endpoint
