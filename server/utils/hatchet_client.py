@@ -6,7 +6,6 @@ while maintaining compatibility with the existing job system.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 from hatchet_sdk import Hatchet, Context
@@ -68,13 +67,13 @@ class HatchetJobManager:
             name='job-execution', input_validator=JobExecutionInput
         )
 
-        @self._workflow.task(timeout='30m')  # 30 minute timeout
+        @self._workflow.task()
         async def execute_job(input: JobExecutionInput, ctx: Context) -> Dict[str, Any]:
-            """Execute a job using the existing job execution logic."""
-            from server.core import APIGatewayCore
+            """Execute a job using the refactored job execution logic."""
             from server.database.multi_tenancy import with_db
             from server.models.base import Job
             from server.utils.db_dependencies import TenantAwareDatabaseService
+            from server.utils.job_execution import execute_api_in_background_with_tenant
 
             job_id = input.job_id
             tenant_schema = input.tenant_schema
@@ -93,24 +92,8 @@ class HatchetJobManager:
                     # Create Job object
                     job = Job(**job_data)
 
-                # This logic is adapted from the original execute_api_in_background_with_tenant
-                core = APIGatewayCore(tenant_schema=tenant_schema, db_tenant=db_service)
-                api_response = await core.execute_api(
-                    job_id=str(job.id),
-                    session_id=str(job.session_id),
-                )
-
-                with with_db(tenant_schema) as db_session:
-                    db_service = TenantAwareDatabaseService(db_session)
-                    db_service.update_job(
-                        job.id,
-                        {
-                            'status': api_response.status,
-                            'result': api_response.extraction,
-                            'completed_at': datetime.now(),
-                            'updated_at': datetime.now(),
-                        },
-                    )
+                # Use the refactored job execution logic
+                await execute_api_in_background_with_tenant(job, tenant_schema)
 
                 logger.info(
                     f'Hatchet completed job {job_id} for tenant {tenant_schema}'

@@ -32,7 +32,7 @@ from server.models.base import Job, JobCreate, JobStatus
 from server.settings import settings
 from server.utils.db_dependencies import get_tenant_db
 from server.utils.tenant_utils import get_tenant_from_request
-from server.utils.hatchet_job_execution import (
+from server.utils.job_execution import (
     add_job_log,
     enqueue_job,
     job_queue_initializer,
