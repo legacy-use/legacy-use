@@ -2,7 +2,6 @@
 Routes package for the API Gateway.
 """
 
-from .diagnostics import diagnostics_router
 from .api import api_router
 from .teaching_mode import teaching_mode_router
 from .jobs import job_router
@@ -17,6 +16,5 @@ __all__ = [
     'session_router',
     'job_router',
     'websocket_router',
-    'diagnostics_router',
     'settings_router',
 ]

@@ -29,19 +29,21 @@ services:
       SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
       SERVER_GRPC_INSECURE: "t"
       SERVER_AUTH_COOKIE_INSECURE: "t"
+      SERVER_AUTH_COOKIE_DOMAIN: ".local.legacy-use.com"
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
 
-  # Backend Service
-  backend:
+  # API Service (formerly backend)
+  api:
     build:
       context: .
       dockerfile: infra/docker/legacy-use-backend/Dockerfile
-    container_name: legacy-use-backend
+    container_name: legacy-use-api
     user: root
     environment:
+      - CONTAINER_TYPE=api
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/legacy_use
       - LEGACY_USE_DEBUG=0
       - HATCHET_CLIENT_TOKEN=${HATCHET_CLIENT_TOKEN:-}
@@ -61,15 +63,15 @@ services:
     env_file:
       - .env
 
-  # Hatchet Worker Service
-  hatchet-worker:
+  # Worker Service
+  worker:
     build:
       context: .
       dockerfile: infra/docker/legacy-use-backend/Dockerfile
-    container_name: legacy-use-hatchet-worker
+    container_name: legacy-use-worker
     user: root
-    command: python server/hatchet_worker.py
     environment:
+      - CONTAINER_TYPE=worker
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/legacy_use
       - LEGACY_USE_DEBUG=0
       - HATCHET_CLIENT_TOKEN=${HATCHET_CLIENT_TOKEN:-}
@@ -82,8 +84,6 @@ services:
       postgres:
         condition: service_healthy
       hatchet:
-        condition: service_started
-      backend:
         condition: service_started
     restart: unless-stopped
     env_file:
@@ -100,7 +100,7 @@ services:
     ports:
       - "5173:5173"
     depends_on:
-      - backend
+      - api
     restart: unless-stopped
     env_file:
       - .env

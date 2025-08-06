@@ -282,11 +282,15 @@ async def get_queue_status(
     # With Hatchet, queue information is managed differently
     # Get approximate queue size from our local tracking
     tenant_schema = tenant['schema']
-    queue_size = len([
-        job_id for job_id, job_info in running_job_tasks.items() 
-        if job_info.get('tenant_schema') == tenant_schema and job_info.get('status') == 'queued'
-    ])
-    
+    queue_size = len(
+        [
+            job_id
+            for job_id, job_info in running_job_tasks.items()
+            if job_info.get('tenant_schema') == tenant_schema
+            and job_info.get('status') == 'queued'
+        ]
+    )
+
     # Assume Hatchet workers are running
     is_processor_running = True
 
@@ -391,12 +395,12 @@ async def interrupt_job(
     # Cancel queued job in Hatchet
     elif current_status == JobStatus.QUEUED:
         tenant_schema = tenant['schema']
-        
+
         # Check if we have tracking info for this job
         if job_id_str in running_job_tasks:
             job_info = running_job_tasks[job_id_str]
             workflow_run_id = job_info.get('workflow_run_id')
-            
+
             if workflow_run_id:
                 try:
                     # TODO: Implement Hatchet workflow cancellation when SDK supports it
@@ -409,13 +413,17 @@ async def interrupt_job(
                         f'Job cancelled in Hatchet (workflow run: {workflow_run_id})',
                         tenant_schema,
                     )
-                    logger.info(f'Cancelled queued job {job_id_str} in Hatchet for tenant {tenant_schema}')
-                    
+                    logger.info(
+                        f'Cancelled queued job {job_id_str} in Hatchet for tenant {tenant_schema}'
+                    )
+
                     # Remove from local tracking
                     del running_job_tasks[job_id_str]
-                    
+
                 except Exception as e:
-                    logger.error(f'Failed to cancel Hatchet workflow {workflow_run_id}: {e}')
+                    logger.error(
+                        f'Failed to cancel Hatchet workflow {workflow_run_id}: {e}'
+                    )
                     add_job_log(
                         job_id_str,
                         'system',
@@ -501,12 +509,12 @@ async def cancel_job(
     # Only allow cancellation on QUEUED and PENDING states
     if current_status == JobStatus.QUEUED:
         tenant_schema = tenant['schema']
-        
+
         # Check if we have tracking info for this job
         if job_id_str in running_job_tasks:
             job_info = running_job_tasks[job_id_str]
             workflow_run_id = job_info.get('workflow_run_id')
-            
+
             if workflow_run_id:
                 try:
                     # TODO: Implement Hatchet workflow cancellation when SDK supports it
@@ -519,13 +527,17 @@ async def cancel_job(
                         f'Job canceled by user request (Hatchet workflow: {workflow_run_id}).',
                         tenant_schema,
                     )
-                    logger.info(f'Canceled queued job {job_id_str} in Hatchet for tenant {tenant_schema}')
-                    
+                    logger.info(
+                        f'Canceled queued job {job_id_str} in Hatchet for tenant {tenant_schema}'
+                    )
+
                     # Remove from local tracking
                     del running_job_tasks[job_id_str]
-                    
+
                 except Exception as e:
-                    logger.error(f'Failed to cancel Hatchet workflow {workflow_run_id}: {e}')
+                    logger.error(
+                        f'Failed to cancel Hatchet workflow {workflow_run_id}: {e}'
+                    )
                     add_job_log(
                         job_id_str,
                         'system',
@@ -743,25 +755,30 @@ async def resync_queue(
     tenant: dict = Depends(get_tenant_from_request),
 ):
     """Queue resync is now handled by Hatchet automatically.
-    
+
     This endpoint is kept for compatibility but returns information about
     the current state of jobs in the database and our local tracking.
     """
     tenant_schema = tenant['schema']
-    
+
     # Count jobs with QUEUED status in the database
     all_jobs = db_tenant.list_jobs(limit=1000)
     db_queued_count = sum(
         1 for job in all_jobs if job.get('status') == JobStatus.QUEUED.value
     )
-    
+
     # Count jobs in our local tracking
-    local_tracked_count = len([
-        job_id for job_id, job_info in running_job_tasks.items() 
-        if job_info.get('tenant_schema') == tenant_schema
-    ])
-    
-    logger.info(f'Queue status for tenant {tenant_schema}: {db_queued_count} queued in DB, {local_tracked_count} tracked locally')
+    local_tracked_count = len(
+        [
+            job_id
+            for job_id, job_info in running_job_tasks.items()
+            if job_info.get('tenant_schema') == tenant_schema
+        ]
+    )
+
+    logger.info(
+        f'Queue status for tenant {tenant_schema}: {db_queued_count} queued in DB, {local_tracked_count} tracked locally'
+    )
 
     # Initialize Hatchet (this is mostly a no-op now)
     await job_queue_initializer()
@@ -771,7 +788,7 @@ async def resync_queue(
         'queued_in_db': db_queued_count,
         'locally_tracked': local_tracked_count,
         'is_processor_running': True,  # Assume Hatchet workers are running
-        'note': 'Queue management is now handled by Hatchet - no manual resync needed'
+        'note': 'Queue management is now handled by Hatchet - no manual resync needed',
     }
 
 

@@ -1,5 +1,13 @@
 services:
-  backend:
+  api:
+    environment:
+      - LEGACY_USE_DEBUG=1
+    volumes:
+      - ./server:/home/legacy-use-mgmt/server
+      - ./pyproject.toml:/home/legacy-use-mgmt/pyproject.toml
+      - ./uv.lock:/home/legacy-use-mgmt/uv.lock
+
+  worker:
     environment:
       - LEGACY_USE_DEBUG=1
     volumes:
