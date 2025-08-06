@@ -11,12 +11,14 @@ import logging
 import os
 import sys
 from pathlib import Path
+from hatchet_sdk import Hatchet
+
 
 # Add the server directory to the Python path
 server_dir = Path(__file__).parent
 sys.path.insert(0, str(server_dir.parent))
 
-from server.utils.hatchet_client import hatchet_job_manager  # noqa: E402
+from server.utils.hatchet_client import get_workflow  # noqa: E402
 
 # Set up logging
 logging.basicConfig(
@@ -31,19 +33,21 @@ async def main():
 
     try:
         # Get the Hatchet client
-        hatchet = hatchet_job_manager.hatchet
+        # hatchet = hatchet_job_manager.hatchet
+        hatchet = Hatchet()
 
         # Create and start the worker
         worker = hatchet.worker('job-execution-worker')
 
         # Register the job execution workflow
-        workflow = hatchet_job_manager.get_workflow()
+        workflow = get_workflow()
         worker.register_workflow(workflow)
 
         logger.info('Hatchet worker registered and starting...')
 
         # Start the worker (this will block)
-        await worker.async_start()
+        worker.start()
+        # await worker.async_start()
 
     except KeyboardInterrupt:
         logger.info('Hatchet worker interrupted by user')

@@ -1,8 +1,8 @@
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:17-alpine
     container_name: legacy-use-postgres
+    command: postgres -c 'max_connections=200'
     environment:
       POSTGRES_DB: legacy_use
       POSTGRES_USER: postgres
@@ -18,38 +18,63 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # Hatchet Lite - uses existing PostgreSQL
-  hatchet:
+  hatchet-lite:
     image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:latest
-    container_name: legacy-use-hatchet
     ports:
-      - "8080:8080"  # Hatchet UI
-      - "7077:7070"  # GRPC
+      - "8888:8888"
+      - "7077:7077"
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/legacy_use"
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/legacy_use?sslmode=disable"
+      SERVER_AUTH_COOKIE_DOMAIN: localhost
+      SERVER_AUTH_COOKIE_INSECURE: "t"
       SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
       SERVER_GRPC_INSECURE: "t"
-      SERVER_AUTH_COOKIE_INSECURE: "t"
-      SERVER_AUTH_COOKIE_DOMAIN: ".local.legacy-use.com"
       SERVER_GRPC_BROADCAST_ADDRESS: localhost:7077
+      SERVER_GRPC_PORT: "7077"
       SERVER_URL: http://localhost:8888
       SERVER_AUTH_SET_EMAIL_VERIFIED: "t"
       SERVER_DEFAULT_ENGINE_VERSION: "V1"
       SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS: localhost:7077
-      SERVER_GRPC_PORT: "7077"
-      #SERVER_AUTH_COOKIE_SECRETS: "super-secret-key-for-local-dev-only another-super-secret-key"
-      #SERVER_ENCRYPTION_MASTER_KEY: "a-very-secret-32-byte-key-for-local"
-
-
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
     volumes:
       - "hatchet_lite_config:/config"
 
 
-  # API Service (formerly backend)
+
+  # hatchet:
+  #   image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:latest
+  #   container_name: legacy-use-hatchet
+  #   ports:
+  #     - "8888:8888"  # Hatchet UI
+  #     - "7077:7077"  # GRPC
+  #   environment:
+  #     DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/legacy_use"
+  #     SERVER_GRPC_BIND_ADDRESS: "0.0.0.0"
+  #     SERVER_GRPC_INSECURE: "t"
+  #     SERVER_AUTH_COOKIE_INSECURE: "t"
+  #     SERVER_AUTH_COOKIE_DOMAIN: ".local.legacy-use.com"
+  #     SERVER_GRPC_BROADCAST_ADDRESS: localhost:7077
+  #     SERVER_URL: http://localhost:8888
+  #     SERVER_AUTH_SET_EMAIL_VERIFIED: "t"
+  #     SERVER_DEFAULT_ENGINE_VERSION: "V1"
+  #     SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS: localhost:7077
+  #     SERVER_GRPC_PORT: "7077"
+  #     #ADMIN_EMAIL: "admin@local.legacy-use.com"
+  #     #ADMIN_PASSWORD: "Admin123!!"
+  #     #SERVER_AUTH_COOKIE_SECRETS: "super-secret-key-for-local-dev-only another-super-secret-key"
+  #     #SERVER_ENCRYPTION_MASTER_KEY: "a-very-secret-32-byte-key-for-local"
+
+
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   volumes:
+  #     - "hatchet_lite_config:/config"
+
+
   api:
     build:
       context: .
@@ -62,8 +87,8 @@ services:
       - LEGACY_USE_DEBUG=0
       - HATCHET_CLIENT_TOKEN=${HATCHET_CLIENT_TOKEN:-}
       - HATCHET_CLIENT_TLS_STRATEGY=none
-      - HATCHET_CLIENT_HOST=hatchet
-      - HATCHET_CLIENT_PORT=7070
+      - HATCHET_CLIENT_HOST=hatchet-lite
+      - HATCHET_CLIENT_PORT=7077
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
@@ -71,13 +96,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      hatchet:
+      hatchet-lite:
         condition: service_started
     restart: unless-stopped
     env_file:
       - .env
 
-  # Worker Service
   worker:
     build:
       context: .
@@ -90,20 +114,19 @@ services:
       - LEGACY_USE_DEBUG=0
       - HATCHET_CLIENT_TOKEN=${HATCHET_CLIENT_TOKEN:-}
       - HATCHET_CLIENT_TLS_STRATEGY=none
-      - HATCHET_CLIENT_HOST=hatchet
-      - HATCHET_CLIENT_PORT=7070
+      - HATCHET_CLIENT_HOST=hatchet-lite
+      - HATCHET_CLIENT_PORT=7077
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
-      hatchet:
+      hatchet-lite:
         condition: service_started
     restart: unless-stopped
     env_file:
       - .env
 
-  # Frontend Service
   frontend:
     build:
       context: .
@@ -122,4 +145,5 @@ services:
 volumes:
   postgres_data:
   hatchet_lite_config:
+
 

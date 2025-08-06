@@ -24,7 +24,7 @@ import httpx
 from server.models.base import Job, JobStatus
 from server.utils.db_dependencies import TenantAwareDatabaseService
 from server.utils.telemetry import capture_job_resolved
-from server.utils.hatchet_client import hatchet_job_manager
+from server.utils.hatchet_client import enqueue_job as hatchet_enqueue_job
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -619,7 +619,7 @@ async def enqueue_job(job_obj: Job, tenant_schema: str):
         )
 
         # Use Hatchet to enqueue the job
-        workflow_run_id = await hatchet_job_manager.enqueue_job(job_obj, tenant_schema)
+        workflow_run_id = await hatchet_enqueue_job(job_obj, tenant_schema)
 
         # Store the workflow run ID for tracking if needed
         running_job_tasks[str(job_obj.id)] = {
