@@ -399,6 +399,7 @@ export const TargetType = {
   rdp: 'rdp',
   vnc: 'vnc',
   teamviewer: 'teamviewer',
+  rustdesk: 'rustdesk',
   'vnc+tailscale': 'vnc+tailscale',
   'vnc+wireguard': 'vnc+wireguard',
   rdp_wireguard: 'rdp_wireguard',

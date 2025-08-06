@@ -25,6 +25,7 @@ const DEFAULT_PORTS = {
   rdp: 3389,
   rdp_wireguard: 3389,
   teamviewer: 5938,
+  rustdesk: 21117,
   generic: 8080,
   'rdp+openvpn': 3389,
 };
@@ -114,11 +115,12 @@ const CreateTarget = () => {
     }
 
     if (!targetData.host.trim()) {
-      errors.host = 'Host is required';
+      errors.host = targetData.type === 'rustdesk' ? 'RustDesk ID is required' : 'Host is required';
     }
 
     if (!targetData.password.trim()) {
-      errors.password = 'Password is required';
+      errors.password =
+        targetData.type === 'rustdesk' ? 'One-time password is required' : 'Password is required';
     }
 
     if (
@@ -241,6 +243,7 @@ const CreateTarget = () => {
                     RDP + OpenVPN {!isOpenVPNAllowed && '(Disabled - See Tutorial)'}
                   </MenuItem>
                   <MenuItem value="teamviewer">TeamViewer</MenuItem>
+                  <MenuItem value="rustdesk">RustDesk</MenuItem>
                   <MenuItem value="generic">Generic</MenuItem>
                 </Select>
               </FormControl>
@@ -249,7 +252,7 @@ const CreateTarget = () => {
             <Grid item xs={12} md={8}>
               <TextField
                 fullWidth
-                label="Host"
+                label={targetData.type === 'rustdesk' ? 'RustDesk ID' : 'Host'}
                 name="host"
                 value={targetData.host}
                 onChange={handleChange}
@@ -257,24 +260,28 @@ const CreateTarget = () => {
                 helperText={validationErrors.host}
                 disabled={loading}
                 required
-                placeholder="hostname or IP address"
+                placeholder={
+                  targetData.type === 'rustdesk' ? 'Enter RustDesk ID' : 'hostname or IP address'
+                }
               />
             </Grid>
 
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Port"
-                name="port"
-                type="number"
-                value={targetData.port === null ? '' : targetData.port}
-                onChange={handlePortChange}
-                error={!!validationErrors.port}
-                helperText={validationErrors.port}
-                disabled={loading}
-                placeholder="Optional"
-              />
-            </Grid>
+            {targetData.type !== 'rustdesk' && (
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  label="Port"
+                  name="port"
+                  type="number"
+                  value={targetData.port === null ? '' : targetData.port}
+                  onChange={handlePortChange}
+                  error={!!validationErrors.port}
+                  helperText={validationErrors.port}
+                  disabled={loading}
+                  placeholder="Optional"
+                />
+              </Grid>
+            )}
 
             <Grid item xs={12}>
               {/* Show OpenVPN security warning when OpenVPN is selected */}
@@ -301,23 +308,25 @@ const CreateTarget = () => {
               />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                variant="outlined"
-                label="VNC/RDP Username (optional)"
-                name="username"
-                value={targetData.username}
-                onChange={handleChange}
-                error={!!validationErrors.username}
-                helperText={validationErrors.username}
-              />
-            </Grid>
+            {targetData.type !== 'rustdesk' && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  label="VNC/RDP Username (optional)"
+                  name="username"
+                  value={targetData.username}
+                  onChange={handleChange}
+                  error={!!validationErrors.username}
+                  helperText={validationErrors.username}
+                />
+              </Grid>
+            )}
 
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={targetData.type === 'rustdesk' ? 12 : 6}>
               <TextField
                 fullWidth
-                label="VNC/RDP Password"
+                label={targetData.type === 'rustdesk' ? 'One-time Password' : 'VNC/RDP Password'}
                 name="password"
                 type="password"
                 value={targetData.password}
@@ -326,6 +335,9 @@ const CreateTarget = () => {
                 helperText={validationErrors.password}
                 disabled={loading}
                 required
+                placeholder={
+                  targetData.type === 'rustdesk' ? 'Enter RustDesk one-time password' : ''
+                }
               />
             </Grid>
 

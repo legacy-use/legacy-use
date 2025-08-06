@@ -203,6 +203,7 @@ Creating custom automation scripts for your applications? Check out our comprehe
 | VNC        | Remote   | ✅     |
 | RDP        | Remote   | ✅     |
 | TeamViewer | Remote   | 🚧     |
+| RustDesk   | Remote   | 🚧     |
 
 ---
 
