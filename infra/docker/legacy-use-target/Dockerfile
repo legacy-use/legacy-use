@@ -67,6 +67,21 @@ RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee 
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Install RustDesk
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+        amd64) RUSTDESK_ARCH=x86_64 ;; \
+        arm64) RUSTDESK_ARCH=aarch64 ;; \
+        *) echo "Unsupported architecture for RustDesk: $TARGETARCH" && exit 1 ;; \
+    esac && \
+
+    curl -L -o /tmp/rustdesk.deb "https://github.com/rustdesk/rustdesk/releases/download/1.4.1/rustdesk-1.4.1-${RUSTDESK_ARCH}.deb"
+RUN sudo apt-get update && \
+    sudo apt-get install -fy /tmp/rustdesk.deb && \
+    rm /tmp/rustdesk.deb && \
+    sudo apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # setup user
 ENV USERNAME=legacy-use
 ENV HOME=/home/$USERNAME
@@ -104,6 +119,7 @@ RUN .venv/bin/pip3 install --no-cache-dir -r requirements.txt
 # setup desktop env & app
 COPY --chown=$USERNAME:$USERNAME infra/docker/legacy-use-target/image/proxychains.conf /etc/proxychains.conf
 COPY --chown=$USERNAME:$USERNAME infra/docker/legacy-use-target/image/ $HOME
+RUN chmod +x $HOME/*.sh
 
 ARG HOST_IP=unknown
 ARG HOST_PORT=unknown

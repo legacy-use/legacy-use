@@ -151,6 +151,9 @@ EOF
 elif [ "$REMOTE_CLIENT_TYPE" = 'teamviewer' ]; then
     echo "Teamviewer not supported yet"
     exit 1
+elif [ "$REMOTE_CLIENT_TYPE" = 'rustdesk' ]; then
+    echo "Starting RustDesk..."
+    ./start_rustdesk.sh
 else
     echo "Unsupported REMOTE_CLIENT_TYPE: $REMOTE_CLIENT_TYPE"
     exit 1
