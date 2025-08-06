@@ -7,7 +7,7 @@ echo "Generating Hatchet client token..."
 
 
 # Generate token using the hatchet container
-TOKEN=$(docker compose exec -T hatchet /hatchet/hatchet-admin token create --tenant-id 707d0855-80ab-4e1f-a156-f1c4546cbf52 2>/dev/null | tail -1 | tr -d '\r\n')
+TOKEN=$(docker compose exec -T hatchet /hatchet/hatchet-admin token create --config /config --tenant-id 707d0855-80ab-4e1f-a156-f1c4546cbf52 2>/dev/null | tail -1 | tr -d '\r\n')
 
 if [ -n "$TOKEN" ]; then
     echo ""

@@ -21,6 +21,7 @@ services:
   # Hatchet Lite - uses existing PostgreSQL
   hatchet:
     image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:latest
+    container_name: legacy-use-hatchet
     ports:
       - "8080:8080"  # Hatchet UI
       - "7077:7070"  # GRPC
@@ -30,10 +31,23 @@ services:
       SERVER_GRPC_INSECURE: "t"
       SERVER_AUTH_COOKIE_INSECURE: "t"
       SERVER_AUTH_COOKIE_DOMAIN: ".local.legacy-use.com"
+      SERVER_GRPC_BROADCAST_ADDRESS: localhost:7077
+      SERVER_URL: http://localhost:8888
+      SERVER_AUTH_SET_EMAIL_VERIFIED: "t"
+      SERVER_DEFAULT_ENGINE_VERSION: "V1"
+      SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS: localhost:7077
+      SERVER_GRPC_PORT: "7077"
+      #SERVER_AUTH_COOKIE_SECRETS: "super-secret-key-for-local-dev-only another-super-secret-key"
+      #SERVER_ENCRYPTION_MASTER_KEY: "a-very-secret-32-byte-key-for-local"
+
+
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    volumes:
+      - "hatchet_lite_config:/config"
+
 
   # API Service (formerly backend)
   api:
@@ -107,3 +121,5 @@ services:
 
 volumes:
   postgres_data:
+  hatchet_lite_config:
+
