@@ -95,9 +95,17 @@ async def monitor_session_states():
                             try:
                                 from server.utils.docker_manager import (
                                     stop_container,
+                                    stop_vpn_container,
                                 )
 
                                 stop_container(container_id)
+
+                                # Stop VPN container if it exists
+                                if session.get('vpn_container_id'):
+                                    stop_vpn_container(
+                                        session['vpn_container_id'], str(session_id)
+                                    )
+
                             except Exception as e:
                                 logger.error(
                                     f'Error stopping container for inactive session {session_id}: {str(e)}'

@@ -98,11 +98,223 @@ def get_container_ip(container_id: str) -> Optional[str]:
         return None
 
 
+def launch_vpn_container(
+    session_id: str,
+    vpn_config: str,
+    vpn_username: str,
+    vpn_password: str,
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Launch a VPN container using haugene/transmission-openvpn for OpenVPN connections.
+
+    Args:
+        session_id: Session ID to use in container name
+        vpn_config: Base64 encoded OpenVPN configuration
+        vpn_username: VPN username
+        vpn_password: VPN password
+
+    Returns:
+        Tuple of (container_id, container_ip) or (None, None) if failed
+    """
+    try:
+        # Construct VPN container name
+        short_id = session_id.replace('-', '')[:12]
+        vpn_container_name = f'legacy-use-vpn-{short_id}'
+
+        # Create a temporary directory for VPN config
+        import base64
+
+        # Create persistent volume for VPN config
+        config_volume = f'legacy-use-vpn-config-{short_id}'
+
+        # Create docker volume for VPN configuration
+        try:
+            subprocess.run(
+                ['docker', 'volume', 'create', config_volume],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            logger.info(f'Created VPN config volume: {config_volume}')
+        except subprocess.CalledProcessError as e:
+            logger.error(f'Failed to create VPN config volume: {e.stderr}')
+            return None, None
+
+        # Decode and write VPN config to volume using a temporary container
+        try:
+            decoded_config = base64.b64decode(vpn_config).decode('utf-8')
+
+            # Use a temporary container to write the config to the volume
+            temp_container_cmd = [
+                'docker',
+                'run',
+                '--rm',
+                '-v',
+                f'{config_volume}:/config',
+                'alpine:latest',
+                'sh',
+                '-c',
+                f'echo "{decoded_config}" > /config/openvpn.ovpn',
+            ]
+
+            subprocess.run(
+                temp_container_cmd, capture_output=True, text=True, check=True
+            )
+            logger.info('VPN config written to volume')
+
+        except Exception as e:
+            logger.error(f'Failed to write VPN config: {e}')
+            # Clean up volume on failure
+            subprocess.run(
+                ['docker', 'volume', 'rm', config_volume], capture_output=True
+            )
+            return None, None
+
+        # Prepare docker run command for VPN container
+        docker_cmd = [
+            'docker',
+            'run',
+            '-d',
+            '--name',
+            vpn_container_name,
+            '--cap-add=NET_ADMIN',
+            '--device=/dev/net/tun:/dev/net/tun',
+            '-e',
+            'OPENVPN_PROVIDER=CUSTOM',
+            '-e',
+            f'OPENVPN_USERNAME={vpn_username}',
+            '-e',
+            f'OPENVPN_PASSWORD={vpn_password}',
+            '-e',
+            'OPENVPN_CONFIG=openvpn',
+            '-e',
+            'LOCAL_NETWORK=172.16.0.0/12,192.168.0.0/16,10.0.0.0/8',
+            '-e',
+            'TRANSMISSION_WEB_UI=no',  # Disable transmission since we only need VPN
+            '-v',
+            f'{config_volume}:/etc/openvpn/custom:ro',
+            '--log-driver',
+            'json-file',
+            '--log-opt',
+            'max-size=10m',
+            'haugene/transmission-openvpn:latest',
+        ]
+
+        # Check if we're running inside a docker-compose setup
+        try:
+            result = subprocess.run(
+                [
+                    'docker',
+                    'inspect',
+                    'legacy-use-backend',
+                    '--format',
+                    '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}}{{end}}',
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            current_networks = result.stdout.strip().split()
+
+            # Connect VPN container to the same network
+            for network in current_networks:
+                if network != 'bridge':
+                    docker_cmd.extend(['--network', network])
+                    logger.info(f'Connecting VPN container to network: {network}')
+                    break
+        except Exception as e:
+            logger.warning(
+                f'Could not determine network configuration for VPN container: {e}'
+            )
+
+        logger.info(f'Launching VPN container with command: {" ".join(docker_cmd)}')
+
+        # Launch VPN container
+        result = subprocess.run(docker_cmd, capture_output=True, text=True, check=True)
+        vpn_container_id = result.stdout.strip()
+
+        # Wait for VPN container to be ready (up to 120 seconds for OpenVPN connection)
+        logger.info('Waiting for VPN connection to establish...')
+        for i in range(120):
+            time.sleep(1)
+            try:
+                # Check if VPN is connected by looking at container logs
+                log_result = subprocess.run(
+                    ['docker', 'logs', '--tail', '20', vpn_container_id],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+
+                # Look for OpenVPN connection success indicators
+                if any(
+                    indicator in log_result.stdout
+                    for indicator in [
+                        'Initialization Sequence Completed',
+                        'VPN is up',
+                        'OpenVPN tunnel is up',
+                        'Tunnel is up and running',
+                    ]
+                ):
+                    logger.info(
+                        f'VPN container {vpn_container_id} is ready and connected'
+                    )
+                    break
+
+                # Check for connection errors
+                if any(
+                    error in log_result.stdout
+                    for error in [
+                        'AUTH_FAILED',
+                        'Connection failed',
+                        'RESOLVE: Cannot resolve host address',
+                        'TLS Error',
+                    ]
+                ):
+                    logger.error(f'VPN connection failed: {log_result.stdout}')
+                    # Clean up on failure
+                    subprocess.run(
+                        ['docker', 'rm', '-f', vpn_container_id], capture_output=True
+                    )
+                    subprocess.run(
+                        ['docker', 'volume', 'rm', config_volume], capture_output=True
+                    )
+                    return None, None
+
+            except Exception:
+                continue
+        else:
+            logger.warning(f'VPN container {vpn_container_id} may not be fully ready')
+
+        # Get VPN container IP
+        vpn_container_ip = get_container_ip(vpn_container_id)
+
+        logger.info(
+            f'VPN container launched successfully: {vpn_container_id} (IP: {vpn_container_ip})'
+        )
+        return vpn_container_id, vpn_container_ip
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f'Failed to launch VPN container: {e.stderr}')
+        # Clean up volume on failure if it was created
+        if 'config_volume' in locals():
+            try:
+                subprocess.run(
+                    ['docker', 'volume', 'rm', config_volume], capture_output=True
+                )
+            except:
+                pass
+        return None, None
+    except Exception as e:
+        logger.error(f'Unexpected error launching VPN container: {str(e)}')
+        return None, None
+
+
 def launch_container(
     target_type: str,
     session_id: Optional[str] = None,
     container_params: Optional[Dict[str, str]] = None,
-) -> Tuple[Optional[str], Optional[str]]:
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     Launch a Docker container for the specified target type.
 
@@ -113,7 +325,7 @@ def launch_container(
                           to the container (e.g., HOST_IP, VNC_PASSWORD, TAILSCALE_AUTH_KEY, WIDTH, HEIGHT).
 
     Returns:
-        Tuple of (container_id, container_ip) or (None, None) if failed
+        Tuple of (container_id, container_ip, vpn_container_id) or (None, None, None) if failed
     """
     try:
         # Construct container name
@@ -171,15 +383,33 @@ def launch_container(
                 f'Could not determine network configuration, using default: {e}'
             )
 
-        # add options for openvpn
+        # Handle VPN configuration - launch separate VPN container for OpenVPN
+        vpn_container_id = None
         if container_params.get('REMOTE_VPN_TYPE', '').lower() == 'openvpn':
-            docker_cmd.extend(
-                [
-                    '--cap-add=NET_ADMIN',  # Required for VPN/TUN interface management
-                    '--cap-add=NET_RAW',  # Required for network interface configuration
-                    '--device=/dev/net/tun:/dev/net/tun',  # Required for VPN tunneling
-                ]
-            )
+            vpn_config = container_params.get('VPN_CONFIG')
+            vpn_username = container_params.get('VPN_USERNAME')
+            vpn_password = container_params.get('VPN_PASSWORD')
+
+            if vpn_config and vpn_username and vpn_password and session_id:
+                logger.info('Launching separate VPN container for OpenVPN')
+                vpn_container_id, _ = launch_vpn_container(
+                    session_id, vpn_config, vpn_username, vpn_password
+                )
+
+                if vpn_container_id:
+                    # Use VPN container's network for target container
+                    docker_cmd.extend(['--network', f'container:{vpn_container_id}'])
+                    logger.info(
+                        f'Target container will use VPN container network: {vpn_container_id}'
+                    )
+                else:
+                    logger.error(
+                        'Failed to launch VPN container, falling back to direct connection'
+                    )
+            else:
+                logger.warning(
+                    'OpenVPN type specified but missing VPN configuration, using direct connection'
+                )
 
         # Add environment variables from container_params
         for key, value in container_params.items():
@@ -201,17 +431,66 @@ def launch_container(
         if not container_ip:
             logger.error(f'Could not get IP address for container {container_id}')
             stop_container(container_id)
-            return None, None
+            # Clean up VPN container if it was created
+            if vpn_container_id and session_id:
+                stop_vpn_container(vpn_container_id, session_id)
+            return None, None, None
 
         logger.info(f'Container {container_id} running with IP {container_ip}')
 
-        return container_id, container_ip
+        return container_id, container_ip, vpn_container_id
     except subprocess.CalledProcessError as e:
         logger.error(f'Error launching container: {e.stderr}')
-        return None, None
+        # Clean up VPN container if it was created
+        if vpn_container_id and session_id:
+            stop_vpn_container(vpn_container_id, session_id)
+        return None, None, None
     except Exception as e:
         logger.error(f'Unexpected error launching container: {str(e)}')
-        return None, None
+        # Clean up VPN container if it was created
+        if vpn_container_id and session_id:
+            stop_vpn_container(vpn_container_id, session_id)
+        return None, None, None
+
+
+def stop_vpn_container(vpn_container_id: str, session_id: str) -> bool:
+    """
+    Stop and remove a VPN container and its associated volume.
+
+    Args:
+        vpn_container_id: ID of the VPN container to stop
+        session_id: Session ID to determine volume name
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        short_id = session_id.replace('-', '')[:12]
+        config_volume = f'legacy-use-vpn-config-{short_id}'
+
+        # Stop and remove VPN container
+        subprocess.run(
+            ['docker', 'stop', vpn_container_id], capture_output=True, check=True
+        )
+        subprocess.run(
+            ['docker', 'rm', vpn_container_id], capture_output=True, check=True
+        )
+
+        # Remove the config volume
+        subprocess.run(['docker', 'volume', 'rm', config_volume], capture_output=True)
+
+        logger.info(
+            f'VPN container {vpn_container_id} and volume {config_volume} removed'
+        )
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f'Error stopping VPN container {vpn_container_id}: {e.stderr}')
+        return False
+    except Exception as e:
+        logger.error(
+            f'Unexpected error stopping VPN container {vpn_container_id}: {str(e)}'
+        )
+        return False
 
 
 def stop_container(container_id: str) -> bool:

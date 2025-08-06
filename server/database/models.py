@@ -67,6 +67,7 @@ class Session(Base):
     # Container information
     container_id = Column(String, nullable=True)  # Store Docker container ID
     container_ip = Column(String, nullable=True)  # Store container IP address
+    vpn_container_id = Column(String, nullable=True)  # Store VPN container ID
 
     # Relationships
     target = relationship('Target', back_populates='sessions')

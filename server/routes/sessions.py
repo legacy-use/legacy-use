@@ -30,6 +30,7 @@ from server.utils.docker_manager import (
     get_container_status,
     launch_container,
     stop_container,
+    stop_vpn_container,
 )
 from server.utils.telemetry import (
     capture_session_created,
@@ -151,21 +152,24 @@ async def create_session(
     }
 
     # Launch Docker container for the session
-    container_id, container_ip = launch_container(
+    container_id, container_ip, vpn_container_id = launch_container(
         target['type'], str(db_session['id']), container_params=container_params
     )
 
     if container_id and container_ip:
         # Update session with container info
-        db.update_session(
-            db_session['id'],
-            {
-                'container_id': container_id,
-                'container_ip': container_ip,
-                'status': 'running',
-                'state': 'initializing',  # Ensure state is set
-            },
-        )
+        session_update_data = {
+            'container_id': container_id,
+            'container_ip': container_ip,
+            'status': 'running',
+            'state': 'initializing',  # Ensure state is set
+        }
+
+        # Add VPN container ID if it exists
+        if vpn_container_id:
+            session_update_data['vpn_container_id'] = vpn_container_id
+
+        db.update_session(db_session['id'], session_update_data)
         # Get updated session
         db_session = db.get_session(db_session['id'])
 
@@ -246,6 +250,13 @@ async def delete_session(session_id: UUID, request: Request):
         except Exception as e:
             logger.error(f'Error stopping container: {str(e)}')
 
+    # Stop the VPN container if it exists
+    if vpn_container_id := session.get('vpn_container_id'):
+        try:
+            stop_vpn_container(vpn_container_id, str(session_id))
+        except Exception as e:
+            logger.error(f'Error stopping VPN container: {str(e)}')
+
     capture_session_deleted(request, session_id, False)
 
     # Return success message
@@ -263,6 +274,10 @@ async def hard_delete_session(session_id: UUID, request: Request):
     # Stop container if it exists
     if session.get('container_id'):
         stop_container(session['container_id'])
+
+    # Stop VPN container if it exists
+    if session.get('vpn_container_id'):
+        stop_vpn_container(session['vpn_container_id'], str(session_id))
 
     # Delete session from database
     db.hard_delete_session(session_id)
