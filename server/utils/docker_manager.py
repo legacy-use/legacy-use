@@ -160,7 +160,7 @@ def launch_container(
                 [
                     'docker',
                     'inspect',
-                    'legacy-use-backend',
+                    'legacy-use-api',
                     '--format',
                     '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}}{{end}}',
                 ],
