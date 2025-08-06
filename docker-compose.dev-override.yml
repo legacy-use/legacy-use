@@ -1,5 +1,12 @@
 services:
-  backend:
+  api:
+    environment:
+      - LEGACY_USE_DEBUG=1
+    volumes:
+      - ./server:/home/legacy-use-mgmt/server
+      - ./pyproject.toml:/home/legacy-use-mgmt/pyproject.toml
+      - ./uv.lock:/home/legacy-use-mgmt/uv.lock
+  worker:
     environment:
       - LEGACY_USE_DEBUG=1
     volumes:
@@ -10,6 +17,7 @@ services:
   frontend:
     environment:
       - LEGACY_USE_DEBUG=1
+      - VITE_PROXY_TARGET=api
     volumes:
       - ./app:/home/legacy-use-mgmt/app
       - ./package.json:/home/legacy-use-mgmt/package.json
