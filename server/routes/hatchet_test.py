@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from server.utils.hatchet_tasks import simple, SimpleInput
+from server.utils.hatchet_tasks import SimpleInput, hatchet
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +34,17 @@ async def test_hatchet_task(request: TestRequest) -> TestResponse:
         # Create the input for the task
         task_input = SimpleInput(message=request.message)
 
-        # Run the task (this will enqueue it)
+        # Enqueue the task (non-blocking)
         logger.info(f'Enqueuing Hatchet task with message: {request.message}')
 
-        # Note: This will wait for the task to be executed by a worker
-        # In a real scenario, you'd want to enqueue and return immediately
-        result = simple.run(task_input)
+        # Use the workflow trigger instead of direct run
+        # This will enqueue the task and return immediately
+        workflow_run = hatchet.workflow('SimpleTask').trigger(task_input)
 
-        logger.info(f'Hatchet task completed with result: {result}')
+        logger.info(f'Hatchet task enqueued with run ID: {workflow_run.id}')
 
         return TestResponse(
-            job_id='test-job', message=result.get('transformed_message', 'No result')
+            job_id=workflow_run.id, message='Task enqueued successfully'
         )
 
     except Exception as e:
