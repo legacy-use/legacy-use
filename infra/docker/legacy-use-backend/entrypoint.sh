@@ -33,7 +33,15 @@ elif [ "$CONTAINER_TYPE" = "worker" ]; then
     echo "Running as Hatchet worker (boom)"
     cd /home/legacy-use-mgmt
     export PYTHONPATH="/home/legacy-use-mgmt:$PYTHONPATH"
-    exec uv run python -m server.hatchet_worker
+    
+    # Check if debug mode is enabled
+    if [ "${LEGACY_USE_DEBUG:-0}" = "1" ]; then
+        echo "Debug mode enabled: Using watchfiles for hot reload"
+        exec uvx --from watchfiles watchfiles --filter python --verbosity info 'uv run python -m server.hatchet_worker' server
+    else
+        echo "Production mode: Using worker without reload"
+        exec uv run python -m server.hatchet_worker
+    fi
 else
     echo "Error: Invalid CONTAINER_TYPE: $CONTAINER_TYPE. Must be 'api' or 'worker'."
     exit 1
