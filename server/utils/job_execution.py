@@ -12,29 +12,23 @@ Queue Pause Logic:
 """
 
 import asyncio
-import json
 import logging
 import traceback
 from datetime import datetime
-from typing import Any, List
 
-import httpx
-
-# Remove direct import of APIGatewayCore
 from server.models.base import Job, JobStatus
 from server.utils.db_dependencies import TenantAwareDatabaseService
 from server.utils.telemetry import capture_job_resolved
-
-# Add import for session management functions
+from server.utils.job_logging import add_job_log
+from server.utils.job_callbacks import (
+    _create_api_response_callback,
+    _create_tool_callback,
+    _create_output_callback,
+)
+from server.utils.job_locks import get_target_lock, _check_preconditions_and_set_running
 
 # Set up logging
 logger = logging.getLogger(__name__)
-
-# Remove global database service - will use TenantAwareDatabaseService per tenant
-# db = DatabaseService()
-
-# Constants
-TOKEN_LIMIT = 200000  # Maximum number of tokens (input + output) allowed per job
 
 # Dictionary to store running job tasks
 running_job_tasks = {}
@@ -42,352 +36,6 @@ running_job_tasks = {}
 # Track targets that already have sessions being launched
 targets_with_pending_sessions = set()
 targets_with_pending_sessions_lock = asyncio.Lock()
-
-# Add target-specific locks for job status transitions
-target_locks = {}
-target_locks_lock = asyncio.Lock()
-
-
-def trim_base64_images(data):
-    """
-    Recursively search and trim base64 image data in content structure.
-
-    This function traverses a nested dictionary/list structure and replaces
-    base64 image data with "..." to reduce log size.
-    """
-    if isinstance(data, dict):
-        # Check if this is an image content entry with base64 data
-        if (
-            data.get('type') == 'image'
-            and isinstance(data.get('source'), dict)
-            and data['source'].get('type') == 'base64'
-            and 'data' in data['source']
-        ):
-            # Replace the base64 data with "..."
-            data['source']['data'] = '...'
-        else:
-            # Recursively process all dictionary values
-            for key, value in data.items():
-                data[key] = trim_base64_images(value)
-    elif isinstance(data, list):
-        # Recursively process all list items
-        for i, item in enumerate(data):
-            data[i] = trim_base64_images(item)
-
-    return data
-
-
-def trim_http_body(body):
-    """
-    Process an HTTP body (request or response) to trim base64 image data.
-
-    Handles both string (JSON) and dictionary body formats.
-    Returns the trimmed body.
-    """
-    try:
-        # If body is a string that might be JSON, parse it
-        if isinstance(body, str):
-            try:
-                body_json = json.loads(body)
-                return json.dumps(trim_base64_images(body_json))
-            except json.JSONDecodeError:
-                # Not valid JSON, keep as is or set to empty if too large
-                if len(body) > 1000:
-                    return '<trimmed>'
-                return body
-        elif isinstance(body, dict):
-            return trim_base64_images(body)
-        else:
-            return body
-    except Exception as e:
-        logger.error(f'Error trimming HTTP body: {str(e)}')
-        return '<trim error>'
-
-
-# Function to add logs to the database
-def add_job_log(job_id: str, log_type: str, content: Any, tenant_schema: str):
-    """Add a log entry for a job with tenant context."""
-    from server.database.multi_tenancy import with_db
-
-    with with_db(tenant_schema) as db_session:
-        db_service = TenantAwareDatabaseService(db_session)
-
-        # Trim base64 images from content for storage
-        trimmed_content = trim_base64_images(content)
-
-        log_data = {
-            'job_id': job_id,
-            'log_type': log_type,
-            'content': content,
-            'content_trimmed': trimmed_content,
-        }
-
-        db_service.create_job_log(log_data)
-        logger.info(f'Added {log_type} log for job {job_id} in tenant {tenant_schema}')
-
-
-async def get_target_lock(target_id, tenant_schema: str):
-    """Get target lock for specific tenant."""
-    async with target_locks_lock:
-        if target_id not in target_locks:
-            target_locks[target_id] = asyncio.Lock()
-        return target_locks[target_id]
-
-
-async def clean_up_target_lock(target_id, tenant_schema: str):
-    """Clean up target lock for specific tenant."""
-    async with target_locks_lock:
-        if target_id in target_locks:
-            del target_locks[target_id]
-
-
-# Helper function for precondition checks
-async def _check_preconditions_and_set_running(
-    job: Job, job_id_str: str, tenant_schema: str
-) -> tuple[bool, bool]:
-    """Check preconditions with tenant context."""
-    from server.database.multi_tenancy import with_db
-
-    with with_db(tenant_schema) as db_session:
-        db_service = TenantAwareDatabaseService(db_session)
-
-        # Get the latest job status from database
-        latest_job = db_service.get_job(job_id_str)
-        if not latest_job:
-            logger.error(
-                f'Job {job_id_str} not found in database for tenant {tenant_schema}'
-            )
-            return False, False
-
-        if latest_job.get('status') != JobStatus.QUEUED.value:
-            logger.info(
-                f'Job {job_id_str} status is {latest_job.get("status")}, not QUEUED for tenant {tenant_schema}'
-            )
-            return False, False
-
-        # Check if target is available
-        target_id = job.target_id
-        target_lock = await get_target_lock(target_id, tenant_schema)
-
-        if target_lock.locked():
-            logger.info(
-                f'Target {target_id} is locked, skipping job {job_id_str} for tenant {tenant_schema}'
-            )
-            return False, False
-
-        # Try to acquire target lock non-blocking
-        if target_lock.locked():
-            logger.info(
-                f'Could not acquire target lock for {target_id}, skipping job {job_id_str} for tenant {tenant_schema}'
-            )
-            return False, False
-
-        await target_lock.acquire()
-
-        try:
-            # Update job status to RUNNING
-            db_service.update_job_status(job_id_str, JobStatus.RUNNING.value)
-            logger.info(
-                f'Set job {job_id_str} to RUNNING status for tenant {tenant_schema}'
-            )
-            return True, True
-        except Exception as e:
-            logger.error(
-                f'Failed to update job {job_id_str} status: {e} for tenant {tenant_schema}'
-            )
-            target_lock.release()
-            return False, False
-
-
-# Helper function to create the API response callback
-def _create_api_response_callback(
-    job_id_str: str, running_token_total_ref: List[int], tenant_schema: str
-):
-    """Creates the callback function for handling API responses."""
-
-    def api_response_callback(request, response, error):
-        nonlocal running_token_total_ref  # Allow modification of the outer scope variable
-        # Create exchange object with full request and response details
-        exchange = {
-            'timestamp': datetime.now().isoformat(),
-            'request': {
-                'method': request.method,
-                'url': str(request.url),
-                'headers': dict(request.headers),
-            },
-        }
-
-        # Get request body and size
-        try:
-            # For httpx.Request objects
-            if hasattr(request, 'read'):
-                # Read the request body without consuming it
-                body_bytes = request.read()
-                if body_bytes:
-                    exchange['request']['body_size'] = len(body_bytes)
-                    try:
-                        exchange['request']['body'] = body_bytes.decode('utf-8')
-                    except UnicodeDecodeError:
-                        exchange['request']['body'] = '<binary data>'
-                else:
-                    exchange['request']['body_size'] = 0
-                    exchange['request']['body'] = ''
-            # For other request objects with content attribute
-            elif hasattr(request, 'content') and request.content:
-                exchange['request']['body_size'] = len(request.content)
-                try:
-                    exchange['request']['body'] = request.content.decode('utf-8')
-                except UnicodeDecodeError:
-                    exchange['request']['body'] = '<binary data>'
-            # For other request objects with _content attribute
-            elif hasattr(request, '_content') and request._content:
-                exchange['request']['body_size'] = len(request._content)
-                try:
-                    exchange['request']['body'] = request._content.decode('utf-8')
-                except UnicodeDecodeError:
-                    exchange['request']['body'] = '<binary data>'
-            else:
-                exchange['request']['body_size'] = 0
-                exchange['request']['body'] = ''
-        except Exception as e:
-            logger.error(f'Error getting request body: {str(e)}')
-            exchange['request']['body_size'] = -1
-            exchange['request']['body'] = f'<Error retrieving body: {str(e)}>'
-
-        if isinstance(response, httpx.Response):
-            exchange['response'] = {
-                'status_code': response.status_code,
-                'headers': dict(response.headers),
-            }
-
-            # Get response body and size
-            try:
-                # Try to get the response text directly
-                if hasattr(response, 'text'):
-                    exchange['response']['body'] = response.text
-                    exchange['response']['body_size'] = len(
-                        response.text.encode('utf-8')
-                    )
-                # Otherwise try to get the content and decode it
-                elif hasattr(response, 'content') and response.content:
-                    exchange['response']['body_size'] = len(response.content)
-                    try:
-                        exchange['response']['body'] = response.content.decode('utf-8')
-                    except UnicodeDecodeError:
-                        exchange['response']['body'] = '<binary data>'
-                else:
-                    exchange['response']['body_size'] = 0
-                    exchange['response']['body'] = ''
-            except Exception as e:
-                logger.error(f'Error getting response body: {str(e)}')
-                exchange['response']['body_size'] = -1
-                exchange['response']['body'] = f'<Error retrieving body: {str(e)}>'
-
-            try:
-                if hasattr(response, 'json'):
-                    response_data = response.json()
-                    if isinstance(response_data, dict):
-                        if 'usage' in response_data:
-                            usage = response_data['usage']
-                            total_tokens = 0
-
-                            # Handle regular input/output tokens
-                            if 'input_tokens' in usage:
-                                total_tokens += usage['input_tokens']
-                                exchange['input_tokens'] = usage['input_tokens']
-
-                            if 'output_tokens' in usage:
-                                total_tokens += usage['output_tokens']
-                                exchange['output_tokens'] = usage['output_tokens']
-
-                            # Handle cache creation tokens with 1.25x multiplier
-                            if 'cache_creation_input_tokens' in usage:
-                                cache_creation_tokens = int(
-                                    usage['cache_creation_input_tokens'] * 1.25
-                                )
-                                total_tokens += cache_creation_tokens
-                                exchange['cache_creation_tokens'] = (
-                                    cache_creation_tokens
-                                )
-
-                            # Handle cache read tokens with 0.1x multiplier
-                            if 'cache_read_input_tokens' in usage:
-                                cache_read_tokens = int(
-                                    usage['cache_read_input_tokens'] / 10
-                                )
-                                total_tokens += cache_read_tokens
-                                exchange['cache_read_tokens'] = cache_read_tokens
-
-                            # Update running token total using the reference
-                            current_total = running_token_total_ref[0]
-                            current_total += total_tokens
-                            running_token_total_ref[0] = (
-                                current_total  # Modify the list element
-                            )
-
-                            # Check if we've exceeded the token limit
-                            if current_total > TOKEN_LIMIT:
-                                # Add warning about token limit
-                                limit_message = f'Token usage limit of {TOKEN_LIMIT} exceeded. Current usage: {current_total}. Job will be interrupted.'
-                                exchange['token_limit_exceeded'] = True
-                                logger.warning(f'Job {job_id_str}: {limit_message}')
-                                add_job_log(
-                                    job_id_str, 'system', limit_message, tenant_schema
-                                )
-
-                                # Cancel the job by raising an exception
-                                # This will be caught in the outer try/except block
-                                task = asyncio.current_task()
-                                if task:
-                                    task.cancel()
-            except Exception as e:
-                logger.error(f'Error extracting token usage: {repr(e)}')
-
-        if error:
-            exchange['error'] = {
-                'type': error.__class__.__name__,
-                'message': str(error),
-            }
-
-        # Add to job logs
-        add_job_log(job_id_str, 'http_exchange', exchange, tenant_schema)
-
-    return api_response_callback
-
-
-# Helper function to create the tool callback
-def _create_tool_callback(job_id_str: str, tenant_schema: str):
-    """Creates the callback function for handling tool usage."""
-
-    def tool_callback(tool_result, tool_id):
-        tool_log = {
-            'tool_id': tool_id,
-            'output': tool_result.output if hasattr(tool_result, 'output') else None,
-            'error': tool_result.error if hasattr(tool_result, 'error') else None,
-            'has_image': hasattr(tool_result, 'base64_image')
-            and tool_result.base64_image is not None,
-        }
-
-        # Include the base64_image data if it exists
-        if (
-            hasattr(tool_result, 'base64_image')
-            and tool_result.base64_image is not None
-        ):
-            tool_log['base64_image'] = tool_result.base64_image
-
-        add_job_log(job_id_str, 'tool_use', tool_log, tenant_schema)
-
-    return tool_callback
-
-
-# Helper function to create the output callback
-def _create_output_callback(job_id_str: str, tenant_schema: str):
-    """Creates the callback function for handling message output."""
-
-    def output_callback(content_block):
-        add_job_log(job_id_str, 'message', content_block, tenant_schema)
-
-    return output_callback
 
 
 # Main job execution logic
@@ -531,8 +179,10 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
             running_token_total = running_token_total_ref[0]
 
             # Check if cancellation was due to token limit
-            if running_token_total > TOKEN_LIMIT:
-                error_message = f'Job was automatically terminated: exceeded token limit of {TOKEN_LIMIT} tokens (used {running_token_total} tokens)'
+            if (
+                running_token_total > 200000
+            ):  # TOKEN_LIMIT constant moved to job_callbacks.py
+                error_message = f'Job was automatically terminated: exceeded token limit of 200000 tokens (used {running_token_total} tokens)'
                 add_job_log(job_id_str, 'system', error_message, tenant_schema)
             else:
                 add_job_log(
@@ -547,7 +197,7 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
                     {
                         'status': JobStatus.ERROR,
                         'error': 'Job was automatically terminated: exceeded token limit'
-                        if running_token_total > TOKEN_LIMIT
+                        if running_token_total > 200000
                         else 'Job was interrupted by user',
                         'completed_at': datetime.now(),
                         'updated_at': datetime.now(),
@@ -586,11 +236,13 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
         running_token_total = running_token_total_ref[0]
 
         # Check if this was due to token limit
-        if running_token_total > TOKEN_LIMIT:
+        if (
+            running_token_total > 200000
+        ):  # TOKEN_LIMIT constant moved to job_callbacks.py
             add_job_log(
                 job_id_str,
                 'system',
-                f'Job execution was cancelled due to token limit ({running_token_total}/{TOKEN_LIMIT})',
+                f'Job execution was cancelled due to token limit ({running_token_total}/200000)',
                 tenant_schema,
             )
         else:
@@ -602,6 +254,8 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
         if not requeuing_due_to_conflict:
             try:
                 # Acquire target_locks_lock ONCE for the cleanup operations
+                from server.utils.job_locks import target_locks, target_locks_lock
+
                 async with target_locks_lock:  # Lock A acquired
                     if job.target_id in target_locks:
                         # Perform the cleanup actions directly here from clean_up_target_lock
@@ -700,6 +354,8 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
         if not requeuing_due_to_conflict:
             try:
                 # Acquire target_locks_lock ONCE for the cleanup operations
+                from server.utils.job_locks import target_locks, target_locks_lock
+
                 async with target_locks_lock:  # Lock A acquired
                     if job.target_id in target_locks:
                         # Perform the cleanup actions directly here from clean_up_target_lock
