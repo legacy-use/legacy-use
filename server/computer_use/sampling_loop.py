@@ -9,14 +9,11 @@ from uuid import UUID
 
 import httpx
 
-# Import async clients
+# Import API exception types for error handling
 from anthropic import (
     APIError,
     APIResponseValidationError,
     APIStatusError,
-    AsyncAnthropic,
-    AsyncAnthropicBedrock,
-    AsyncAnthropicVertex,
 )
 
 # Import base TextBlockParam for initial message handling
@@ -24,15 +21,11 @@ from anthropic import (
 from anthropic.types.beta import (
     BetaContentBlockParam,
     BetaMessageParam,
-    BetaTextBlockParam,
 )
 
-from server.computer_use.client import LegacyUseClient
-from server.computer_use.config import (
-    PROMPT_CACHING_BETA_FLAG,
-    APIProvider,
-)
+from server.computer_use.config import APIProvider
 from server.computer_use.logging import logger
+from server.computer_use.handlers import get_handler
 from server.computer_use.tools import (
     TOOL_GROUPS_BY_VERSION,
     ToolCollection,
@@ -41,19 +34,14 @@ from server.computer_use.tools import (
 )
 from server.computer_use.utils import (
     _beta_message_param_to_job_message_content,
-    _inject_prompt_caching,
     _job_message_to_beta_message_param,
     _load_system_prompt,
-    _make_api_tool_result,
-    _maybe_filter_to_n_most_recent_images,
-    _response_to_params,
 )
 
 # Import DatabaseService and serialization utils
 from server.database.service import DatabaseService
 
 # Import the centralized health check function
-from server.settings import settings
 from server.utils.docker_manager import check_target_container_health
 
 # Initialize db service - This might cause issues if DB is not ready globally.
@@ -112,11 +100,18 @@ async def sampling_loop(
     tool_group = TOOL_GROUPS_BY_VERSION[tool_version]
     tool_collection = ToolCollection(*(ToolCls() for ToolCls in tool_group.tools))
 
-    # Use the original variable name 'system'
-    system = BetaTextBlockParam(
-        type='text',
-        text=_load_system_prompt(system_prompt_suffix),
+    # Initialize handler for the provider
+    handler = get_handler(
+        provider=provider,
+        model=model,
+        tool_beta_flag=tool_group.beta_flag,
+        token_efficient_tools_beta=token_efficient_tools_beta,
+        only_n_most_recent_images=only_n_most_recent_images,
     )
+
+    # Prepare system prompt via handler
+    system_prompt = _load_system_prompt(system_prompt_suffix)
+    system = handler.prepare_system(system_prompt)
 
     # Keep track of all exchanges for logging
     exchanges = []
@@ -158,58 +153,17 @@ async def sampling_loop(
             raise ValueError(f'Failed to load message history for job {job_id}') from e
         # --- Fetch current history from DB --- END
 
-        enable_prompt_caching = False
-        betas = [tool_group.beta_flag] if tool_group.beta_flag else []
-        if token_efficient_tools_beta:
-            betas.append('token-efficient-tools-2025-02-19')
-        image_truncation_threshold = 1
-        # --- Client Initialization (remains the same) ---
-        # TODO: Does this need to be done for every iteration?
-        # reload pydantic variables
-        settings.__init__()
-        if provider == APIProvider.ANTHROPIC:
-            # Use AsyncAnthropic instead of Anthropic
-            client = AsyncAnthropic(api_key=api_key, max_retries=4)
-            enable_prompt_caching = True
-        elif provider == APIProvider.VERTEX:
-            # Use AsyncAnthropicVertex instead of AnthropicVertex
-            client = AsyncAnthropicVertex()
-        elif provider == APIProvider.BEDROCK:
-            # AWS credentials should be set in environment variables
-            # by the server.py initialization
-            aws_region = settings.AWS_REGION
-            aws_access_key = settings.AWS_ACCESS_KEY_ID
-            aws_secret_key = settings.AWS_SECRET_ACCESS_KEY
-            aws_session_token = settings.AWS_SESSION_TOKEN
+        # --- Initialize client and prepare messages via handler ---
 
-            # Initialize with available credentials
-            bedrock_kwargs = {'aws_region': aws_region}
-            if aws_access_key and aws_secret_key:
-                bedrock_kwargs['aws_access_key'] = aws_access_key
-                bedrock_kwargs['aws_secret_key'] = aws_secret_key
-                if aws_session_token:
-                    bedrock_kwargs['aws_session_token'] = aws_session_token
+        client = await handler.initialize_client(api_key=api_key)
 
-            # Use AsyncAnthropicBedrock instead of AnthropicBedrock
-            client = AsyncAnthropicBedrock(**bedrock_kwargs)
-            logger.info(f'Using AsyncAnthropicBedrock client with region: {aws_region}')
-        elif provider == APIProvider.LEGACYUSE_PROXY:
-            client = LegacyUseClient(api_key=settings.LEGACYUSE_PROXY_API_KEY)
-        if enable_prompt_caching:
-            betas.append(PROMPT_CACHING_BETA_FLAG)
-            _inject_prompt_caching(
-                current_messages_for_api
-            )  # Inject into current history
-            # only_n_most_recent_images = 0
-            system['cache_control'] = {'type': 'ephemeral'}
-        # No need for else block or system_block variable
+        # Convert messages to provider format (handles caching and image filtering)
+        provider_messages = handler.convert_to_provider_messages(
+            current_messages_for_api
+        )
 
-        if only_n_most_recent_images:
-            _maybe_filter_to_n_most_recent_images(
-                current_messages_for_api,  # Filter current history
-                only_n_most_recent_images,
-                min_removal_threshold=image_truncation_threshold,
-            )
+        # Prepare tools in provider format
+        provider_tools = handler.prepare_tools(tool_collection)
 
         # Check for cancellation before API call
         try:
@@ -220,27 +174,25 @@ async def sampling_loop(
             raise
 
         try:
-            # Use original 'system' variable
-            raw_response = await client.beta.messages.with_raw_response.create(
-                max_tokens=max_tokens,
-                messages=current_messages_for_api,
+            # Make API call via handler
+            response, request, raw_response = await handler.call_api(
+                client=client,
+                messages=provider_messages,
+                system=system,
+                tools=provider_tools,
                 model=model,
-                system=[system],  # Pass original system dict
-                tools=tool_collection.to_params(),
-                betas=betas,
+                max_tokens=max_tokens,
                 temperature=0.0,
             )
 
             if api_response_callback:
-                api_response_callback(
-                    raw_response.http_response.request, raw_response.http_response, None
-                )
+                api_response_callback(request, raw_response, None)
 
             # Add exchange to the list
             exchanges.append(
                 {
-                    'request': raw_response.http_response.request,
-                    'response': raw_response.http_response,
+                    'request': request,
+                    'response': raw_response,
                 }
             )
 
@@ -277,8 +229,8 @@ async def sampling_loop(
             logger.info('Sampling loop cancelled after API call')
             raise
 
-        response = raw_response.parse()
-        response_params = _response_to_params(response)
+        # Convert response to Anthropic format
+        response_params, stop_reason = handler.convert_from_provider_response(response)
 
         # --- Save Assistant Message to DB --- START
         try:
@@ -310,9 +262,9 @@ async def sampling_loop(
         # --- Save Assistant Message to DB --- END
 
         # Check if the model ended its turn
-        is_completed = response.stop_reason == 'end_turn'
+        is_completed = stop_reason == 'end_turn'
         logger.info(
-            f'API response stop_reason: {response.stop_reason}, is_completed: {is_completed}'
+            f'API response stop_reason: {stop_reason}, is_completed: {is_completed}'
         )
 
         found_tool_use = False
@@ -368,7 +320,7 @@ async def sampling_loop(
 
                 # --- Save Tool Result Message to DB --- START
                 try:
-                    tool_result_block = _make_api_tool_result(
+                    tool_result_block = handler.make_tool_result(
                         result, content_block['id']
                     )
                     resulting_message = BetaMessageParam(

@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 from anthropic.types.beta import BetaToolUnionParam
 
@@ -13,6 +13,8 @@ logger = logging.getLogger('server')
 
 class ExtractionTool(BaseAnthropicTool):
     """Tool for returning extracted JSON data."""
+
+    name: Literal['extraction'] = 'extraction'
 
     def to_params(self) -> BetaToolUnionParam:
         return {

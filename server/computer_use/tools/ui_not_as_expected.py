@@ -1,6 +1,7 @@
 """UI not as expected tool for reporting when the UI doesn't match expectations."""
 
 import logging
+from typing import Literal
 
 from anthropic.types.beta import BetaToolUnionParam
 
@@ -11,6 +12,8 @@ logger = logging.getLogger('server')
 
 class UINotAsExpectedTool(BaseAnthropicTool):
     """Tool for reporting when the UI doesn't match expectations."""
+
+    name: Literal['ui_not_as_expected'] = 'ui_not_as_expected'
 
     def to_params(self) -> BetaToolUnionParam:
         return {
