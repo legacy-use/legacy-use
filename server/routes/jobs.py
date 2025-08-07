@@ -640,31 +640,6 @@ async def resolve_job(
     return updated_job
 
 
-@job_router.post('/jobs/queue/resync', include_in_schema=False)
-async def resync_queue(
-    db_tenant: Session = Depends(get_tenant_db),
-    tenant: dict = Depends(get_tenant_from_request),
-):
-    """Queue resync is not needed with Hatchet-based queuing.
-
-    This endpoint is kept for backward compatibility but performs no action
-    since Hatchet manages the queue state internally.
-    """
-
-    # Count jobs with QUEUED status in the database
-    all_jobs = db_tenant.list_jobs(limit=1000)
-    queued_count = sum(
-        1 for job in all_jobs if job.get('status') == JobStatus.QUEUED.value
-    )
-
-    return {
-        'message': f'Queue resync not needed with Hatchet for tenant {tenant["schema"]}',
-        'queued_in_db': queued_count,
-        'queue_type': 'hatchet',
-        'note': 'Hatchet manages queue state internally, no manual resync required',
-    }
-
-
 @job_router.post(
     '/targets/{target_id}/jobs/{job_id}/resume/',
     response_model=Job,

@@ -15,9 +15,8 @@ import asyncio
 import json
 import logging
 import traceback
-from collections import deque
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, List
 
 import httpx
 
@@ -40,12 +39,6 @@ TOKEN_LIMIT = 200000  # Maximum number of tokens (input + output) allowed per jo
 # Dictionary to store running job tasks
 running_job_tasks = {}
 
-# Tenant-specific job queues and locks
-tenant_job_queues: Dict[str, deque] = {}
-tenant_queue_locks: Dict[str, asyncio.Lock] = {}
-tenant_processor_tasks: Dict[str, asyncio.Task] = {}
-tenant_resources_lock = asyncio.Lock()
-
 # Track targets that already have sessions being launched
 targets_with_pending_sessions = set()
 targets_with_pending_sessions_lock = asyncio.Lock()
@@ -53,150 +46,6 @@ targets_with_pending_sessions_lock = asyncio.Lock()
 # Add target-specific locks for job status transitions
 target_locks = {}
 target_locks_lock = asyncio.Lock()
-
-
-async def initialize_job_queue():
-    """Initialize job queues for all active tenants."""
-    logger.info('Initializing job queues for all active tenants...')
-
-    from server.utils.tenant_utils import get_active_tenants
-
-    active_tenants = get_active_tenants()
-
-    if not active_tenants:
-        logger.warning('No active tenants found during job queue initialization')
-        return
-
-    for tenant in active_tenants:
-        tenant_schema = tenant['schema']
-        logger.info(
-            f'Initializing job queue for tenant: {tenant["name"]} (schema: {tenant_schema})'
-        )
-
-        try:
-            await initialize_job_queue_for_tenant(tenant_schema)
-        except Exception as e:
-            logger.error(
-                f'Failed to initialize job queue for tenant {tenant["name"]}: {e}'
-            )
-            continue
-
-    logger.info(f'Completed job queue initialization for {len(active_tenants)} tenants')
-
-
-async def initialize_job_queue_for_tenant(tenant_schema: str):
-    """Initialize job queue for a specific tenant."""
-    from server.database.multi_tenancy import with_db
-
-    with with_db(tenant_schema) as db_session:
-        db_service = TenantAwareDatabaseService(db_session)
-
-        # Get all jobs for this tenant and filter for QUEUED status
-        all_jobs = db_service.list_jobs(limit=1000, offset=0)
-        queued_jobs = [
-            job for job in all_jobs if job.get('status') == JobStatus.QUEUED.value
-        ]
-
-        if not queued_jobs:
-            logger.info(f'No queued jobs found for tenant schema: {tenant_schema}')
-            return
-
-        # Initialize tenant-specific queue
-        async with tenant_resources_lock:
-            tenant_job_queues[tenant_schema] = deque()
-            tenant_queue_locks[tenant_schema] = asyncio.Lock()
-
-        # Load queued jobs into tenant-specific queue
-        async with tenant_queue_locks[tenant_schema]:
-            for job_dict in queued_jobs:
-                # Double-check job status
-                latest_job = db_service.get_job(job_dict['id'])
-                if latest_job and latest_job.get('status') == JobStatus.QUEUED.value:
-                    job_obj = Job(**job_dict)
-                    logger.info(
-                        f'Loading queued job {job_obj.id} for tenant {tenant_schema}'
-                    )
-                    tenant_job_queues[tenant_schema].append(job_obj)
-
-            logger.info(
-                f'Loaded {len(tenant_job_queues[tenant_schema])} jobs for tenant {tenant_schema}'
-            )
-
-            # Start processor for this tenant if we have jobs
-            if tenant_job_queues[tenant_schema]:
-                await start_job_processor_for_tenant(tenant_schema)
-
-
-async def start_job_processor_for_tenant(tenant_schema: str):
-    """Start job processor for a specific tenant."""
-    async with tenant_resources_lock:
-        if (
-            tenant_schema not in tenant_processor_tasks
-            or tenant_processor_tasks[tenant_schema] is None
-            or tenant_processor_tasks[tenant_schema].done()
-        ):
-            logger.info(f'Starting job processor for tenant: {tenant_schema}')
-            tenant_processor_tasks[tenant_schema] = asyncio.create_task(
-                process_job_queue_for_tenant(tenant_schema)
-            )
-
-
-async def process_job_queue_for_tenant(tenant_schema: str):
-    """Process jobs for a specific tenant."""
-    logger.info(f'Starting job queue processor for tenant: {tenant_schema}')
-
-    while True:
-        try:
-            async with tenant_queue_locks[tenant_schema]:
-                if not tenant_job_queues[tenant_schema]:
-                    break
-
-                # Ensure the queue is a deque before calling popleft
-                queue = tenant_job_queues[tenant_schema]
-                if not isinstance(queue, deque):
-                    logger.warning(
-                        f'Queue for tenant {tenant_schema} is not a deque, converting...'
-                    )
-                    tenant_job_queues[tenant_schema] = deque(queue)
-                    queue = tenant_job_queues[tenant_schema]
-
-                job = queue.popleft()
-
-            # Process the job using tenant-aware database service
-            await process_job_with_tenant(job, tenant_schema)
-
-        except Exception as e:
-            logger.error(f'Error processing job for tenant {tenant_schema}: {e}')
-            await asyncio.sleep(1)
-
-    logger.info(f'Job queue processor finished for tenant: {tenant_schema}')
-
-
-async def process_job_with_tenant(job: Job, tenant_schema: str):
-    """Process a job using tenant-aware database service."""
-
-    # Execute the job using the existing execute_api_in_background function
-    # but with tenant-aware database service
-    task = asyncio.create_task(
-        execute_api_in_background_with_tenant(job, tenant_schema)
-    )
-    running_job_tasks[str(job.id)] = task
-
-    # Wait for the job to complete
-    try:
-        await task
-    except Exception as e:
-        logger.error(
-            f'Error executing job {job.id} for tenant {tenant_schema}: {str(e)}'
-        )
-
-    # Remove the job from running_job_tasks
-    if str(job.id) in running_job_tasks:
-        del running_job_tasks[str(job.id)]
-
-
-# Export the function to be used in the main FastAPI app startup
-job_queue_initializer = initialize_job_queue
 
 
 def trim_base64_images(data):
