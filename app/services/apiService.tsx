@@ -25,6 +25,7 @@ import {
   type HttpExchangeLog,
   hardDeleteSessionSessionsSessionIdHardDelete,
   hardDeleteTargetTargetsTargetIdHardDelete,
+  type ImportApiDefinitionBody,
   type ImportApiDefinitionRequest,
   importApiDefinitionApiDefinitionsImportPost,
   interruptJobTargetsTargetIdJobsJobIdInterruptPost,
@@ -50,19 +51,18 @@ import {
   type TargetUpdate,
   type UpdateProviderRequest,
   unarchiveApiDefinitionApiDefinitionsApiNameUnarchivePost,
+  unarchiveTargetTargetsTargetIdUnarchivePost,
   updateApiDefinitionApiDefinitionsApiNamePut,
   updateProviderSettingsSettingsProvidersPost,
   updateTargetTargetsTargetIdPut,
+  getSessionContainerLogsSessionsSessionIdContainerLogsGet,
 } from '../gen/endpoints';
 import { forwardDistinctId } from './telemetryService';
-
-// Always use the API_URL from environment variables
-// This should be set to the full URL of your API server (e.g., http://localhost:8088)
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8088';
+import { API_BASE_URL } from '../utils/apiConstants';
 
 // Create an axios instance with default config
 export const apiClient = axios.create({
-  baseURL: API_URL,
+  baseURL: API_BASE_URL,
 });
 
 // Log every request with telemetry
@@ -103,14 +103,14 @@ apiClient.interceptors.request.use(
 export const testApiKey = async (apiKey: string): Promise<APIDefinition[]> => {
   // Create a temporary axios instance with the API key
   const tempClient = axios.create({
-    baseURL: API_URL,
+    baseURL: API_BASE_URL,
     headers: {
       'X-API-Key': apiKey,
     },
   });
 
   // Try to access an endpoint that requires authentication
-  const response = await tempClient.get(`${API_URL}/api/definitions`);
+  const response = await tempClient.get(`${API_BASE_URL}/definitions`);
   return response.data;
 };
 
@@ -159,8 +159,8 @@ export const exportApiDefinition = async (apiName: string) => {
   return exportApiDefinitionApiDefinitionsApiNameExportGet(apiName);
 };
 
-export const importApiDefinition = async (apiDefinition: ImportApiDefinitionRequest) => {
-  return importApiDefinitionApiDefinitionsImportPost(apiDefinition);
+export const importApiDefinition = async (apiDefinition: ImportApiDefinitionBody) => {
+  return importApiDefinitionApiDefinitionsImportPost({ api_definition: apiDefinition });
 };
 
 export const getApiDefinitionDetails = async (apiName: string) => {
@@ -195,9 +195,9 @@ export const getApiDefinitionVersion = async (apiName: string, versionId: string
 
 export const updateApiDefinition = async (
   apiName: string,
-  apiDefinition: ImportApiDefinitionRequest,
+  apiDefinition: ImportApiDefinitionBody,
 ) => {
-  return updateApiDefinitionApiDefinitionsApiNamePut(apiName, apiDefinition);
+  return updateApiDefinitionApiDefinitionsApiNamePut(apiName, { api_definition: apiDefinition });
 };
 
 export const archiveApiDefinition = async (apiName: string) => {
@@ -255,8 +255,10 @@ export const getAllJobs = async (
 export const getJob = async (targetId: string, jobId: string): Promise<Job> => {
   const job = await getJobTargetsTargetIdJobsJobIdGet(targetId, jobId);
   // add Z suffix to the date so JS can parse it as UTC
-  job.created_at = `${job.created_at}Z`;
-  if (job.completed_at) {
+  if (!job.created_at?.includes('Z')) {
+    job.created_at = `${job.created_at}Z`;
+  }
+  if (job.completed_at && !job.completed_at?.includes('Z')) {
     job.completed_at = `${job.completed_at}Z`;
   }
   return job;
@@ -319,6 +321,10 @@ export const deleteTarget = async (targetId: string, hardDelete = false) => {
   }
 };
 
+export const unarchiveTarget = async (targetId: string) => {
+  return unarchiveTargetTargetsTargetIdUnarchivePost(targetId);
+};
+
 // Resolve a job (set to success with custom result)
 export const resolveJob = async (
   targetId: string,
@@ -355,4 +361,9 @@ export const analyzeVideo = async (videoFile: Blob) => {
 
 export const getRecordingStatus = async (sessionId: string) => {
   return getSessionRecordingStatusSessionsSessionIdRecordingStatusGet(sessionId);
+};
+
+// Container logs
+export const getSessionContainerLogs = async (sessionId: string, lines = 1000) => {
+  return getSessionContainerLogsSessionsSessionIdContainerLogsGet(sessionId, { lines });
 };

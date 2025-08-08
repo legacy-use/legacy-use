@@ -13,6 +13,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 # Import settings and Base from our models
 from server.settings import settings
 from server.database.models import Base
+from sqlalchemy import MetaData
 
 
 # this is the Alembic Config object, which provides
@@ -75,8 +76,27 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
+    translated = MetaData()
+
+    def translate_schema(table, to_schema, constraint, referred_schema):
+        # pylint: disable=unused-argument
+        return to_schema
+
+    for table in Base.metadata.tables.values():
+        table.tometadata(
+            translated,
+            schema='tenant_default' if table.schema == 'tenant' else table.schema,
+            referred_schema_fn=translate_schema,
+        )
+
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=translated,
+            compare_type=True,
+            transaction_per_migration=True,
+            include_schemas=True,
+        )
 
         with context.begin_transaction():
             context.run_migrations()

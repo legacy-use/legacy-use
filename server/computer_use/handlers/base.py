@@ -15,6 +15,7 @@ from anthropic.types.beta import (
 )
 
 from server.computer_use.tools import ToolCollection, ToolResult
+from server.settings_tenant import get_tenant_setting as _get_tenant_setting
 
 
 @runtime_checkable
@@ -159,6 +160,7 @@ class BaseProviderHandler(ABC):
         token_efficient_tools_beta: bool = False,
         only_n_most_recent_images: Optional[int] = None,
         enable_prompt_caching: bool = False,
+        tenant_schema: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -173,6 +175,7 @@ class BaseProviderHandler(ABC):
         self.token_efficient_tools_beta = token_efficient_tools_beta
         self.only_n_most_recent_images = only_n_most_recent_images
         self.enable_prompt_caching = enable_prompt_caching
+        self.tenant_schema = tenant_schema
         self.extra_params = kwargs
 
     def get_betas(self) -> list[str]:
@@ -185,3 +188,9 @@ class BaseProviderHandler(ABC):
 
             betas.append(PROMPT_CACHING_BETA_FLAG)
         return betas
+
+    def tenant_setting(self, key: str) -> Optional[str]:
+        """Convenience accessor for tenant-specific settings."""
+        if not self.tenant_schema:
+            return None
+        return _get_tenant_setting(self.tenant_schema, key)

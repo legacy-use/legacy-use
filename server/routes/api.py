@@ -6,11 +6,11 @@ import logging
 import traceback
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
 from server.core import APIGatewayCore
-from server.database import db
+from server.utils.db_dependencies import get_tenant_db
 from server.models.base import APIDefinition, Parameter
 from server.settings import settings
 from server.utils.telemetry import (
@@ -22,9 +22,6 @@ from server.utils.telemetry import (
 # Set up logging
 logger = logging.getLogger(__name__)
 
-# Initialize the core API Gateway
-core = APIGatewayCore()
-
 # Create router
 api_router = APIRouter(prefix='/api')  # Removed the tags=["API"] to prevent duplication
 
@@ -32,43 +29,55 @@ api_router = APIRouter(prefix='/api')  # Removed the tags=["API"] to prevent dup
 @api_router.get(
     '/definitions', response_model=List[APIDefinition], tags=['API Definitions']
 )
-async def get_api_definitions(include_archived: bool = False):
+async def get_api_definitions(
+    include_archived: bool = False, db_tenant=Depends(get_tenant_db)
+):
     """Get all available API definitions."""
     # Get API definitions from database
 
     # Get all API definitions, including archived if requested
-    api_definitions = await db.get_api_definitions(include_archived)
+    api_definitions = await db_tenant.get_api_definitions(include_archived)
 
     # Convert to API definition objects
     return [
         APIDefinition(
             name=api_def.name,
             description=api_def.description,
-            parameters=await get_api_parameters(api_def),
-            response_example=await get_api_response_example(api_def),
+            parameters=await get_api_parameters(api_def, db_tenant),
+            response_example=await get_api_response_example(api_def, db_tenant),
             is_archived=api_def.is_archived,
         )
         for api_def in api_definitions
     ]
 
 
-async def get_api_parameters(api_def):
+async def get_api_parameters(api_def, db_tenant):
     """Get parameters for an API definition."""
-    version = await db.get_active_api_definition_version(api_def.id)
+    version = await db_tenant.get_active_api_definition_version(api_def.id)
     return version.parameters if version else []
 
 
-async def get_api_response_example(api_def):
+async def get_api_response_example(api_def, db_tenant):
     """Get response example for an API definition."""
-    version = await db.get_active_api_definition_version(api_def.id)
+    version = await db_tenant.get_active_api_definition_version(api_def.id)
     return version.response_example if version else {}
 
 
 @api_router.get(
     '/definitions/{api_name}', response_model=APIDefinition, tags=['API Definitions']
 )
-async def get_api_definition(api_name: str):
+async def get_api_definition(
+    api_name: str, request: Request, db_tenant=Depends(get_tenant_db)
+):
     """Get a specific API definition by name."""
+    # Get tenant schema for APIGatewayCore
+    from server.utils.tenant_utils import get_tenant_from_request
+
+    tenant = get_tenant_from_request(request)
+
+    # Initialize the core API Gateway with tenant-aware database
+    core = APIGatewayCore(tenant_schema=tenant['schema'], db_tenant=db_tenant)
+
     # Load API definitions fresh from the database
     api_definitions = await core.load_api_definitions()
 
@@ -91,11 +100,13 @@ async def get_api_definition(api_name: str):
     response_model=Dict[str, Dict[str, Any]],
     tags=['API Definitions'],
 )
-async def export_api_definition(api_name: str):
+async def export_api_definition(
+    api_name: str, request: Request, db_tenant=Depends(get_tenant_db)
+):
     """Get a specific API definition in its raw format for export/backup purposes."""
 
     # First, check if the API exists and if it's archived
-    api_definition_db = await db.get_api_definition_by_name(api_name)
+    api_definition_db = await db_tenant.get_api_definition_by_name(api_name)
     if not api_definition_db:
         raise HTTPException(
             status_code=404, detail=f"API definition '{api_name}' not found"
@@ -104,7 +115,9 @@ async def export_api_definition(api_name: str):
     # If the API is archived, get it directly from the database
     if api_definition_db.is_archived:
         # Get the latest version of the API definition
-        version = await db.get_latest_api_definition_version(api_definition_db.id)
+        version = await db_tenant.get_latest_api_definition_version(
+            api_definition_db.id
+        )
         if not version:
             raise HTTPException(
                 status_code=404,
@@ -124,6 +137,12 @@ async def export_api_definition(api_name: str):
         }
 
     # For non-archived APIs, load fresh from the database
+    # Get tenant schema for APIGatewayCore
+    from server.utils.tenant_utils import get_tenant_from_request
+
+    tenant = get_tenant_from_request(request)
+
+    core = APIGatewayCore(tenant_schema=tenant['schema'], db_tenant=db_tenant)
     api_definitions = await core.load_api_definitions()
 
     if api_name not in api_definitions:
@@ -150,18 +169,18 @@ async def export_api_definition(api_name: str):
     tags=['API Definitions'],
     include_in_schema=not settings.HIDE_INTERNAL_API_ENDPOINTS_IN_DOC,
 )
-async def get_api_definition_versions(api_name: str):
+async def get_api_definition_versions(api_name: str, db_tenant=Depends(get_tenant_db)):
     """Get all versions of a specific API definition."""
 
     # Get the API definition
-    api_definition = await db.get_api_definition_by_name(api_name)
+    api_definition = await db_tenant.get_api_definition_by_name(api_name)
     if not api_definition:
         raise HTTPException(
             status_code=404, detail=f"API definition '{api_name}' not found"
         )
 
     # Get all versions of the API definition
-    versions = await db.get_api_definition_versions(
+    versions = await db_tenant.get_api_definition_versions(
         api_definition.id, include_inactive=True
     )
 
@@ -200,18 +219,20 @@ async def get_api_definition_versions(api_name: str):
     tags=['API Definitions'],
     include_in_schema=not settings.HIDE_INTERNAL_API_ENDPOINTS_IN_DOC,
 )
-async def get_api_definition_version(api_name: str, version_id: str):
+async def get_api_definition_version(
+    api_name: str, version_id: str, db_tenant=Depends(get_tenant_db)
+):
     """Get a specific version of an API definition."""
 
     # Get the API definition
-    api_definition = await db.get_api_definition_by_name(api_name)
+    api_definition = await db_tenant.get_api_definition_by_name(api_name)
     if not api_definition:
         raise HTTPException(
             status_code=404, detail=f"API definition '{api_name}' not found"
         )
 
     # Get all versions of the API definition
-    versions = await db.get_api_definition_versions(
+    versions = await db_tenant.get_api_definition_versions(
         api_definition.id, include_inactive=True
     )
 
@@ -254,23 +275,23 @@ class ImportApiDefinitionRequest(BaseModel):
 @api_router.post(
     '/definitions/import', response_model=Dict[str, str], tags=['API Definitions']
 )
-async def import_api_definition(body: ImportApiDefinitionRequest, request: Request):
+async def import_api_definition(
+    body: ImportApiDefinitionRequest, request: Request, db_tenant=Depends(get_tenant_db)
+):
     """Import an API definition from a JSON file."""
     try:
         api_def = body.api_definition
 
         # Check if API with this name already exists
-        from server.database import db
-
-        existing_api = await db.get_api_definition_by_name(api_def.name)
+        existing_api = await db_tenant.get_api_definition_by_name(api_def.name)
         api_id = ''
         version_number = ''
 
         if existing_api:
             # Create a new version for the existing API
-            version_number = await db.get_next_version_number(existing_api.id)
+            version_number = await db_tenant.get_next_version_number(existing_api.id)
             api_id = existing_api.id
-            await db.create_api_definition_version(
+            await db_tenant.create_api_definition_version(
                 api_definition_id=existing_api.id,
                 version_number=str(
                     version_number
@@ -284,16 +305,16 @@ async def import_api_definition(body: ImportApiDefinitionRequest, request: Reque
             message = f"Updated existing API '{api_def.name}' with new version {version_number}"
         else:
             # Create a new API definition
-            new_api_dict = await db.create_api_definition(
+            new_api_dict = await db_tenant.create_api_definition(
                 name=api_def.name, description=api_def.description
             )
 
             api_id = new_api_dict['id']
             version_number = '1'  # Use string to ensure consistency
             # Create the first version
-            await db.create_api_definition_version(
-                api_definition_id=api_id,
-                version_number=version_number,
+            await db_tenant.create_api_definition_version(
+                api_definition_id=new_api_dict['id'],
+                version_number=version_number,  # Use string to ensure consistency
                 parameters=[param.model_dump() for param in api_def.parameters],
                 prompt=api_def.prompt,
                 prompt_cleanup=api_def.prompt_cleanup,
@@ -302,7 +323,13 @@ async def import_api_definition(body: ImportApiDefinitionRequest, request: Reque
             )
             message = f"Created new API '{api_def.name}'"
 
+        # Get tenant schema for APIGatewayCore
+        from server.utils.tenant_utils import get_tenant_from_request
+
+        tenant = get_tenant_from_request(request)
+
         # Reload API definitions in core
+        core = APIGatewayCore(tenant_schema=tenant['schema'], db_tenant=db_tenant)
         await core.load_api_definitions()
 
         capture_api_created(request, api_def, api_id, str(version_number))
@@ -319,16 +346,17 @@ async def import_api_definition(body: ImportApiDefinitionRequest, request: Reque
     '/definitions/{api_name}', response_model=Dict[str, str], tags=['API Definitions']
 )
 async def update_api_definition(
-    api_name: str, body: ImportApiDefinitionRequest, request: Request
+    api_name: str,
+    body: ImportApiDefinitionRequest,
+    request: Request,
+    db_tenant=Depends(get_tenant_db),
 ):
     """Update an API definition."""
     try:
         api_def = body.api_definition
 
         # Check if API with this name exists
-        from server.database import db
-
-        existing_api = await db.get_api_definition_by_name(api_name)
+        existing_api = await db_tenant.get_api_definition_by_name(api_name)
 
         if not existing_api:
             raise HTTPException(
@@ -338,7 +366,7 @@ async def update_api_definition(
         # Update the API definition name and description if changed
         if api_def.name != api_name:
             # Check if the new name already exists
-            new_name_api = await db.get_api_definition_by_name(api_def.name)
+            new_name_api = await db_tenant.get_api_definition_by_name(api_def.name)
             if new_name_api and new_name_api.id != existing_api.id:
                 raise HTTPException(
                     status_code=400,
@@ -346,17 +374,17 @@ async def update_api_definition(
                 )
 
             # Update the name
-            await db.update_api_definition(existing_api.id, name=api_def.name)
+            await db_tenant.update_api_definition(existing_api.id, name=api_def.name)
 
         # Update the description if changed
         if api_def.description != existing_api.description:
-            await db.update_api_definition(
+            await db_tenant.update_api_definition(
                 existing_api.id, description=api_def.description
             )
 
         # Create a new version with the updated fields
-        version_number = await db.get_next_version_number(existing_api.id)
-        await db.create_api_definition_version(
+        version_number = await db_tenant.get_next_version_number(existing_api.id)
+        await db_tenant.create_api_definition_version(
             api_definition_id=existing_api.id,
             version_number=str(
                 version_number
@@ -368,7 +396,13 @@ async def update_api_definition(
             is_active=True,  # Make this the active version
         )
 
+        # Get tenant schema for APIGatewayCore
+        from server.utils.tenant_utils import get_tenant_from_request
+
+        tenant = get_tenant_from_request(request)
+
         # Reload API definitions in core
+        core = APIGatewayCore(tenant_schema=tenant['schema'], db_tenant=db_tenant)
         await core.load_api_definitions()
 
         capture_api_updated(request, api_def, existing_api.id, str(version_number))
@@ -390,22 +424,28 @@ async def update_api_definition(
 @api_router.delete(
     '/definitions/{api_name}', response_model=Dict[str, str], tags=['API Definitions']
 )
-async def archive_api_definition(api_name: str, request: Request):
+async def archive_api_definition(
+    api_name: str, request: Request, db_tenant=Depends(get_tenant_db)
+):
     """Archive an API definition (soft delete)."""
     try:
         # Get the API definition
-        from server.database import db
-
-        api_definition = await db.get_api_definition_by_name(api_name)
+        api_definition = await db_tenant.get_api_definition_by_name(api_name)
         if not api_definition:
             raise HTTPException(
                 status_code=404, detail=f"API definition '{api_name}' not found"
             )
 
         # Archive the API definition
-        await db.archive_api_definition(api_definition.id)
+        await db_tenant.archive_api_definition(api_definition.id)
+
+        # Get tenant schema for APIGatewayCore
+        from server.utils.tenant_utils import get_tenant_from_request
+
+        tenant = get_tenant_from_request(request)
 
         # Reload API definitions in core
+        core = APIGatewayCore(tenant_schema=tenant['schema'], db_tenant=db_tenant)
         await core.load_api_definitions()
 
         capture_api_deleted(request, api_definition.id, api_name)
@@ -429,22 +469,28 @@ async def archive_api_definition(api_name: str, request: Request):
     response_model=Dict[str, str],
     tags=['API Definitions'],
 )
-async def unarchive_api_definition(api_name: str):
+async def unarchive_api_definition(
+    api_name: str, request: Request, db_tenant=Depends(get_tenant_db)
+):
     """Unarchive an API definition."""
     try:
         # Get the API definition by name
-        from server.database import db
-
-        api_definition = await db.get_api_definition_by_name(api_name)
+        api_definition = await db_tenant.get_api_definition_by_name(api_name)
         if not api_definition:
             raise HTTPException(
                 status_code=404, detail=f"API definition '{api_name}' not found"
             )
 
         # Unarchive the API definition
-        await db.update_api_definition(api_definition.id, is_archived=False)
+        await db_tenant.update_api_definition(api_definition.id, is_archived=False)
+
+        # Get tenant schema for APIGatewayCore
+        from server.utils.tenant_utils import get_tenant_from_request
+
+        tenant = get_tenant_from_request(request)
 
         # Reload API definitions in core
+        core = APIGatewayCore(tenant_schema=tenant['schema'], db_tenant=db_tenant)
         await core.load_api_definitions()
 
         return {
@@ -463,11 +509,11 @@ async def unarchive_api_definition(api_name: str):
     response_model=Dict[str, Any],
     tags=['API Definitions'],
 )
-async def get_api_definition_metadata(api_name: str):
+async def get_api_definition_metadata(api_name: str, db_tenant=Depends(get_tenant_db)):
     """Get metadata for a specific API definition, including archived status."""
 
     # Get the API definition
-    api_definition = await db.get_api_definition_by_name(api_name)
+    api_definition = await db_tenant.get_api_definition_by_name(api_name)
     if not api_definition:
         raise HTTPException(
             status_code=404, detail=f"API definition '{api_name}' not found"

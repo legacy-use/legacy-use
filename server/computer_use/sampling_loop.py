@@ -44,16 +44,12 @@ from server.database.service import DatabaseService
 # Import the centralized health check function
 from server.utils.docker_manager import check_target_container_health
 
-# Initialize db service - This might cause issues if DB is not ready globally.
-# Consider passing db instance instead.
-db = DatabaseService()
-
 
 async def sampling_loop(
     *,
     # Add job_id and db service parameters
     job_id: UUID,
-    db: DatabaseService,  # Pass DB service instance
+    db_tenant: DatabaseService,  # Pass DB service instance
     model: str,
     provider: APIProvider,
     system_prompt_suffix: str,
@@ -69,6 +65,7 @@ async def sampling_loop(
     api_key: str = '',
     only_n_most_recent_images: Optional[int] = None,
     session_id: Optional[str] = None,
+    tenant_schema: str,
     # Remove job_id from here as it's now a primary parameter
     # job_id: Optional[str] = None,
 ) -> tuple[Any, list[dict[str, Any]]]:  # Return format remains the same
@@ -98,7 +95,13 @@ async def sampling_loop(
     """
 
     tool_group = TOOL_GROUPS_BY_VERSION[tool_version]
-    tool_collection = ToolCollection(*(ToolCls() for ToolCls in tool_group.tools))
+
+    # Create tools (no longer need database service)
+    tools = []
+    for ToolCls in tool_group.tools:
+        tools.append(ToolCls())
+
+    tool_collection = ToolCollection(*tools)
 
     # Initialize handler for the provider
     handler = get_handler(
@@ -107,6 +110,7 @@ async def sampling_loop(
         tool_beta_flag=tool_group.beta_flag,
         token_efficient_tools_beta=token_efficient_tools_beta,
         only_n_most_recent_images=only_n_most_recent_images,
+        tenant_schema=tenant_schema,
     )
 
     # Prepare system prompt via handler
@@ -120,12 +124,12 @@ async def sampling_loop(
     extractions = []
     is_completed = False
 
-    current_sequence = db.get_next_message_sequence(job_id)
+    current_sequence = db_tenant.get_next_message_sequence(job_id)
     initial_messages_to_add = messages  # Use the passed messages argument
 
     for init_message in initial_messages_to_add:
         serialized_content = _beta_message_param_to_job_message_content(init_message)
-        db.add_job_message(
+        db_tenant.add_job_message(
             job_id=job_id,
             sequence=current_sequence,
             role=init_message.get('role'),
@@ -138,7 +142,7 @@ async def sampling_loop(
     while True:
         # --- Fetch current history from DB --- START
         try:
-            db_messages = db.get_job_messages(job_id)
+            db_messages = db_tenant.get_job_messages(job_id)
             current_messages_for_api = [
                 _job_message_to_beta_message_param(msg) for msg in db_messages
             ]
@@ -240,7 +244,7 @@ async def sampling_loop(
             serialized_message = _beta_message_param_to_job_message_content(
                 resulting_message
             )
-            db.add_job_message(
+            db_tenant.add_job_message(
                 job_id=job_id,
                 sequence=next_sequence,
                 role=resulting_message[
@@ -280,17 +284,27 @@ async def sampling_loop(
                 )
                 if session_id:
                     try:
-                        session_details = db.get_session(UUID(session_id))
-                        if session_details and session_details.get('container_ip'):
-                            container_ip = session_details['container_ip']
-                            health_status = await check_target_container_health(
-                                container_ip
+                        # Validate session_id is a valid UUID
+                        if not session_id or not isinstance(session_id, str):
+                            health_check_reason = (
+                                f'Invalid session_id format: {session_id}'
                             )
-                            health_check_ok = health_status['healthy']
-                            health_check_reason = health_status['reason']
-                        else:
-                            health_check_reason = f'Could not retrieve container_ip for session {session_id}.'
                             logger.warning(f'Job {job_id}: {health_check_reason}')
+                        else:
+                            session_details = db_tenant.get_session(UUID(session_id))
+                            if session_details and session_details.get('container_ip'):
+                                container_ip = session_details['container_ip']
+                                health_status = await check_target_container_health(
+                                    container_ip
+                                )
+                                health_check_ok = health_status['healthy']
+                                health_check_reason = health_status['reason']
+                            else:
+                                health_check_reason = f'Could not retrieve container_ip for session {session_id}.'
+                                logger.warning(f'Job {job_id}: {health_check_reason}')
+                    except ValueError:
+                        health_check_reason = f'Invalid session_id format: {session_id}'
+                        logger.error(f'Job {job_id}: {health_check_reason}')
                     except Exception as e:
                         health_check_reason = f'Error retrieving session details for health check: {str(e)}'
                         logger.error(f'Job {job_id}: {health_check_reason}')
@@ -312,10 +326,25 @@ async def sampling_loop(
                     }, exchanges
                 # --- Target Health Check --- END
 
+                # Get session object for computer tools
+                session_obj = None
+                if session_id:
+                    try:
+                        # Validate session_id is a valid UUID
+                        if session_id and isinstance(session_id, str):
+                            session_obj = db_tenant.get_session(UUID(session_id))
+                        else:
+                            logger.warning(f'Invalid session_id format: {session_id}')
+                    except ValueError:
+                        logger.warning(f'Invalid session_id format: {session_id}')
+                    except Exception as e:
+                        logger.warning(f'Could not retrieve session {session_id}: {e}')
+
                 result = await tool_collection.run(
                     name=content_block['name'],
                     tool_input=cast(dict[str, Any], content_block['input']),
                     session_id=session_id,
+                    session=session_obj,
                 )
 
                 # --- Save Tool Result Message to DB --- START
@@ -329,7 +358,7 @@ async def sampling_loop(
                     serialized_message = _beta_message_param_to_job_message_content(
                         resulting_message
                     )
-                    db.add_job_message(
+                    db_tenant.add_job_message(
                         job_id=job_id,
                         sequence=next_sequence,
                         role=resulting_message[

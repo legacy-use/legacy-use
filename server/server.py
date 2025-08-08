@@ -5,7 +5,6 @@ FastAPI server implementation for the API Gateway.
 import asyncio
 import logging
 import os
-from datetime import datetime, timedelta
 
 import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request, status
@@ -15,7 +14,6 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from server.computer_use import APIProvider
-from server.database import db
 from server.routes import (
     api_router,
     teaching_mode_router,
@@ -26,11 +24,15 @@ from server.routes.diagnostics import diagnostics_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
 from server.utils.auth import get_api_key
+from server.utils.tenant_utils import get_tenant_from_request
 from server.utils.job_execution import job_queue_initializer
+from server.utils.log_pruning import scheduled_log_pruning
 from server.utils.session_monitor import start_session_monitor
 from server.utils.telemetry import posthog_middleware
+from server.utils.exceptions import TenantNotFoundError, TenantInactiveError
 
 from .settings import settings
+from server.settings_tenant import get_tenant_setting
 
 # Set up logging
 logging.basicConfig(
@@ -68,39 +70,43 @@ if not api_prefix.startswith('/'):
 api_prefix = api_prefix.rstrip('/')
 
 
-# Handle provider-specific environment variables
-if settings.API_PROVIDER == APIProvider.BEDROCK:
-    if not all(
-        [
-            settings.AWS_ACCESS_KEY_ID,
-            settings.AWS_SECRET_ACCESS_KEY,
-            settings.AWS_REGION,
-        ]
-    ):
-        logger.warning('Using Bedrock provider but AWS credentials are missing.')
-    else:
-        # Export AWS credentials to environment if using Bedrock
-        # Ensure these are set in environment for the AnthropicBedrock client
-        os.environ['AWS_ACCESS_KEY_ID'] = settings.AWS_ACCESS_KEY_ID
-        os.environ['AWS_SECRET_ACCESS_KEY'] = settings.AWS_SECRET_ACCESS_KEY
-        os.environ['AWS_REGION'] = settings.AWS_REGION
-        logger.info(
-            f'AWS credentials loaded for Bedrock provider (region: {settings.AWS_REGION})'
-        )
-elif settings.API_PROVIDER == APIProvider.VERTEX:
-    # Get Vertex-specific environment variables
+def setup_provider_environment(tenant_schema: str):
+    """Setup provider-specific environment variables for a tenant."""
+    if not tenant_schema:
+        raise ValueError('tenant_schema is required')
 
-    if not all([settings.VERTEX_REGION, settings.VERTEX_PROJECT_ID]):
-        logger.warning(
-            'Using Vertex provider but required environment variables are missing.'
-        )
-    else:
-        # Ensure these are set in environment for the AnthropicVertex client
-        os.environ['CLOUD_ML_REGION'] = settings.VERTEX_REGION
-        os.environ['ANTHROPIC_VERTEX_PROJECT_ID'] = settings.VERTEX_PROJECT_ID
-        logger.info(
-            f'Vertex credentials loaded (region: {settings.VERTEX_REGION}, project: {settings.VERTEX_PROJECT_ID})'
-        )
+    # Use tenant-specific settings
+    provider = get_tenant_setting(tenant_schema, 'API_PROVIDER')
+
+    if provider == APIProvider.BEDROCK:
+        aws_access_key = get_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID')
+        aws_secret_key = get_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY')
+        aws_region = get_tenant_setting(tenant_schema, 'AWS_REGION')
+
+        if not all([aws_access_key, aws_secret_key, aws_region]):
+            logger.warning('Using Bedrock provider but AWS credentials are missing.')
+        else:
+            os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key
+            os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_key
+            os.environ['AWS_REGION'] = aws_region
+            logger.info(
+                f'AWS credentials loaded for Bedrock provider (region: {aws_region})'
+            )
+
+    elif provider == APIProvider.VERTEX:
+        vertex_region = get_tenant_setting(tenant_schema, 'VERTEX_REGION')
+        vertex_project_id = get_tenant_setting(tenant_schema, 'VERTEX_PROJECT_ID')
+
+        if not all([vertex_region, vertex_project_id]):
+            logger.warning(
+                'Using Vertex provider but required environment variables are missing.'
+            )
+        else:
+            os.environ['CLOUD_ML_REGION'] = vertex_region
+            os.environ['ANTHROPIC_VERTEX_PROJECT_ID'] = vertex_project_id
+            logger.info(
+                f'Vertex credentials loaded (region: {vertex_region}, project: {vertex_project_id})'
+            )
 
 
 app = FastAPI(
@@ -108,6 +114,8 @@ app = FastAPI(
     description='API Gateway for AI-powered endpoints',
     version='1.0.0',
     redoc_url=f'{api_prefix}/redoc' if settings.SHOW_DOCS else None,
+    docs_url=f'{api_prefix}/docs' if settings.SHOW_DOCS else None,
+    openapi_url=f'{api_prefix}/openapi.json' if settings.SHOW_DOCS else None,
     # Disable automatic redirect from /path to /path/
     redirect_slashes=False,
 )
@@ -134,10 +142,9 @@ async def auth_middleware(request: Request, call_next):
     ]
 
     if settings.SHOW_DOCS:
-        whitelist_patterns.append(
-            r'^/redoc(/.*)?$'
-        )  # Matches /redoc and /redoc/anything
-        whitelist_patterns.append(r'^/openapi.json$')  # Needed for docs
+        whitelist_patterns.append(rf'^{api_prefix}/redoc(/.*)?$')
+        whitelist_patterns.append(rf'^{api_prefix}/docs(/.*)?$')
+        whitelist_patterns.append(rf'^{api_prefix}/openapi.json$')
 
     # Check if request path matches any whitelist pattern
     for pattern in whitelist_patterns:
@@ -146,7 +153,15 @@ async def auth_middleware(request: Request, call_next):
 
     try:
         api_key = await get_api_key(request)
-        if api_key == settings.API_KEY:
+
+        # Get tenant by host header
+        tenant = get_tenant_from_request(request)
+        tenant_schema = tenant['schema']
+
+        # Check if API key matches tenant-specific API key
+        tenant_api_key = get_tenant_setting(tenant_schema, 'API_KEY')
+
+        if api_key == tenant_api_key:
             return await call_next(request)
         else:
             return JSONResponse(
@@ -157,6 +172,11 @@ async def auth_middleware(request: Request, call_next):
         return JSONResponse(
             status_code=e.status_code,
             content={'detail': e.detail},
+        )
+    except (TenantNotFoundError, TenantInactiveError) as e:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={'detail': str(e)},
         )
 
 
@@ -209,13 +229,41 @@ app.openapi_components = {
     }
 }
 
+
+# Exception handlers for multi-tenancy
+@app.exception_handler(TenantNotFoundError)
+async def tenant_not_found_handler(request: Request, exc: TenantNotFoundError):
+    """Handle tenant not found errors."""
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content={
+            'detail': 'Tenant not found',
+            'error_type': 'tenant_not_found',
+            'message': str(exc),
+        },
+    )
+
+
+@app.exception_handler(TenantInactiveError)
+async def tenant_inactive_handler(request: Request, exc: TenantInactiveError):
+    """Handle inactive tenant errors."""
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content={
+            'detail': 'Tenant is inactive',
+            'error_type': 'tenant_inactive',
+            'message': str(exc),
+        },
+    )
+
+
 app.openapi_security = [{'ApiKeyAuth': []}]
 
 # Include API router
 app.include_router(api_router, prefix=api_prefix)
 
 # Include teaching mode router
-app.include_router(teaching_mode_router)
+app.include_router(teaching_mode_router, prefix=api_prefix)
 
 # Include core routers
 app.include_router(target_router, prefix=api_prefix)
@@ -247,31 +295,6 @@ async def root():
     return {'message': 'Welcome to the API Gateway'}
 
 
-# Scheduled task to prune old logs
-async def prune_old_logs():
-    """Prune logs older than 7 days."""
-    while True:
-        try:
-            # Sleep until next pruning time (once a day at midnight)
-            now = datetime.now()
-            next_run = (now + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-            sleep_seconds = (next_run - now).total_seconds()
-            logger.info(
-                f'Next log pruning scheduled in {sleep_seconds / 3600:.1f} hours'
-            )
-            await asyncio.sleep(sleep_seconds)
-
-            # Prune logs
-            days_to_keep = settings.LOG_RETENTION_DAYS
-            deleted_count = db.prune_old_logs(days=days_to_keep)
-            logger.info(f'Pruned {deleted_count} logs older than {days_to_keep} days')
-        except Exception as e:
-            logger.error(f'Error pruning logs: {str(e)}')
-            await asyncio.sleep(3600)  # Sleep for an hour and try again
-
-
 @app.on_event('startup')
 async def startup_event():
     """Start background tasks on server startup."""
@@ -296,7 +319,7 @@ For more information, please refer to the migration documentation.
         raise SystemExit(1)
 
     # Start background tasks
-    asyncio.create_task(prune_old_logs())
+    asyncio.create_task(scheduled_log_pruning())
     logger.info('Started background task for pruning old logs')
 
     # Start session monitor

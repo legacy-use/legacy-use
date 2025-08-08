@@ -535,6 +535,10 @@ export type UpdateSessionStateSessionsSessionIdStatePutParams = {
   state: string;
 };
 
+export type GetSessionContainerLogsSessionsSessionIdContainerLogsGetParams = {
+  lines?: number;
+};
+
 export type ListAllJobsJobsGetParams = {
   limit?: number;
   offset?: number;
@@ -751,6 +755,14 @@ export const hardDeleteTargetTargetsTargetIdHardDelete = (targetId: string) => {
 };
 
 /**
+ * Unarchive a target.
+ * @summary Unarchive Target
+ */
+export const unarchiveTargetTargetsTargetIdUnarchivePost = (targetId: string) => {
+  return customInstance<unknown>({ url: `/targets/${targetId}/unarchive`, method: 'POST' });
+};
+
+/**
  * List all active sessions.
  * @summary List Sessions
  */
@@ -895,6 +907,21 @@ export const getSessionRecordingStatusSessionsSessionIdRecordingStatusGet = (ses
 };
 
 /**
+ * Get Docker logs for a session's container.
+ * @summary Get Session Container Logs
+ */
+export const getSessionContainerLogsSessionsSessionIdContainerLogsGet = (
+  sessionId: string,
+  params?: GetSessionContainerLogsSessionsSessionIdContainerLogsGetParams,
+) => {
+  return customInstance<unknown>({
+    url: `/sessions/${sessionId}/container_logs`,
+    method: 'GET',
+    params,
+  });
+};
+
+/**
  * List all jobs across all targets with pagination and filtering options.
  * @summary List All Jobs
  */
@@ -940,7 +967,7 @@ export const getJobTargetsTargetIdJobsJobIdGet = (targetId: string, jobId: strin
 };
 
 /**
- * Get the current status of the job queue.
+ * Get the current status of the job queue for the current tenant.
  * @summary Get Queue Status
  */
 export const getQueueStatusJobsQueueStatusGet = () => {
@@ -1030,7 +1057,7 @@ export const resumeJobTargetsTargetIdJobsJobIdResumePost = (targetId: string, jo
 };
 
 /**
- * Get diagnostic information about the job queue and running jobs.
+ * Get diagnostic information about the job queue and running jobs for the current tenant.
 
 This is a temporary endpoint to help diagnose issues with the job processing system.
 It provides insights into why jobs might be stuck in the QUEUED state.
@@ -1041,7 +1068,7 @@ export const diagnoseJobQueueDiagnosticsQueueGet = () => {
 };
 
 /**
- * Manually start the job queue processor.
+ * Manually start the job queue processor for the current tenant.
 
 This endpoint can be used to manually start the job queue processor if it's
 not running or has stopped due to an exception.
@@ -1151,6 +1178,9 @@ export type DeleteTargetTargetsTargetIdDeleteResult = NonNullable<
 export type HardDeleteTargetTargetsTargetIdHardDeleteResult = NonNullable<
   Awaited<ReturnType<typeof hardDeleteTargetTargetsTargetIdHardDelete>>
 >;
+export type UnarchiveTargetTargetsTargetIdUnarchivePostResult = NonNullable<
+  Awaited<ReturnType<typeof unarchiveTargetTargetsTargetIdUnarchivePost>>
+>;
 export type ListSessionsSessionsGetResult = NonNullable<
   Awaited<ReturnType<typeof listSessionsSessionsGet>>
 >;
@@ -1186,6 +1216,9 @@ export type StopSessionRecordingSessionsSessionIdRecordingStopPostResult = NonNu
 >;
 export type GetSessionRecordingStatusSessionsSessionIdRecordingStatusGetResult = NonNullable<
   Awaited<ReturnType<typeof getSessionRecordingStatusSessionsSessionIdRecordingStatusGet>>
+>;
+export type GetSessionContainerLogsSessionsSessionIdContainerLogsGetResult = NonNullable<
+  Awaited<ReturnType<typeof getSessionContainerLogsSessionsSessionIdContainerLogsGet>>
 >;
 export type ListAllJobsJobsGetResult = NonNullable<Awaited<ReturnType<typeof listAllJobsJobsGet>>>;
 export type ListTargetJobsTargetsTargetIdJobsGetResult = NonNullable<

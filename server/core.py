@@ -15,31 +15,38 @@ from server.computer_use import (
     sampling_loop,
 )
 from server.computer_use.tools import ToolResult
-from server.database import db
 from server.models.base import (
     APIDefinitionRuntime,
     APIResponse,
     JobStatus,
 )
-from server.settings import settings
+from server.settings_tenant import get_tenant_setting
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 
 class APIGatewayCore:
-    def __init__(self):
-        self.provider = settings.API_PROVIDER
+    def __init__(self, tenant_schema: str, db_tenant=None):
+        # Store tenant schema for use in methods
+        self.tenant_schema = tenant_schema
 
-        self.api_key = settings.ANTHROPIC_API_KEY
+        # Use tenant settings
+        self.provider = get_tenant_setting(tenant_schema, 'API_PROVIDER')
+        self.api_key = get_tenant_setting(tenant_schema, 'ANTHROPIC_API_KEY')
+
         # Set the model based on the provider
         self.model = get_default_model_name(self.provider)
         self.tool_version = get_tool_version(self.model)
+        # Store the database service (tenant-aware or global)
+        self.db_tenant = db_tenant
 
     async def load_api_definitions(self) -> dict[str, APIDefinitionRuntime]:
         """Load API definitions from the database."""
         # Get all API definitions, including archived ones
-        api_definitions = await db.get_api_definitions(include_archived=True)
+        api_definitions = await self.db_tenant.get_api_definitions(
+            include_archived=True
+        )
 
         # Load each definition and its active version
         definitions = {}
@@ -49,7 +56,7 @@ class APIGatewayCore:
                 continue
 
             # Get the active version
-            version = await db.get_active_api_definition_version(api_def.id)
+            version = await self.db_tenant.get_active_api_definition_version(api_def.id)
             if not version:
                 continue  # Skip if no active version
 
@@ -86,7 +93,7 @@ class APIGatewayCore:
         api_definitions = await self.load_api_definitions()
         # Make sure job_id is still the correct ID string
 
-        job_data = db.get_job(
+        job_data = self.db_tenant.get_job(
             job_id
         )  # Renamed from job, assuming this might return a dict
 
@@ -111,14 +118,17 @@ class APIGatewayCore:
         api_def = api_definitions[job_api_name]
 
         # Check if messages already exist for this job
-        message_count = db.count_job_messages(job_id)
+        message_count = self.db_tenant.count_job_messages(job_id)
         messages = []
 
         if message_count == 0:
             from server.routes.jobs import add_job_log
 
             add_job_log(
-                job_id, 'system', f'Executing API with parameters: {job_parameters}'
+                job_id,
+                'system',
+                f'Executing API with parameters: {job_parameters}',
+                self.tenant_schema,
             )
 
             # This is a new job or has no history, build the initial prompt
@@ -130,12 +140,15 @@ class APIGatewayCore:
                 job_id,
                 'system',
                 {'message_type': 'initial_prompt', 'prompt': prompt_text},
+                self.tenant_schema,
             )
 
             # Record the API version used for this job if available
             version_id = api_def.version_id if hasattr(api_def, 'version_id') else None
             if version_id:
-                db.update_job(job_id, {'api_definition_version_id': version_id})
+                self.db_tenant.update_job(
+                    job_id, {'api_definition_version_id': version_id}
+                )
 
             # Create the initial message list for sampling_loop
             messages = [BetaMessageParam(role='user', content=prompt_text)]
@@ -155,7 +168,7 @@ class APIGatewayCore:
             # Execute the API call - sampling_loop will handle saving the messages if it receives any
             result, exchanges = await sampling_loop(
                 job_id=job_id,
-                db=db,
+                db_tenant=self.db_tenant,
                 model=self.model,
                 provider=self.provider,
                 system_prompt_suffix='',  # No additional suffix needed
@@ -167,6 +180,7 @@ class APIGatewayCore:
                 only_n_most_recent_images=3,
                 session_id=session_id,
                 tool_version=self.tool_version,
+                tenant_schema=self.tenant_schema,
             )
 
             # --- Interpret result and Update DB Status --- START
@@ -220,7 +234,7 @@ class APIGatewayCore:
 
             # Perform the DB update
             try:
-                db.update_job(job_id, update_data)
+                self.db_tenant.update_job(job_id, update_data)
             except Exception as db_err:
                 logger.error(
                     f'Failed to update job {job_id} final status to {final_status.value}: {db_err}'
@@ -248,7 +262,7 @@ class APIGatewayCore:
             logger.error(f'Job {job_id}: {error_message}', exc_info=True)
             # Update job status to ERROR on exception
             try:
-                db.update_job(
+                self.db_tenant.update_job(
                     job_id,
                     {
                         'status': JobStatus.ERROR.value,

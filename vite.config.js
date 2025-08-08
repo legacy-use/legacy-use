@@ -21,8 +21,21 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    allowedHosts: ['.local.legacy-use.com'],
     watch: {
       ignored: ['**/.venv/**', '**/.git/**', '**/server/**', '**/node_modules/**'],
+    },
+    proxy: {
+      '/api': {
+        target: `http://${process.env.VITE_PROXY_TARGET || 'localhost'}:8088`,
+        ws: true,        
+        configure: (proxy, options) => {
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            // Preserve the original host header for multi-tenant support
+            proxyReq.setHeader('Host', req.headers.host);
+          });
+        },
+      },
     },
   },
   // Fixes ambiguous behavior with initial loading of MUI and Emotion packages

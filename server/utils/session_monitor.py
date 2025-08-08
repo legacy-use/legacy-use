@@ -6,14 +6,14 @@ This module provides functionality to monitor session states and update them bas
 
 import asyncio
 import logging
-import time
 from datetime import datetime, timedelta
 
-from server.database import db
+from server.database.multi_tenancy import with_db
 from server.utils.docker_manager import (
     check_target_container_health,
     get_container_status,
 )
+from server.utils.tenant_utils import get_active_tenants
 
 logger = logging.getLogger(__name__)
 
@@ -23,31 +23,22 @@ READY_CHECK_INTERVAL = 60  # Check every 60 seconds once ready
 INACTIVE_SESSION_THRESHOLD = 60 * 60  # 60 minutes in seconds
 
 
-async def monitor_session_states():
+async def monitor_sessions_for_tenant(tenant_schema: str):
     """
-    Monitor session states and update them based on container status.
+    Monitor session states for a specific tenant.
 
-    This function runs in a loop and periodically checks all active sessions.
-    For each session, it:
-    1. Checks if the container is running
-    2. If the session is in 'initializing' state, checks if the API is ready
-    3. Updates the session state accordingly
-    4. Archives sessions that have been inactive for more than INACTIVE_SESSION_THRESHOLD
-
-    The monitoring frequency is adaptive:
-    - Sessions in 'initializing' state are checked every INIT_CHECK_INTERVAL seconds
-    - Sessions in 'ready' state are checked every READY_CHECK_INTERVAL seconds
+    Args:
+        tenant_schema: The tenant schema to monitor
     """
-    logger.info('Starting session state monitor')
+    try:
+        with with_db(tenant_schema) as db_session:
+            # Create a tenant-aware database service
+            from server.utils.db_dependencies import TenantAwareDatabaseService
 
-    # Dictionary to track when each session was last checked
-    last_checked = {}
+            db_service = TenantAwareDatabaseService(db_session)
 
-    while True:
-        try:
-            # Get all non-archived sessions
-            sessions = db.list_sessions(include_archived=False)
-            current_time = time.time()
+            # Get all non-archived sessions for this tenant
+            sessions = db_service.list_sessions(include_archived=False)
             current_datetime = datetime.now()
 
             for session in sessions:
@@ -81,7 +72,7 @@ async def monitor_session_states():
                         )
 
                         # Archive the session with reason 'auto-cleanup'
-                        db.update_session(
+                        db_service.update_session(
                             session_id,
                             {
                                 'is_archived': True,
@@ -103,31 +94,11 @@ async def monitor_session_states():
                                     f'Error stopping container for inactive session {session_id}: {str(e)}'
                                 )
 
-                        # Clean up tracking and continue to next session
-                        if session_id in last_checked:
-                            del last_checked[session_id]
                         continue
 
                 # Skip sessions without container info
                 if not container_id or not container_ip:
                     continue
-
-                # Determine check interval based on session state
-                check_interval = (
-                    INIT_CHECK_INTERVAL
-                    if current_state == 'initializing'
-                    else READY_CHECK_INTERVAL
-                )
-
-                # Skip if not due for checking yet
-                if (
-                    session_id in last_checked
-                    and current_time - last_checked[session_id] < check_interval
-                ):
-                    continue
-
-                # Update last checked time
-                last_checked[session_id] = current_time
 
                 # Check container status
                 container_status = await get_container_status(
@@ -141,12 +112,9 @@ async def monitor_session_states():
                     logger.info(
                         f"Container for session {session_id} is not running, updating state to 'destroyed'"
                     )
-                    db.update_session(
+                    db_service.update_session(
                         session_id, {'state': 'destroyed', 'is_archived': True}
                     )
-                    # Clean up tracking and continue to next session
-                    if session_id in last_checked:
-                        del last_checked[session_id]
                     continue
 
                 # If session is initializing and container is running, check health
@@ -156,19 +124,43 @@ async def monitor_session_states():
                         logger.info(
                             f"API for session {session_id} is ready, updating state to 'ready'"
                         )
-                        db.update_session(session_id, {'state': 'ready'})
+                        db_service.update_session(session_id, {'state': 'ready'})
 
-            # Clean up last_checked for sessions that no longer exist
-            session_ids = {session.get('id') for session in sessions}
-            for session_id in list(last_checked.keys()):
-                if session_id not in session_ids:
-                    del last_checked[session_id]
+    except Exception as e:
+        logger.error(f'Error monitoring sessions for tenant {tenant_schema}: {str(e)}')
+
+
+async def monitor_session_states():
+    """
+    Monitor session states and update them based on container status.
+
+    This function runs in a loop and periodically checks all active sessions across all tenants.
+    For each session, it:
+    1. Checks if the container is running
+    2. If the session is in 'initializing' state, checks if the API is ready
+    3. Updates the session state accordingly
+    4. Archives sessions that have been inactive for more than INACTIVE_SESSION_THRESHOLD
+    """
+    logger.info('Starting session state monitor')
+
+    while True:
+        try:
+            # Get all active tenants
+            tenants = get_active_tenants()
+
+            # Monitor sessions for each tenant
+            for tenant in tenants:
+                tenant_schema = tenant.get('schema')
+                if not tenant_schema:
+                    continue
+
+                # Monitor sessions for this tenant
+                await monitor_sessions_for_tenant(tenant_schema)
 
         except Exception as e:
             logger.error(f'Error in session state monitor: {str(e)}')
 
-        # Wait a short time before next iteration
-        # This is the minimum wait time - individual sessions may be checked less frequently
+        # Wait before next iteration
         await asyncio.sleep(INIT_CHECK_INTERVAL)
 
 

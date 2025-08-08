@@ -1,11 +1,9 @@
 import asyncio
 import logging
-from typing import Literal, cast
+from typing import Literal, cast, Dict, Any
 
 import httpx
 from anthropic.types.beta import BetaToolComputerUse20241022Param, BetaToolUnionParam
-
-from server.database import db
 
 from .base import BaseAnthropicTool, ToolError, ToolResult
 
@@ -82,6 +80,7 @@ class BaseComputerTool(BaseAnthropicTool):
         scroll_amount: int | None = None,
         duration: int | float | None = None,
         key: str | None = None,
+        session: Dict[str, Any] | None = None,
         **kwargs,
     ):
         """Forward the request to the target container."""
@@ -91,10 +90,9 @@ class BaseComputerTool(BaseAnthropicTool):
         # Check for cancellation
         await asyncio.sleep(0)
 
-        # Get the session information
-        session = db.get_session(session_id)
-        if not session:
-            raise ToolError(f'Session {session_id} not found')
+        # Use provided session object or fall back to session_id for backward compatibility
+        if session is None:
+            raise ToolError('Session object is required')
 
         # Get the container ID
         container_id = session.get('container_id')

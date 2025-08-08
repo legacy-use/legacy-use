@@ -3,6 +3,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import {
   Alert,
   Box,
@@ -18,6 +19,8 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import { useState } from 'react';
+import ContainerLogsModal from './ContainerLogsModal';
 
 const SessionDetailsCard = ({
   selectedSession,
@@ -32,6 +35,7 @@ const SessionDetailsCard = ({
   getContainerName,
   getStateBadgeColor,
 }) => {
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
   if (!selectedSession) return null;
   return (
     <>
@@ -84,6 +88,13 @@ const SessionDetailsCard = ({
                       title="Refresh container status"
                     >
                       <RefreshIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => setLogsModalOpen(true)}
+                      title="View container logs"
+                    >
+                      <VisibilityIcon fontSize="small" />
                     </IconButton>
                     <IconButton
                       size="small"
@@ -239,6 +250,12 @@ const SessionDetailsCard = ({
           Session ID copied to clipboard
         </Alert>
       </Snackbar>
+      <ContainerLogsModal
+        open={logsModalOpen}
+        onClose={() => setLogsModalOpen(false)}
+        sessionId={selectedSession.id}
+        sessionName={selectedSession.name}
+      />
     </>
   );
 };

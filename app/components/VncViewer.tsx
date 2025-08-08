@@ -5,6 +5,7 @@ import Typography from '@mui/material/Typography';
 import { useContext, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SessionContext } from '../App';
+import { API_BASE_URL } from '../utils/apiConstants';
 
 const VncViewer = ({ viewOnly = true }: { viewOnly?: boolean }) => {
   const location = useLocation();
@@ -66,8 +67,8 @@ const VncViewer = ({ viewOnly = true }: { viewOnly?: boolean }) => {
     return null;
   }
 
-  // Base API URL from environment or default
-  const baseApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8088';
+  // Use the same hostname as the frontend - Vite will proxy /api requests to the backend
+  const baseApiUrl = window.location.origin;
 
   // Show loading while we're getting session ID or setting cookie
   if (loading || !cookieSet) {
@@ -109,19 +110,15 @@ const VncViewer = ({ viewOnly = true }: { viewOnly?: boolean }) => {
   // Remove leading slash to avoid double slash when concatenating with baseApiUrl
   const proxyPath = `sessions/${sessionId}/vnc`;
 
-  // Check if there is a path prefix configured, e.g. /api/
-  const prefixPathname = new URL(baseApiUrl).pathname;
-
-  // VNC parameters with the correct WebSocket path
-  // The path parameter tells the VNC client where to find the WebSocket endpoint
-  // Make sure to use a path that starts with a single slash
-  const combinedWebsocketPath = `${prefixPathname}/${proxyPath}/websockify`;
+  // Use API_BASE_URL constant while preserving double slash prevention logic
+  // API_BASE_URL is '/api', so we need to construct the full path properly
+  const combinedWebsocketPath = `${API_BASE_URL}/${proxyPath}/websockify`;
   // Remove any leading slashes to avoid double slashes
   const websocketPath = combinedWebsocketPath.replace(/^\/+/, '');
 
   const vncParams = `resize=scale&autoconnect=1&view_only=${viewOnly ? 1 : 0}&reconnect=1&reconnect_delay=2000&path=${websocketPath}`;
 
-  const vncUrl = `${baseApiUrl}/${proxyPath}/vnc.html?${vncParams}`;
+  const vncUrl = `${baseApiUrl}${API_BASE_URL}/${proxyPath}/vnc.html?${vncParams}`;
 
   return (
     <Paper

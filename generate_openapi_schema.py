@@ -1,4 +1,8 @@
 import json
+import os
+
+# Override the API_SLUG_PREFIX to be empty instead of the default '/api'
+os.environ['API_SLUG_PREFIX'] = ''
 
 from server.server import app
 

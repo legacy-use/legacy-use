@@ -9,11 +9,33 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    MetaData,
+    Enum,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PostgresUUID
 from sqlalchemy.orm import declarative_base, relationship
 
-Base = declarative_base()
+# Import enum types from base models
+from server.models.base import TargetType, JobStatus
+
+# Create metadata with default tenant schema
+metadata = MetaData(schema='tenant')
+Base = declarative_base(metadata=metadata)
+
+
+class Tenant(Base):
+    """Tenant model for multi-tenancy using PostgreSQL schemas."""
+
+    __tablename__ = 'tenants'
+    __table_args__ = ({'schema': 'shared'},)
+
+    id = Column(PostgresUUID, primary_key=True, default=uuid.uuid4)
+    name = Column(String(256), nullable=False, index=True, unique=True)
+    schema = Column(String(256), nullable=False, unique=True)
+    host = Column(String(256), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
 
 
 class Target(Base):
@@ -21,7 +43,7 @@ class Target(Base):
 
     id = Column(PostgresUUID, primary_key=True, default=uuid.uuid4)
     name = Column(String)
-    type = Column(String)
+    type = Column(Enum(TargetType, name='targettype', schema='shared'), nullable=False)
     host = Column(String)
     port = Column(String)
     username = Column(String, nullable=True)
@@ -126,7 +148,9 @@ class Job(Base):
         PostgresUUID, ForeignKey('api_definition_versions.id'), nullable=True
     )
     parameters = Column(JSONB)
-    status = Column(String, default='pending')
+    status = Column(
+        Enum(JobStatus, name='jobstatus', schema='shared'), default=JobStatus.PENDING
+    )
     result = Column(JSONB, nullable=True)
     error = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
@@ -180,3 +204,17 @@ class JobMessage(Base):
     job = relationship('Job', back_populates='messages')
 
     __table_args__ = (Index('ix_jobmessage_job_id_sequence', 'job_id', 'sequence'),)
+
+
+class TenantSettings(Base):
+    """Tenant-specific settings model."""
+
+    __tablename__ = 'settings'
+
+    id = Column(PostgresUUID, primary_key=True, default=uuid.uuid4)
+    key = Column(String(256), nullable=False, index=True)
+    value = Column(String(4096), nullable=True)  # Store as string, can be JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (Index('ix_settings_key', 'key'),)

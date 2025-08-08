@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional, Set  # Added Optional and Dict for type 
 from uuid import UUID
 
 # Imports copied from job_execution.py for these functions
-from server.database.service import DatabaseService
 from server.models.base import SessionCreate
 
 # Remove the direct import that causes circular dependency
@@ -14,7 +13,6 @@ from server.models.base import SessionCreate
 
 # Initialize logger and db (copied from job_execution.py - potential issue)
 logger = logging.getLogger(__name__)
-db = DatabaseService()
 
 # Global state copied from job_execution.py (potential issue)
 targets_with_pending_sessions: Set[str] = set()

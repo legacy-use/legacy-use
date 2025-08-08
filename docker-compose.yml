@@ -38,7 +38,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - .env.local
 
   # Frontend Service
   frontend:
@@ -47,6 +46,7 @@ services:
       dockerfile: infra/docker/legacy-use-frontend/Dockerfile
     container_name: legacy-use-frontend
     environment:
+      - VITE_PROXY_TARGET=backend
       - LEGACY_USE_DEBUG=0
     ports:
       - "5173:5173"
@@ -55,7 +55,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - .env.local
 
 volumes:
   postgres_data:

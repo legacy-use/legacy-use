@@ -4,14 +4,16 @@ Settings management routes.
 
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 
 from server.computer_use.config import (
     APIProvider,
     get_default_model_name,
 )
-from server.settings import settings
+from server.settings_tenant import get_tenant_setting, set_tenant_setting
+from server.utils.db_dependencies import get_tenant_db
+from server.utils.tenant_utils import get_tenant_from_request
 
 
 def obscure_api_key(api_key: Optional[str]) -> Optional[str]:
@@ -60,21 +62,22 @@ settings_router = APIRouter(prefix='/settings', tags=['Settings'])
 
 
 @settings_router.get('/providers', response_model=ProvidersResponse)
-async def get_providers():
+async def get_providers(request: Request, db_tenant=Depends(get_tenant_db)):
     """Get available VLM providers and their configurations."""
 
-    # workaround to reload settings after updating the provider
-    settings.__init__()
+    # Authenticate tenant (this will raise an exception if tenant is not found or inactive)
+    tenant = get_tenant_from_request(request)
+    tenant_schema = tenant['schema']
 
-    # Define provider configurations
+    # Define provider configurations using tenant settings
     provider_configs = {
         APIProvider.ANTHROPIC: {
             'name': 'Anthropic',
             'description': 'Anthropic Claude models via direct API',
-            'available': bool(getattr(settings, 'ANTHROPIC_API_KEY', None)),
+            'available': bool(get_tenant_setting(tenant_schema, 'ANTHROPIC_API_KEY')),
             'credentials': {
                 'api_key': obscure_api_key(
-                    getattr(settings, 'ANTHROPIC_API_KEY', None)
+                    get_tenant_setting(tenant_schema, 'ANTHROPIC_API_KEY')
                 ),
             },
         },
@@ -83,19 +86,19 @@ async def get_providers():
             'description': 'Anthropic Claude models via AWS Bedrock',
             'available': all(
                 [
-                    getattr(settings, 'AWS_ACCESS_KEY_ID', None),
-                    getattr(settings, 'AWS_SECRET_ACCESS_KEY', None),
-                    getattr(settings, 'AWS_REGION', None),
+                    get_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID'),
+                    get_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY'),
+                    get_tenant_setting(tenant_schema, 'AWS_REGION'),
                 ]
             ),
             'credentials': {
                 'access_key_id': obscure_api_key(
-                    getattr(settings, 'AWS_ACCESS_KEY_ID', None)
+                    get_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID')
                 ),
                 'secret_access_key': obscure_api_key(
-                    getattr(settings, 'AWS_SECRET_ACCESS_KEY', None)
+                    get_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY')
                 ),
-                'region': getattr(settings, 'AWS_REGION', None),
+                'region': get_tenant_setting(tenant_schema, 'AWS_REGION'),
             },
         },
         APIProvider.VERTEX: {
@@ -103,24 +106,26 @@ async def get_providers():
             'description': 'Anthropic Claude models via Google Vertex AI',
             'available': all(
                 [
-                    getattr(settings, 'VERTEX_REGION', None),
-                    getattr(settings, 'VERTEX_PROJECT_ID', None),
+                    get_tenant_setting(tenant_schema, 'VERTEX_REGION'),
+                    get_tenant_setting(tenant_schema, 'VERTEX_PROJECT_ID'),
                 ]
             ),
             'credentials': {
-                'region': getattr(settings, 'VERTEX_REGION', None),
+                'region': get_tenant_setting(tenant_schema, 'VERTEX_REGION'),
                 'project_id': obscure_api_key(
-                    getattr(settings, 'VERTEX_PROJECT_ID', None)
+                    get_tenant_setting(tenant_schema, 'VERTEX_PROJECT_ID')
                 ),
             },
         },
         APIProvider.LEGACYUSE_PROXY: {
             'name': 'legacy-use Cloud',
             'description': 'Anthropic Claude models via legacy-use Cloud',
-            'available': bool(getattr(settings, 'LEGACYUSE_PROXY_API_KEY', None)),
+            'available': bool(
+                get_tenant_setting(tenant_schema, 'LEGACYUSE_PROXY_API_KEY')
+            ),
             'credentials': {
                 'proxy_api_key': obscure_api_key(
-                    getattr(settings, 'LEGACYUSE_PROXY_API_KEY', None)
+                    get_tenant_setting(tenant_schema, 'LEGACYUSE_PROXY_API_KEY')
                 ),
             },
         },
@@ -141,13 +146,22 @@ async def get_providers():
         )
 
     return ProvidersResponse(
-        current_provider=settings.API_PROVIDER, providers=providers
+        current_provider=get_tenant_setting(tenant_schema, 'API_PROVIDER'),
+        providers=providers,
     )
 
 
 @settings_router.post('/providers', response_model=Dict[str, str])
-async def update_provider_settings(request: UpdateProviderRequest):
+async def update_provider_settings(
+    request: UpdateProviderRequest,
+    http_request: Request,
+    db_tenant=Depends(get_tenant_db),
+):
     """Update provider configuration and set as active provider."""
+
+    # Authenticate tenant (this will raise an exception if tenant is not found or inactive)
+    tenant = get_tenant_from_request(http_request)
+    tenant_schema = tenant['schema']
 
     # Validate provider
     try:
@@ -163,7 +177,9 @@ async def update_provider_settings(request: UpdateProviderRequest):
             raise HTTPException(
                 status_code=400, detail='API key is required for Anthropic provider'
             )
-        settings.ANTHROPIC_API_KEY = request.credentials['api_key']
+        set_tenant_setting(
+            tenant_schema, 'ANTHROPIC_API_KEY', request.credentials['api_key']
+        )
 
     elif provider_enum == APIProvider.BEDROCK:
         required_fields = ['access_key_id', 'secret_access_key', 'region']
@@ -172,9 +188,15 @@ async def update_provider_settings(request: UpdateProviderRequest):
                 raise HTTPException(
                     status_code=400, detail=f'{field} is required for Bedrock provider'
                 )
-        settings.AWS_ACCESS_KEY_ID = request.credentials['access_key_id']
-        settings.AWS_SECRET_ACCESS_KEY = request.credentials['secret_access_key']
-        settings.AWS_REGION = request.credentials['region']
+        set_tenant_setting(
+            tenant_schema, 'AWS_ACCESS_KEY_ID', request.credentials['access_key_id']
+        )
+        set_tenant_setting(
+            tenant_schema,
+            'AWS_SECRET_ACCESS_KEY',
+            request.credentials['secret_access_key'],
+        )
+        set_tenant_setting(tenant_schema, 'AWS_REGION', request.credentials['region'])
 
     elif provider_enum == APIProvider.VERTEX:
         required_fields = ['project_id', 'region']
@@ -183,8 +205,12 @@ async def update_provider_settings(request: UpdateProviderRequest):
                 raise HTTPException(
                     status_code=400, detail=f'{field} is required for Vertex provider'
                 )
-        settings.VERTEX_PROJECT_ID = request.credentials['project_id']
-        settings.VERTEX_REGION = request.credentials['region']
+        set_tenant_setting(
+            tenant_schema, 'VERTEX_PROJECT_ID', request.credentials['project_id']
+        )
+        set_tenant_setting(
+            tenant_schema, 'VERTEX_REGION', request.credentials['region']
+        )
 
     elif provider_enum == APIProvider.LEGACYUSE_PROXY:
         if 'proxy_api_key' not in request.credentials:
@@ -192,10 +218,14 @@ async def update_provider_settings(request: UpdateProviderRequest):
                 status_code=400,
                 detail='API key is required for legacy-use Cloud provider',
             )
-        settings.LEGACYUSE_PROXY_API_KEY = request.credentials['proxy_api_key']
+        set_tenant_setting(
+            tenant_schema,
+            'LEGACYUSE_PROXY_API_KEY',
+            request.credentials['proxy_api_key'],
+        )
 
     # Set as active provider
-    settings.API_PROVIDER = provider_enum.value
+    set_tenant_setting(tenant_schema, 'API_PROVIDER', provider_enum.value)
 
     return {
         'status': 'success',

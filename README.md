@@ -65,36 +65,48 @@ cp .env.template .env
 # ANTHROPIC_API_KEY=sk-your-anthropic-key-here
 # (Optional) Add any configuration options from above
 
-# 3. Generate a secure API key and add it to your .env file  - (details below)
-make setup
-
-# 4. Build docker containers
+# 3. Build docker containers
 make docker-build
 
-# 5. Start all services
+# 4. Start all services
 make docker-dev
 ```
 
-**🔑 API Key Generation Helper**
+**🔑 Automatic API Key Generation**
 
-```bash
-# Generate a secure API key and add it to your .env file
-uv run python generate_api_key.py
+During the initial database migration, the system will automatically:
+
+- Generate a secure API key for the default tenant
+- Display the credentials in the console output
+- Store the key securely in the database
+
+You'll see output like this:
 ```
+============================================================
+🚀 LEGACY-USE SETUP COMPLETE
+============================================================
+📡 Server URL: http://tenant-default.local.legacy-use.com:5173/
+🔑 API Key: AbC123XyZ789...
 
-This script will:
+💡 To access your instance:
+   1. Open the URL in your browser
+   2. Enter the API key when prompted
+   3. Configure your AI provider in Settings
 
-- Generate a cryptographically secure API key if none exists
-- Set both `API_KEY` (for backend) and `VITE_API_KEY` (for frontend) in your `.env` file
-- Skip generation if you already have a secure API key configured
+⚠️  Keep this API key secure - it provides full access to your instance!
+============================================================
+```
 
 ### Verification
 
 Once the setup completes:
 
-1. **Frontend**: Open <http://localhost:8077> - you should see the legacy-use dashboard
-2. **API Documentation**: Visit <http://localhost:8088/redoc> - to explore the REST API
-   🎉 **You're all set!** The complete setup usually takes 2-5 minutes depending on your internet connection.
+1. **Check the console output** - You should see the setup credentials displayed
+2. **Frontend**: Open <http://localhost:8077> - you should see the legacy-use dashboard
+3. **API Documentation**: Visit <http://localhost:8088/redoc> - to explore the REST API
+4. **Configure AI Provider**: Go to Settings and configure your Anthropic API key
+
+🎉 **You're all set!** The complete setup usually takes 2-5 minutes depending on your internet connection.
 
 ### Troubleshooting
 

@@ -1,4 +1,17 @@
-.PHONY: server frontend server-tests docker-start docker-linux-vm dev-docker prod stop logs
+.PHONY: server frontend server-tests docker-start docker-linux-vm dev-docker prod stop logs ensure-env docker-build-backend docker-build-frontend docker-build-linux-machine docker-build-demo-db docker-build-target docker-build-all
+
+ensure-env:
+	@if [ ! -f .env ]; then \
+		echo "📝 Creating .env file..."; \
+		touch .env; \
+		echo "# Legacy Use Environment Variables" >> .env; \
+		echo "# Add your environment variables here" >> .env; \
+	else \
+		echo "✅ .env file already exists"; \
+	fi
+
+db-migrate:
+	uv run alembic -c server/alembic.ini upgrade head
 
 server:
 	uv run uvicorn server.server:app --host 0.0.0.0 --port 8088 --reload --reload-dir server --reload-include .env
@@ -9,16 +22,12 @@ frontend:
 server-tests:
 	uv run pytest
 
-setup:
-	touch .env.local
-	uv run python generate_api_key.py
-
 # Docker Compose Commands
-docker-dev:
+docker-dev: ensure-env
 	@echo "🚀 Starting legacy-use in DEVELOPMENT mode with hot-reloading..."
 	docker-compose -f docker-compose.yml -f docker-compose.dev-override.yml up
 
-docker-prod:
+docker-prod: ensure-env
 	@echo "🚀 Starting legacy-use in PRODUCTION mode..."
 	@if curl -s --connect-timeout 1 http://169.254.169.254/latest/meta-data/ > /dev/null 2>&1; then \
 		echo "🌐 Detected AWS environment"; \
@@ -29,27 +38,37 @@ docker-prod:
 	@echo "🔧 Starting services in production mode..."
 	docker-compose up -d
 
+# Individual Docker Build Targets
 docker-build-target:
+	@echo "🔨 Building legacy-use-target..."
 	docker build -t legacy-use-target:local -f infra/docker/legacy-use-target/Dockerfile .
 
-docker-build: docker-build-target
-	# Build backend with both naming conventions
+docker-build-backend:
+	@echo "🔨 Building backend..."
 	docker build -t legacy-use-backend:local -f infra/docker/legacy-use-backend/Dockerfile .
 	docker tag legacy-use-backend:local legacy-use-core-backend:local
 
-	# Build frontend with both naming conventions
+docker-build-frontend:
+	@echo "🔨 Building frontend..."
 	docker build -t legacy-use-frontend:local -f infra/docker/legacy-use-frontend/Dockerfile .
 	docker tag legacy-use-frontend:local legacy-use-core-frontend:local
 
-	# Build linux-machine with both naming conventions
+docker-build-linux-machine:
+	@echo "🔨 Building linux-machine..."
 	docker build -t linux-machine:local -f infra/docker/linux-machine/Dockerfile .
 	docker tag linux-machine:local legacy-use-core-linux-machine:local
 
-	# Build other images (keeping original names)
-	docker build -t legacy-use-mgmt:local -f infra/docker/legacy-use-mgmt/Dockerfile .
-
+docker-build-demo-db:
+	@echo "🔨 Building demo-db..."
 	docker build -t legacy-use-demo-db:local -f infra/docker/legacy-use-demo-db/Dockerfile .
 	docker tag legacy-use-demo-db:local legacy-use-core-demo-db:local
+
+# Combined Build Target
+docker-build-all: docker-build-target docker-build-backend docker-build-frontend docker-build-linux-machine docker-build-demo-db
+	@echo "✅ All Docker images built successfully!"
+
+# Legacy alias for backward compatibility
+docker-build: docker-build-all
 
 docker-linux-vm:
 	docker run -d \

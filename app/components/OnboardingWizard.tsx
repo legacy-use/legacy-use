@@ -33,6 +33,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAiProvider } from '../contexts/AiProviderContext';
 import { getProviders, getTargets, updateProviderSettings } from '../services/apiService';
+import { API_BASE_URL } from '../utils/apiConstants';
 
 const OnboardingWizard = ({ open, onClose, onComplete }) => {
   const navigate = useNavigate();
@@ -82,7 +83,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
     // Start the resend timer (60 seconds)
     setResendTimer(60);
 
-    const response = await fetch(`${import.meta.env.VITE_LEGACYUSE_PROXY_BASE_URL}/signup`, {
+    const response = await fetch(`${import.meta.env.VITE_LEGACYUSE_PROXY_BASE_URL}${API_BASE_URL}/signup`, {
       method: 'POST',
       body: JSON.stringify(signupData),
     });

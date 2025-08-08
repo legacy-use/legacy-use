@@ -4,6 +4,7 @@ import ComputerIcon from '@mui/icons-material/Computer';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import {
   Alert,
   Box,
@@ -34,7 +35,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { deleteTarget, getJobs, getTarget, getTargets, updateTarget } from '../services/apiService';
+import { deleteTarget, getJobs, getTarget, getTargets, updateTarget, unarchiveTarget } from '../services/apiService';
 import ResolutionRecommendation from './ResolutionRecommendation';
 import VPNConfigInputField from './VPNConfigInputField';
 
@@ -141,6 +142,18 @@ const TargetList = () => {
     if (deleteInProgress) return; // Prevent closing while delete is in progress
     setDeleteDialogOpen(false);
     setTargetToDelete(null);
+  };
+
+  const handleUnarchiveClick = async (target, event) => {
+    event.stopPropagation(); // Prevent row click navigation
+    try {
+      await unarchiveTarget(target.id);
+      // Refresh the targets list
+      fetchTargets();
+    } catch (err) {
+      console.error('Error unarchiving target:', err);
+      setError(`Failed to unarchive target: ${err.message}`);
+    }
   };
 
   // TODO: Potentially move this into a seperate component since it's mostly redudant with CreateTarget.js
@@ -461,7 +474,17 @@ const TargetList = () => {
                       </TableCell>
                       <TableCell>{formatDate(target.created_at)}</TableCell>
                       <TableCell align="right">
-                        {!target.is_archived && (
+                        {target.is_archived ? (
+                          <Tooltip title="Unarchive Target">
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={e => handleUnarchiveClick(target, e)}
+                            >
+                              <UnarchiveIcon />
+                            </IconButton>
+                          </Tooltip>
+                        ) : (
                           <>
                             <Tooltip title="Edit Target">
                               <IconButton

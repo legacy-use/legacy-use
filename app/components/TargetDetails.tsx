@@ -11,6 +11,7 @@ import {
   deleteSession,
   getJobQueueStatus,
   getJobs,
+  getSession,
   getSessions,
   getTarget,
 } from '../services/apiService';
@@ -79,10 +80,19 @@ const TargetDetails = () => {
             sessionToSelect = sortedSessions[0];
           }
 
-          // Select the session
-          setSelectedSession(sessionToSelect);
-          setCurrentSession(sessionToSelect);
-          setSelectedSessionId(sessionToSelect.id);
+          // Fetch detailed session information including container_status
+          try {
+            const detailedSession = await getSession(sessionToSelect.id);
+            setSelectedSession(detailedSession);
+            setCurrentSession(detailedSession);
+            setSelectedSessionId(detailedSession.id);
+          } catch (err) {
+            console.error('Error fetching detailed session:', err);
+            // Fallback to basic session data
+            setSelectedSession(sessionToSelect);
+            setCurrentSession(sessionToSelect);
+            setSelectedSessionId(sessionToSelect.id);
+          }
 
           // Fetch jobs for the selected session
           fetchJobsForSession();
@@ -119,8 +129,17 @@ const TargetDetails = () => {
           // Update the selected session if it exists
           const updatedSession = updatedSessions.find(s => s.id === selectedSession.id);
           if (updatedSession) {
-            setSelectedSession(updatedSession);
-            setCurrentSession(updatedSession);
+            // Fetch detailed session information including container_status
+            try {
+              const detailedSession = await getSession(updatedSession.id);
+              setSelectedSession(detailedSession);
+              setCurrentSession(detailedSession);
+            } catch (err) {
+              console.error('Error fetching detailed session during polling:', err);
+              // Fallback to basic session data
+              setSelectedSession(updatedSession);
+              setCurrentSession(updatedSession);
+            }
           }
 
           // Fetch the latest jobs
@@ -175,12 +194,23 @@ const TargetDetails = () => {
     }
   };
 
-  const handleSessionChange = event => {
+  const handleSessionChange = async event => {
     const sessionId = event.target.value;
     const session = targetSessions.find(s => s.id === sessionId);
-    setSelectedSession(session);
-    setCurrentSession(session);
-    setSelectedSessionId(sessionId);
+    
+    // Fetch detailed session information including container_status
+    try {
+      const detailedSession = await getSession(sessionId);
+      setSelectedSession(detailedSession);
+      setCurrentSession(detailedSession);
+      setSelectedSessionId(sessionId);
+    } catch (err) {
+      console.error('Error fetching detailed session:', err);
+      // Fallback to basic session data
+      setSelectedSession(session);
+      setCurrentSession(session);
+      setSelectedSessionId(sessionId);
+    }
 
     // Update URL with the new session ID without navigating
     const newUrl = `/targets/${targetId}?sessionId=${sessionId}`;
@@ -246,9 +276,19 @@ const TargetDetails = () => {
 
       // Update the selected session if it exists
       if (selectedSession) {
-        const updatedSession = updatedSessions.find(s => s.id === selectedSession.id);
-        if (updatedSession) {
-          setSelectedSession(updatedSession);
+        // Fetch detailed session information including container_status
+        try {
+          const detailedSession = await getSession(selectedSession.id);
+          setSelectedSession(detailedSession);
+          setCurrentSession(detailedSession);
+        } catch (err) {
+          console.error('Error fetching detailed session during refresh:', err);
+          // Fallback to basic session data
+          const updatedSession = updatedSessions.find(s => s.id === selectedSession.id);
+          if (updatedSession) {
+            setSelectedSession(updatedSession);
+            setCurrentSession(updatedSession);
+          }
         }
       }
     } catch (err) {

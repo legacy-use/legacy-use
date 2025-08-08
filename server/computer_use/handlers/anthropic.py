@@ -47,6 +47,7 @@ class AnthropicHandler(BaseProviderHandler):
         tool_beta_flag: Optional[str] = None,
         token_efficient_tools_beta: bool = False,
         only_n_most_recent_images: Optional[int] = None,
+        tenant_schema: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -67,6 +68,7 @@ class AnthropicHandler(BaseProviderHandler):
             token_efficient_tools_beta=token_efficient_tools_beta,
             only_n_most_recent_images=only_n_most_recent_images,
             enable_prompt_caching=enable_prompt_caching,
+            tenant_schema=tenant_schema,
             **kwargs,
         )
 
@@ -81,17 +83,26 @@ class AnthropicHandler(BaseProviderHandler):
         settings.__init__()
 
         if self.provider == APIProvider.ANTHROPIC:
-            return AsyncAnthropic(api_key=api_key, max_retries=4)
+            # Prefer tenant-specific key if available
+            tenant_key = self.tenant_setting('ANTHROPIC_API_KEY')
+            return AsyncAnthropic(api_key=tenant_key or api_key, max_retries=4)
 
         elif self.provider == APIProvider.VERTEX:
             return AsyncAnthropicVertex()
 
         elif self.provider == APIProvider.BEDROCK:
-            # AWS credentials from environment
-            aws_region = settings.AWS_REGION
-            aws_access_key = settings.AWS_ACCESS_KEY_ID
-            aws_secret_key = settings.AWS_SECRET_ACCESS_KEY
-            aws_session_token = settings.AWS_SESSION_TOKEN
+            # AWS credentials from tenant settings (fallback to env settings)
+            aws_region = self.tenant_setting('AWS_REGION') or settings.AWS_REGION
+            aws_access_key = (
+                self.tenant_setting('AWS_ACCESS_KEY_ID') or settings.AWS_ACCESS_KEY_ID
+            )
+            aws_secret_key = (
+                self.tenant_setting('AWS_SECRET_ACCESS_KEY')
+                or settings.AWS_SECRET_ACCESS_KEY
+            )
+            aws_session_token = (
+                self.tenant_setting('AWS_SESSION_TOKEN') or settings.AWS_SESSION_TOKEN
+            )
 
             # Initialize with available credentials
             bedrock_kwargs = {'aws_region': aws_region}
@@ -105,7 +116,11 @@ class AnthropicHandler(BaseProviderHandler):
             return AsyncAnthropicBedrock(**bedrock_kwargs)
 
         elif self.provider == APIProvider.LEGACYUSE_PROXY:
-            return LegacyUseClient(api_key=settings.LEGACYUSE_PROXY_API_KEY)
+            proxy_key = (
+                self.tenant_setting('LEGACYUSE_PROXY_API_KEY')
+                or settings.LEGACYUSE_PROXY_API_KEY
+            )
+            return LegacyUseClient(api_key=proxy_key)
 
         else:
             raise ValueError(f'Unsupported Anthropic provider: {self.provider}')
