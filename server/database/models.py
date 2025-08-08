@@ -58,7 +58,6 @@ class Target(Base):
     is_archived = Column(Boolean, default=False)
     # RDP customization
     rdp_params = Column(String, nullable=True)
-    rdp_override_defaults = Column(Boolean, nullable=False, default=False)
 
     sessions = relationship(
         'Session', back_populates='target', cascade='all, delete-orphan'

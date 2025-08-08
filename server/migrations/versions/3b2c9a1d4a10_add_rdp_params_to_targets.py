@@ -29,20 +29,9 @@ def upgrade(schema: str) -> None:
         sa.Column('rdp_params', sa.String(), nullable=True),
         schema=schema,
     )
-    op.add_column(
-        'targets',
-        sa.Column(
-            'rdp_override_defaults',
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.text('false'),
-        ),
-        schema=schema,
-    )
 
 
 @for_each_tenant_schema
 def downgrade(schema: str) -> None:
     # Remove fields on downgrade
-    op.drop_column('targets', 'rdp_override_defaults', schema=schema)
     op.drop_column('targets', 'rdp_params', schema=schema)

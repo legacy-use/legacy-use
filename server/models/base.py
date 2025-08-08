@@ -128,7 +128,6 @@ class Target(BaseModel):
     is_archived: bool = False
     # RDP customization
     rdp_params: Optional[str] = None
-    rdp_override_defaults: Optional[bool] = False
     queue_status: Optional[str] = (
         None  # Added field for queue status: "running" or "paused"
     )
@@ -157,7 +156,6 @@ class TargetCreate(BaseModel):
     height: int = 768
     # RDP customization
     rdp_params: Optional[str] = None
-    rdp_override_defaults: Optional[bool] = False
 
 
 class TargetUpdate(BaseModel):
@@ -174,7 +172,6 @@ class TargetUpdate(BaseModel):
     height: Optional[int] = None
     # RDP customization
     rdp_params: Optional[str] = None
-    rdp_override_defaults: Optional[bool] = None
 
 
 class Session(BaseModel):

@@ -157,9 +157,6 @@ async def create_session(
         'HEIGHT': str(target.get('height', 768)),
         # RDP customization
         'RDP_PARAMS': target.get('rdp_params'),
-        'RDP_OVERRIDE_DEFAULTS': str(
-            target.get('rdp_override_defaults') or False
-        ).lower(),
     }
 
     # Launch Docker container for the session
@@ -742,15 +739,13 @@ async def get_session_container_logs(
             'max_lines_requested': lines,
         }
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f'Error getting Docker logs for session {session_id}: {e.stderr}')
-        raise HTTPException(
-            status_code=500, detail=f'Failed to retrieve Docker logs: {e.stderr}'
-        )
     except Exception as e:
-        logger.error(
-            f'Unexpected error getting Docker logs for session {session_id}: {str(e)}'
-        )
+        # Handle CalledProcessError and other exceptions uniformly
+        try:
+            stderr = e.stderr  # type: ignore[attr-defined]
+        except Exception:
+            stderr = str(e)
+        logger.error(f'Error getting Docker logs for session {session_id}: {stderr}')
         raise HTTPException(
-            status_code=500, detail=f'Unexpected error retrieving Docker logs: {str(e)}'
+            status_code=500, detail=f'Failed to retrieve Docker logs: {stderr}'
         )
