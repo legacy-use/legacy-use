@@ -126,6 +126,9 @@ class Target(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
     is_archived: bool = False
+    # RDP customization
+    rdp_params: Optional[str] = None
+    rdp_override_defaults: Optional[bool] = False
     queue_status: Optional[str] = (
         None  # Added field for queue status: "running" or "paused"
     )
@@ -152,6 +155,9 @@ class TargetCreate(BaseModel):
     vpn_password: Optional[str] = None
     width: int = 1024
     height: int = 768
+    # RDP customization
+    rdp_params: Optional[str] = None
+    rdp_override_defaults: Optional[bool] = False
 
 
 class TargetUpdate(BaseModel):
@@ -166,6 +172,9 @@ class TargetUpdate(BaseModel):
     vpn_password: Optional[str] = None
     width: Optional[int] = None
     height: Optional[int] = None
+    # RDP customization
+    rdp_params: Optional[str] = None
+    rdp_override_defaults: Optional[bool] = None
 
 
 class Session(BaseModel):

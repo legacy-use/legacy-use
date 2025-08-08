@@ -10,7 +10,18 @@ if [ "$REMOTE_CLIENT_TYPE" = 'rdp' ]; then
     echo "Starting RDP connection..."
     setxkbmap de # TODO: fix this, once we move to other countries
     while true; do
-        $PROXY_CMD xfreerdp /u:${REMOTE_USERNAME} /p:"${REMOTE_PASSWORD}" /v:${HOST_IP}:${HOST_PORT} /f /cert-ignore +auto-reconnect +clipboard
+        # Build default params
+        DEFAULT_RDP_PARAMS="/u:${REMOTE_USERNAME} /p:\"${REMOTE_PASSWORD}\" /v:${HOST_IP}:${HOST_PORT} /f /cert-ignore +auto-reconnect +clipboard"
+        # Apply overrides if provided
+        if [ "${RDP_OVERRIDE_DEFAULTS}" = "true" ] && [ -n "${RDP_PARAMS}" ]; then
+            CMD_ARGS="${RDP_PARAMS}"
+        elif [ -n "${RDP_PARAMS}" ]; then
+            CMD_ARGS="${DEFAULT_RDP_PARAMS} ${RDP_PARAMS}"
+        else
+            CMD_ARGS="${DEFAULT_RDP_PARAMS}"
+        fi
+        # shellcheck disable=SC2086
+        $PROXY_CMD xfreerdp ${CMD_ARGS}
         echo "RDP connection failed, retrying in 1 sec..."
         sleep 1  # wait before retrying in case of a crash or error
     done

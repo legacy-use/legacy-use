@@ -2,8 +2,10 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   CircularProgress,
   FormControl,
+  FormControlLabel,
   Grid,
   InputLabel,
   MenuItem,
@@ -43,6 +45,8 @@ const CreateTarget = () => {
     vpn_password: '',
     width: 1024,
     height: 768,
+    rdp_params: '',
+    rdp_override_defaults: false,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -57,6 +61,14 @@ const CreateTarget = () => {
     setTargetData(prev => ({
       ...prev,
       [name]: value,
+    }));
+  };
+
+  const handleCheckboxChange = e => {
+    const { name, checked } = e.target;
+    setTargetData(prev => ({
+      ...prev,
+      [name]: checked,
     }));
   };
 
@@ -360,6 +372,38 @@ const CreateTarget = () => {
                 InputProps={{ inputProps: { min: 1 } }}
               />
             </Grid>
+
+            {/* RDP customization options */}
+            {(targetData.type.startsWith('rdp') || targetData.type.includes('rdp')) && (
+              <>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    label="FreeRDP extra parameters"
+                    name="rdp_params"
+                    value={targetData.rdp_params}
+                    onChange={handleChange}
+                    disabled={loading}
+                    placeholder="e.g. +clipboard /dynamic-resolution /cert-ignore"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        name="rdp_override_defaults"
+                        checked={targetData.rdp_override_defaults}
+                        onChange={handleCheckboxChange}
+                        disabled={loading}
+                      />
+                    }
+                    label="Override default FreeRDP parameters"
+                  />
+                </Grid>
+              </>
+            )}
 
             {/* Resolution recommendation warning */}
             <Grid item xs={12}>

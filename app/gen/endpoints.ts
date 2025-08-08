@@ -330,6 +330,10 @@ export type TargetVpnUsername = string | null;
 
 export type TargetVpnPassword = string | null;
 
+export type TargetRdpParams = string | null;
+
+export type TargetRdpOverrideDefaults = boolean | null;
+
 export type TargetQueueStatus = string | null;
 
 export type TargetBlockingJobsAnyOfItem = { [key: string]: unknown };
@@ -360,6 +364,8 @@ export interface Target {
   created_at?: string;
   updated_at?: string;
   is_archived?: boolean;
+  rdp_params?: TargetRdpParams;
+  rdp_override_defaults?: TargetRdpOverrideDefaults;
   queue_status?: TargetQueueStatus;
   blocking_jobs?: TargetBlockingJobs;
   has_blocking_jobs?: TargetHasBlockingJobs;
@@ -378,6 +384,10 @@ export type TargetCreateVpnUsername = string | null;
 
 export type TargetCreateVpnPassword = string | null;
 
+export type TargetCreateRdpParams = string | null;
+
+export type TargetCreateRdpOverrideDefaults = boolean | null;
+
 export interface TargetCreate {
   name: string;
   type: TargetType;
@@ -390,6 +400,8 @@ export interface TargetCreate {
   vpn_password?: TargetCreateVpnPassword;
   width?: number;
   height?: number;
+  rdp_params?: TargetCreateRdpParams;
+  rdp_override_defaults?: TargetCreateRdpOverrideDefaults;
 }
 
 export type TargetType = (typeof TargetType)[keyof typeof TargetType];
@@ -428,6 +440,10 @@ export type TargetUpdateWidth = number | null;
 
 export type TargetUpdateHeight = number | null;
 
+export type TargetUpdateRdpParams = string | null;
+
+export type TargetUpdateRdpOverrideDefaults = boolean | null;
+
 export interface TargetUpdate {
   name?: TargetUpdateName;
   type?: TargetUpdateType;
@@ -440,6 +456,8 @@ export interface TargetUpdate {
   vpn_password?: TargetUpdateVpnPassword;
   width?: TargetUpdateWidth;
   height?: TargetUpdateHeight;
+  rdp_params?: TargetUpdateRdpParams;
+  rdp_override_defaults?: TargetUpdateRdpOverrideDefaults;
 }
 
 export type UpdateProviderRequestCredentials = { [key: string]: string };

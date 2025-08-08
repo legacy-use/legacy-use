@@ -155,6 +155,11 @@ async def create_session(
         'REMOTE_PASSWORD': target.get('password'),
         'WIDTH': str(target.get('width', 1024)),
         'HEIGHT': str(target.get('height', 768)),
+        # RDP customization
+        'RDP_PARAMS': target.get('rdp_params'),
+        'RDP_OVERRIDE_DEFAULTS': str(
+            target.get('rdp_override_defaults') or False
+        ).lower(),
     }
 
     # Launch Docker container for the session
