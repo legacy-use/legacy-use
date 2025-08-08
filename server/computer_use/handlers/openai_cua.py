@@ -7,6 +7,7 @@ for execution by our existing `computer` tool.
 """
 
 from typing import Any, Optional, cast
+import json
 
 import httpx
 from anthropic.types.beta import (
@@ -34,12 +35,12 @@ class OpenAICUAHandler(BaseProviderHandler):
         self,
         model: str = 'computer-use-preview',
         token_efficient_tools_beta: bool = False,
-        only_n_most_recent_images: Optional[int] = None,
+        only_n_most_recent_images: Optional[int] = None,  # Will be ignored
         **kwargs,
     ):
         super().__init__(
             token_efficient_tools_beta=token_efficient_tools_beta,
-            only_n_most_recent_images=only_n_most_recent_images,
+            only_n_most_recent_images=1,  # computer-use-preview only supports 1 image
             enable_prompt_caching=False,
             **kwargs,
         )
@@ -49,7 +50,11 @@ class OpenAICUAHandler(BaseProviderHandler):
         return AsyncOpenAI(api_key=api_key)
 
     def prepare_system(self, system_prompt: str) -> str:
-        return system_prompt
+        openai_instructions = """
+        Keep meta information in your summary about where you are in the step by step guide. Keep also information about relevant information you extracted.
+        Feel free to include additional information in your summary. There is no need to be short or concise.
+"""
+        return system_prompt + '\n\n' + openai_instructions
 
     def convert_to_provider_messages(
         self, messages: list[BetaMessageParam]
@@ -145,29 +150,73 @@ class OpenAICUAHandler(BaseProviderHandler):
         return provider_messages
 
     def prepare_tools(self, tool_collection: ToolCollection) -> list[dict]:
-        """Return `computer_use_preview` tool specification for Responses API."""
+        """Replace `computer` tool with `computer_use_preview` and keep other tools in OpenAI format.
+
+        - Extract display settings from the Anthropic `computer` tool if present
+        - Exclude the `computer` tool from the OpenAI tools list
+        - Include `computer_use_preview` tool definition for the Responses API
+        - Map all other tools via their `to_openai_tool()` adapters
+        """
         display_width = 1024
         display_height = 768
         environment = 'windows'
+
+        openai_tools: list[dict] = []
+
+        # Collect non-computer tools and capture display settings from computer tool
         try:
             for tool in tool_collection.tools:
                 if getattr(tool, 'name', None) == 'computer':
                     display_width = getattr(tool, 'width', display_width)
                     display_height = getattr(tool, 'height', display_height)
-                    break
+                    # Do NOT add the computer tool; replaced by computer_use_preview
+                    continue
+                # Map other tools to OpenAI function tools
+                try:
+                    openai_tools.append(tool.to_openai_tool())
+                except Exception:
+                    # If mapping fails for a tool, skip it rather than failing entirely
+                    logger.exception('Failed to convert tool to OpenAI format')
         except Exception:  # pragma: no cover
-            pass
+            # If anything unexpected happens while iterating tools, fall back to only preview tool
+            logger.exception(
+                'Error preparing OpenAI CUA tools; falling back to preview only'
+            )
 
-        preview_tools = [
-            {
-                'type': 'computer_use_preview',
-                'display_width': display_width,
-                'display_height': display_height,
-                'environment': environment,
-            }
-        ]
-        logger.debug(f'OpenAI CUA preview tools: {preview_tools}')
-        return preview_tools
+        # Add the computer_use_preview tool
+        preview_tool = {
+            'type': 'computer_use_preview',
+            'display_width': display_width,
+            'display_height': display_height,
+            'environment': environment,
+        }
+
+        # Flatten function tools to Responses API tool schema: require top-level name/parameters
+        flattened_tools: list[dict] = []
+        for t in openai_tools:
+            if t.get('type') == 'function' and isinstance(t.get('function'), dict):
+                fn = t['function']
+                flattened_tools.append(
+                    {
+                        'type': 'function',
+                        'name': fn.get('name'),
+                        'description': fn.get('description'),
+                        'parameters': fn.get('parameters')
+                        or {
+                            'type': 'object',
+                            'properties': {},
+                        },
+                    }
+                )
+            else:
+                flattened_tools.append(t)
+
+        tools_result = [preview_tool, *flattened_tools]
+        logger.debug(
+            f'OpenAI CUA tools prepared: preview + '
+            f'{[t.get("name") if t.get("type") == "function" else t.get("type") for t in flattened_tools]}'
+        )
+        return tools_result
 
     async def call_api(
         self,
@@ -182,8 +231,18 @@ class OpenAICUAHandler(BaseProviderHandler):
     ) -> tuple[Any, httpx.Request, httpx.Response]:
         logger.info('=== OpenAI CUA API Call ===')
         logger.info(f'Model: {model}')
+        logger.info(f'Tools: {tools}')
         logger.info(f'Tenant schema: {self.tenant_schema}')
         logger.debug(f'Max tokens: {max_tokens}, Temperature: {temperature}')
+
+        # print input, but not the image
+        for msg in messages:
+            if (
+                msg.get('content')
+                and msg.get('content')[0].get('type') == 'input_image'
+            ):
+                continue
+            logger.info(f'Input message: {msg}')
 
         response = await client.responses.with_raw_response.create(
             model=model,
@@ -212,13 +271,69 @@ class OpenAICUAHandler(BaseProviderHandler):
             f'OpenAI Responses output items: {len(output_items)} (CUA preview mode)'
         )
 
-        def map_action_to_tool_input(action: dict) -> dict:
-            atype = action.get('type')
+        def _get(obj: Any, key: str, default: Any = None) -> Any:
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+
+        def map_action_to_tool_input(action: Any) -> dict:
+            atype = _get(action, 'type')
             mapped: dict[str, Any] = {}
+
+            def _normalize_key_combo(combo: str) -> str:
+                if not isinstance(combo, str):
+                    return combo  # type: ignore[return-value]
+                parts = [
+                    p.strip() for p in combo.replace(' ', '').split('+') if p.strip()
+                ]
+                alias_map = {
+                    'esc': 'Escape',
+                    'escape': 'Escape',
+                    'enter': 'Return',
+                    'return': 'Return',
+                    'win': 'Super_L',
+                    'windows': 'Super_L',
+                    'super': 'Super_L',
+                    'meta': 'Super_L',
+                    'cmd': 'Super_L',
+                    'backspace': 'BackSpace',
+                    'del': 'Delete',
+                    'delete': 'Delete',
+                    'tab': 'Tab',
+                    'space': 'space',
+                    'pageup': 'Page_Up',
+                    'pagedown': 'Page_Down',
+                    'home': 'Home',
+                    'end': 'End',
+                    'up': 'Up',
+                    'down': 'Down',
+                    'left': 'Left',
+                    'right': 'Right',
+                    'printscreen': 'Print',
+                    'prtsc': 'Print',
+                    'ctrl': 'ctrl',
+                    'control': 'ctrl',
+                    'shift': 'shift',
+                    'alt': 'alt',
+                }
+
+                def normalize_part(p: str) -> str:
+                    low = p.lower()
+                    if low in alias_map:
+                        return alias_map[low]
+                    if low.startswith('f') and low[1:].isdigit():
+                        return f'F{int(low[1:])}'
+                    if len(p) == 1:
+                        return p
+                    return p
+
+                normalized = [normalize_part(p) for p in parts]
+                return '+'.join(normalized)
+
             if atype == 'click':
-                button = action.get('button', 'left')
-                x = action.get('x')
-                y = action.get('y')
+                button = _get(action, 'button', 'left')
+                x = _get(action, 'x')
+                y = _get(action, 'y')
                 if button == 'left':
                     mapped['action'] = 'left_click'
                 elif button == 'right':
@@ -229,15 +344,17 @@ class OpenAICUAHandler(BaseProviderHandler):
                     mapped['action'] = 'left_click'
                 if isinstance(x, int) and isinstance(y, int):
                     mapped['coordinate'] = (x, y)
+                logger.info(f'CUA map_action: click -> {mapped}')
             elif atype == 'double_click':
-                x = action.get('x')
-                y = action.get('y')
+                x = _get(action, 'x')
+                y = _get(action, 'y')
                 mapped['action'] = 'double_click'
                 if isinstance(x, int) and isinstance(y, int):
                     mapped['coordinate'] = (x, y)
+                logger.info(f'CUA map_action: double_click -> {mapped}')
             elif atype == 'scroll':
-                sx = int(action.get('scroll_x') or 0)
-                sy = int(action.get('scroll_y') or 0)
+                sx = int(_get(action, 'scroll_x') or 0)
+                sy = int(_get(action, 'scroll_y') or 0)
                 if abs(sy) >= abs(sx):
                     mapped['scroll_direction'] = 'down' if sy > 0 else 'up'
                     mapped['scroll_amount'] = abs(sy)
@@ -245,54 +362,126 @@ class OpenAICUAHandler(BaseProviderHandler):
                     mapped['scroll_direction'] = 'right' if sx > 0 else 'left'
                     mapped['scroll_amount'] = abs(sx)
                 mapped['action'] = 'scroll'
+                logger.info(f'CUA map_action: scroll -> {mapped}')
             elif atype == 'type':
                 mapped['action'] = 'type'
-                if 'text' in action:
-                    mapped['text'] = action.get('text')
+                text_val = _get(action, 'text')
+                if text_val is not None:
+                    mapped['text'] = text_val
+                logger.info(f'CUA map_action: type -> {mapped}')
+            elif atype in ('keypress', 'key', 'key_event'):
+                # Map keypress to our 'key' action using a normalized combo string
+                keys = _get(action, 'keys')
+                key = _get(action, 'key')
+                combo = None
+                if isinstance(keys, list) and keys:
+                    combo = '+'.join(str(k) for k in keys)
+                elif isinstance(key, str):
+                    combo = key
+                if combo:
+                    mapped['action'] = 'key'
+                    mapped['text'] = _normalize_key_combo(combo)
+                else:
+                    # Fallback to screenshot if nothing usable
+                    mapped['action'] = 'screenshot'
+                logger.info(f'CUA map_action: keypress -> {mapped}')
             elif atype == 'wait':
                 mapped['action'] = 'wait'
-                ms = action.get('ms') or action.get('duration_ms')
+                ms = _get(action, 'ms') or _get(action, 'duration_ms')
                 try:
                     mapped['duration'] = (float(ms) / 1000.0) if ms is not None else 1.0
                 except Exception:
                     mapped['duration'] = 1.0
+                logger.info(f'CUA map_action: wait -> {mapped}')
             elif atype == 'screenshot':
                 mapped['action'] = 'screenshot'
+                logger.info('CUA map_action: screenshot')
             elif atype == 'cursor_position':
-                x = action.get('x')
-                y = action.get('y')
+                x = _get(action, 'x')
+                y = _get(action, 'y')
                 mapped['action'] = 'mouse_move'
                 if isinstance(x, int) and isinstance(y, int):
                     mapped['coordinate'] = (x, y)
+                logger.info(f'CUA map_action: cursor_position -> {mapped}')
             else:
                 mapped['action'] = 'screenshot'
+                logger.info(f'CUA map_action: unknown {atype} -> screenshot')
             return mapped
 
+        found_computer_call = False
+        created_tool_call_counter = 0
         for item in output_items:
-            if not isinstance(item, dict):
-                continue
-            itype = item.get('type')
+            itype = _get(item, 'type')
             if itype == 'reasoning':
-                summary_items = item.get('summary') or []
+                summary_items = _get(item, 'summary') or []
                 for s in summary_items:
-                    txt = s.get('text') if isinstance(s, dict) else None
+                    txt = _get(s, 'text')
                     if txt:
                         content_blocks.append(BetaTextBlockParam(type='text', text=txt))
             elif itype == 'computer_call':
-                action = item.get('action') or {}
-                tool_input = map_action_to_tool_input(action)
+                found_computer_call = True
+                try:
+                    action = _get(item, 'action') or {}
+                    tool_input = map_action_to_tool_input(action)
+                except Exception:
+                    # Fallback to a basic screenshot action
+                    tool_input = {'action': 'screenshot'}
                 tool_use_block = BetaToolUseBlockParam(
                     type='tool_use',
-                    id=item.get('id') or item.get('call_id') or 'call_0',
+                    id=_get(item, 'id') or _get(item, 'call_id') or 'call_0',
                     name='computer',
                     input=tool_input,
                 )
                 content_blocks.append(tool_use_block)
+            elif itype in ('tool_call', 'function_call'):
+                # Generic function tool call from Responses API
+                created_tool_call_counter += 1
+                tool_name = (
+                    _get(item, 'name')
+                    or _get(_get(item, 'function', {}), 'name')
+                    or 'unknown_tool'
+                )
+                call_id = (
+                    _get(item, 'id')
+                    or _get(item, 'call_id')
+                    or f'call_{created_tool_call_counter}'
+                )
+                raw_args = _get(item, 'arguments') or _get(
+                    _get(item, 'function', {}), 'arguments'
+                )
+                tool_input: dict[str, Any] = {}
+                if isinstance(raw_args, str):
+                    try:
+                        tool_input = json.loads(raw_args)
+                    except Exception:
+                        logger.exception(
+                            'Failed to parse tool_call arguments; using empty dict'
+                        )
+                        tool_input = {}
+                elif isinstance(raw_args, dict):
+                    tool_input = raw_args
+                # Tool-specific adjustments
+                if tool_name == 'extraction' and 'data' not in tool_input:
+                    if 'name' in tool_input and 'result' in tool_input:
+                        original_input = tool_input.copy()
+                        tool_input = {
+                            'data': {
+                                'name': original_input['name'],
+                                'result': original_input['result'],
+                            }
+                        }
+                        logger.info(
+                            f"Wrapped extraction tool input into 'data': from {original_input} to {tool_input}"
+                        )
+                tool_use_block = BetaToolUseBlockParam(
+                    type='tool_use', id=call_id, name=tool_name, input=tool_input
+                )
+                content_blocks.append(tool_use_block)
 
+        has_tool_use = any(cb.get('type') == 'tool_use' for cb in content_blocks)
+        # If OpenAI emitted computer_call but we somehow produced no tool_use blocks, still continue the loop
         stop_reason = (
-            'tool_use'
-            if any(cb.get('type') == 'tool_use' for cb in content_blocks)
-            else 'end_turn'
+            'tool_use' if (has_tool_use or found_computer_call) else 'end_turn'
         )
         return content_blocks, stop_reason
 
