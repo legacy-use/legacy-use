@@ -6,6 +6,7 @@ import httpx
 from anthropic.types.beta import BetaToolComputerUse20241022Param, BetaToolUnionParam
 
 from .base import BaseAnthropicTool, ToolError, ToolResult
+from openai.types.chat import ChatCompletionToolParam
 
 Action_20241022 = Literal[
     'key',
@@ -45,6 +46,7 @@ class BaseComputerTool(BaseAnthropicTool):
     width: int = 1024  # Default width
     height: int = 768  # Default height
     display_num: int = 1  # Default display number
+    api_type: Literal['computer_20241022', 'computer_20250124'] = 'computer_20241022'
 
     @property
     def options(self):
@@ -55,9 +57,10 @@ class BaseComputerTool(BaseAnthropicTool):
         }
 
     def to_params(self) -> BetaToolComputerUse20241022Param:
+        # TODO: fix type
         return {'name': self.name, 'type': self.api_type, **self.options}
 
-    def to_openai_tool(self) -> dict:
+    def to_openai_tool(self) -> ChatCompletionToolParam:
         """Return OpenAI function tool schema for the computer tool.
 
         We expose a provider-agnostic schema that mirrors Anthropic's computer_use

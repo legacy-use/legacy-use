@@ -6,7 +6,7 @@ by mapping between OpenAI's format and the Anthropic format used for DB storage.
 """
 
 import json
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import httpx
 from anthropic.types.beta import (
@@ -21,8 +21,22 @@ from server.computer_use.handlers.base import BaseProviderHandler
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolCollection, ToolResult
 from server.computer_use.utils import _make_api_tool_result
+# No custom OpenAI types here; we use the SDK's types directly
 
 from openai import AsyncOpenAI
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionToolParam,
+    ChatCompletion,
+    ChatCompletionUserMessageParam,
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionToolMessageParam,
+    ChatCompletionContentPartParam,
+    ChatCompletionContentPartTextParam,
+    ChatCompletionContentPartImageParam,
+    ChatCompletionMessageToolCallParam,
+)
 
 
 class OpenAIHandler(BaseProviderHandler):
@@ -72,7 +86,7 @@ class OpenAIHandler(BaseProviderHandler):
 
     def convert_to_provider_messages(
         self, messages: list[BetaMessageParam]
-    ) -> list[dict]:
+    ) -> list[ChatCompletionMessageParam]:
         """
         Convert Anthropic-format messages to OpenAI format.
 
@@ -94,7 +108,7 @@ class OpenAIHandler(BaseProviderHandler):
                 min_removal_threshold=1,
             )
 
-        openai_messages = []
+        openai_messages: list[ChatCompletionMessageParam] = []
 
         logger.info(
             f'Converting {len(messages)} messages from Anthropic to OpenAI format'
@@ -108,17 +122,22 @@ class OpenAIHandler(BaseProviderHandler):
 
             if isinstance(content, str):
                 # Simple text message
-                openai_messages.append(
-                    {
-                        'role': role,
+                if role == 'user':
+                    user_msg: ChatCompletionUserMessageParam = {
+                        'role': 'user',
                         'content': content,
                     }
-                )
+                    openai_messages.append(user_msg)
+                else:
+                    assistant_msg: ChatCompletionAssistantMessageParam = {
+                        'role': 'assistant',
+                        'content': content,
+                    }
+                    openai_messages.append(assistant_msg)
             elif isinstance(content, list):
                 # Complex message with multiple content blocks
-                openai_msg = {'role': role}
-                content_parts = []
-                tool_calls = []
+                content_parts: list[ChatCompletionContentPartParam] = []
+                tool_calls: list[ChatCompletionMessageToolCallParam] = []
 
                 for block in content:
                     if isinstance(block, dict):
@@ -126,10 +145,13 @@ class OpenAIHandler(BaseProviderHandler):
 
                         if block_type == 'text':
                             content_parts.append(
-                                {
-                                    'type': 'text',
-                                    'text': block.get('text', ''),
-                                }
+                                cast(
+                                    ChatCompletionContentPartTextParam,
+                                    {
+                                        'type': 'text',
+                                        'text': block.get('text', ''),
+                                    },
+                                )
                             )
 
                         elif block_type == 'image':
@@ -137,25 +159,33 @@ class OpenAIHandler(BaseProviderHandler):
                             source = block.get('source', {})
                             if source.get('type') == 'base64':
                                 content_parts.append(
-                                    {
-                                        'type': 'image_url',
-                                        'image_url': {
-                                            'url': f'data:{source.get("media_type", "image/png")};base64,{source.get("data", "")}',
+                                    cast(
+                                        ChatCompletionContentPartImageParam,
+                                        {
+                                            'type': 'image_url',
+                                            'image_url': {
+                                                'url': f'data:{source.get("media_type", "image/png")};base64,{source.get("data", "")}',
+                                            },
                                         },
-                                    }
+                                    )
                                 )
 
                         elif block_type == 'tool_use':
                             # Convert tool use to OpenAI tool_calls
                             tool_calls.append(
-                                {
-                                    'id': block.get('id'),
-                                    'type': 'function',
-                                    'function': {
-                                        'name': block.get('name'),
-                                        'arguments': json.dumps(block.get('input', {})),
+                                cast(
+                                    ChatCompletionMessageToolCallParam,
+                                    {
+                                        'id': str(block.get('id') or ''),
+                                        'type': 'function',
+                                        'function': {
+                                            'name': str(block.get('name') or ''),
+                                            'arguments': json.dumps(
+                                                block.get('input', {})
+                                            ),
+                                        },
                                     },
-                                }
+                                )
                             )
 
                         elif block_type == 'tool_result':
@@ -169,10 +199,10 @@ class OpenAIHandler(BaseProviderHandler):
 
                             if 'error' in block:
                                 # Error case - simple text message
-                                tool_msg = {
+                                tool_msg: ChatCompletionToolMessageParam = {
                                     'role': 'tool',
-                                    'tool_call_id': tool_call_id,
-                                    'content': block['error'],
+                                    'tool_call_id': str(tool_call_id or 'tool_call'),
+                                    'content': str(block['error']),
                                 }
                                 openai_messages.append(tool_msg)
                             elif 'content' in block and isinstance(
@@ -191,71 +221,105 @@ class OpenAIHandler(BaseProviderHandler):
 
                                 if has_image and image_data:
                                     # For screenshot results, we must send a tool message to close the function call
-                                    tool_msg = {
+                                    tool_msg2: ChatCompletionToolMessageParam = {
                                         'role': 'tool',
-                                        'tool_call_id': tool_call_id,
-                                        'content': text_content
-                                        or 'Screenshot taken successfully',
+                                        'tool_call_id': str(
+                                            tool_call_id or 'tool_call'
+                                        ),
+                                        'content': str(
+                                            text_content
+                                            or 'Screenshot taken successfully'
+                                        ),
                                     }
-                                    openai_messages.append(tool_msg)
+                                    openai_messages.append(tool_msg2)
 
                                     # Additionally inject a user message so the model can SEE the image
                                     # Keep this minimal and mirror Anthropic by providing the original text + image
-                                    user_parts = []
+                                    user_parts: list[
+                                        ChatCompletionContentPartParam
+                                    ] = []
                                     if text_content:
                                         user_parts.append(
-                                            {'type': 'text', 'text': text_content}
+                                            cast(
+                                                ChatCompletionContentPartTextParam,
+                                                {
+                                                    'type': 'text',
+                                                    'text': text_content,
+                                                },
+                                            )
                                         )
                                     user_parts.append(
-                                        {
-                                            'type': 'image_url',
-                                            'image_url': {
-                                                'url': f'data:image/png;base64,{image_data}'
+                                        cast(
+                                            ChatCompletionContentPartImageParam,
+                                            {
+                                                'type': 'image_url',
+                                                'image_url': {
+                                                    'url': f'data:image/png;base64,{image_data}'
+                                                },
                                             },
-                                        }
+                                        )
                                     )
-                                    image_msg = {'role': 'user', 'content': user_parts}
+                                    image_msg: ChatCompletionUserMessageParam = {
+                                        'role': 'user',
+                                        'content': user_parts,
+                                    }
                                     openai_messages.append(image_msg)
                                 else:
                                     # Text-only tool result
-                                    tool_msg = {
+                                    tool_msg3: ChatCompletionToolMessageParam = {
                                         'role': 'tool',
-                                        'tool_call_id': tool_call_id,
-                                        'content': text_content
-                                        or 'Tool executed successfully',
+                                        'tool_call_id': str(
+                                            tool_call_id or 'tool_call'
+                                        ),
+                                        'content': str(
+                                            text_content or 'Tool executed successfully'
+                                        ),
                                     }
-                                    openai_messages.append(tool_msg)
+                                    openai_messages.append(tool_msg3)
                             else:
                                 # No content - simple success message
-                                tool_msg = {
+                                tool_msg4: ChatCompletionToolMessageParam = {
                                     'role': 'tool',
-                                    'tool_call_id': tool_call_id,
+                                    'tool_call_id': str(tool_call_id or 'tool_call'),
                                     'content': 'Tool executed successfully',
                                 }
-                                openai_messages.append(tool_msg)
+                                openai_messages.append(tool_msg4)
 
                             continue  # Skip adding to current message
 
                 # Add content and tool calls to message
-                if content_parts:
-                    openai_msg['content'] = (
-                        content_parts
-                        if len(content_parts) > 1
-                        else content_parts[0]['text']
-                    )
-                if tool_calls:
-                    openai_msg['tool_calls'] = tool_calls
-
-                if 'content' in openai_msg or 'tool_calls' in openai_msg:
-                    openai_messages.append(openai_msg)
+                if role == 'user' and content_parts:
+                    user_msg2: ChatCompletionUserMessageParam = {
+                        'role': 'user',
+                        'content': content_parts,
+                    }
+                    openai_messages.append(user_msg2)
+                elif role != 'user':
+                    assistant_msg2: ChatCompletionAssistantMessageParam = {
+                        'role': 'assistant',
+                    }
+                    if content_parts:
+                        # For assistant, content must be str or specific assistant parts.
+                        # We collapse text parts into a single string and drop images.
+                        texts: list[str] = []
+                        for part in content_parts:
+                            if isinstance(part, dict) and part.get('type') == 'text':
+                                texts.append(str(part.get('text') or ''))
+                        if texts:
+                            assistant_msg2['content'] = '\n'.join(t for t in texts if t)
+                    if tool_calls:
+                        assistant_msg2['tool_calls'] = tool_calls
+                    openai_messages.append(assistant_msg2)
 
         logger.info(f'Converted to {len(openai_messages)} OpenAI messages')
         logger.debug(f'Message types: {[m["role"] for m in openai_messages]}')
 
         return openai_messages
 
-    def prepare_tools(self, tool_collection: ToolCollection) -> list[dict]:
-        tools = tool_collection.to_openai_tools()
+    def prepare_tools(
+        self, tool_collection: ToolCollection
+    ) -> list[ChatCompletionToolParam]:
+        tools: list[ChatCompletionToolParam] = tool_collection.to_openai_tools()  # type: ignore[assignment]
         logger.debug(
             f'OpenAI tools after conversion: {[t["function"]["name"] for t in tools]}'
         )
@@ -266,7 +330,7 @@ class OpenAIHandler(BaseProviderHandler):
         client: Any,
         messages: list[Any],
         system: str,
-        tools: list[dict],
+        tools: list[ChatCompletionToolParam],
         model: str,
         max_tokens: int,
         temperature: float = 0.0,
@@ -280,9 +344,13 @@ class OpenAIHandler(BaseProviderHandler):
 
         # Chat Completions API with function tools
         # Add system message at the beginning if provided
-        full_messages = []
+        full_messages: list[ChatCompletionMessageParam] = []
         if system:
-            full_messages.append({'role': 'system', 'content': system})
+            sys_msg: ChatCompletionSystemMessageParam = {
+                'role': 'system',
+                'content': system,
+            }
+            full_messages.append(sys_msg)
         full_messages.extend(messages)
 
         logger.info(f'Messages: {len(full_messages)} total')
@@ -305,7 +373,7 @@ class OpenAIHandler(BaseProviderHandler):
         return parsed_response, response.http_response.request, response.http_response
 
     def convert_from_provider_response(
-        self, response: Any
+        self, response: ChatCompletion
     ) -> tuple[list[BetaContentBlockParam], str]:
         """
         Convert OpenAI response to Anthropic format blocks and stop reason.

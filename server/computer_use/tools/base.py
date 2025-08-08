@@ -1,8 +1,9 @@
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, fields, replace
-from typing import Any
+from typing import Any, Optional, cast
 
 from anthropic.types.beta import BetaToolUnionParam
+from openai.types.chat import ChatCompletionToolParam
 
 
 class BaseAnthropicTool(metaclass=ABCMeta):
@@ -19,7 +20,7 @@ class BaseAnthropicTool(metaclass=ABCMeta):
     ) -> BetaToolUnionParam:
         raise NotImplementedError
 
-    def to_openai_tool(self) -> dict:
+    def to_openai_tool(self) -> ChatCompletionToolParam:
         """Return this tool in OpenAI function tool schema.
 
         Default implementation converts the Anthropic input_schema (if any)
@@ -27,9 +28,9 @@ class BaseAnthropicTool(metaclass=ABCMeta):
         input_schema via to_params (e.g., computer tool) should override this.
         """
         params = self.to_params()
-        name = params.get('name')  # type: ignore[arg-type]
-        description = params.get('description') or f'Tool: {name}'  # type: ignore[assignment]
-        input_schema = params.get('input_schema')  # type: ignore[assignment]
+        name = cast(str, params['name'])
+        description = cast(Optional[str], params.get('description')) or f'Tool: {name}'
+        input_schema = cast(Optional[dict[str, Any]], params.get('input_schema'))
 
         if not input_schema:
             # If a tool has no input schema, provide an empty object schema by default
