@@ -81,8 +81,8 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
    - To press keys: computer(action="key", key="Return") or key="Tab", etc.
 
 3. For the 'extraction' tool - use ONLY when you have found the requested information:
-   - MUST pass: extraction(name="API_NAME", result={your_data})
-   - Example: extraction(name="Get Time", result={"time": "12:22"})
+   - MUST pass: extraction(data={your_data})
+   - Example: extraction(data={"time": "12:22"})
 
 4. For 'ui_not_as_expected' tool - use when the UI doesn't match expectations:
    - Pass: ui_not_as_expected(reasoning="explanation of what went wrong")
@@ -279,157 +279,8 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
         return openai_messages
 
     def prepare_tools(self, tool_collection: ToolCollection) -> list[dict]:
-        """
-        Convert tool collection to OpenAI tools format.
-
-        OpenAI format:
-        {
-            "type": "function",
-            "function": {
-                "name": str,
-                "description": str,
-                "parameters": {...}  # JSON Schema
-            }
-        }
-        """
-        tools = []
-
-        # Get Anthropic format tools and convert
-        anthropic_tools = tool_collection.to_params()
-
-        # log tools
-        logger.debug(f'Anthropic tools to convert: {anthropic_tools}')
-
-        for tool in anthropic_tools:
-            tool_name = tool.get('name')
-
-            # Special handling for different tool types
-            if tool_name == 'computer':
-                # Computer tool needs special schema
-                openai_tool = {
-                    'type': 'function',
-                    'function': {
-                        'name': 'computer',
-                        'description': 'Control the computer screen, keyboard, and mouse. Use screenshot action first to see the screen.',
-                        'parameters': {
-                            'type': 'object',
-                            'properties': {
-                                'action': {
-                                    'type': 'string',
-                                    'enum': [
-                                        'screenshot',
-                                        'click',
-                                        'type',
-                                        'key',
-                                        'left_click',
-                                        'right_click',
-                                        'middle_click',
-                                        'double_click',
-                                        'left_click_drag',
-                                        'mouse_move',
-                                        'cursor_position',
-                                        'scroll',
-                                        'wait',
-                                        'triple_click',
-                                    ],
-                                    'description': 'The action to perform',
-                                },
-                                'coordinate': {
-                                    'type': 'array',
-                                    'items': {'type': 'integer'},
-                                    'minItems': 2,
-                                    'maxItems': 2,
-                                    'description': '[x, y] coordinates for mouse actions',
-                                },
-                                'text': {
-                                    'type': 'string',
-                                    'description': 'Text to type (for type action)',
-                                },
-                                'key': {
-                                    'type': 'string',
-                                    'description': 'Key to press (for key action)',
-                                },
-                                'scroll_direction': {
-                                    'type': 'string',
-                                    'enum': ['up', 'down', 'left', 'right'],
-                                    'description': 'Direction to scroll',
-                                },
-                                'scroll_amount': {
-                                    'type': 'integer',
-                                    'description': 'Amount to scroll in pixels',
-                                },
-                                'duration': {
-                                    'type': 'number',
-                                    'description': 'Duration in seconds (for wait action)',
-                                },
-                            },
-                            'required': ['action'],
-                        },
-                    },
-                }
-            elif tool_name == 'extraction':
-                # Extraction tool for returning structured data
-                # Simplify the schema for OpenAI - we'll wrap it in 'data' in the handler
-                openai_tool = {
-                    'type': 'function',
-                    'function': {
-                        'name': 'extraction',
-                        'description': "Use this tool to return the final JSON result when you've found the information requested by the user. You must provide 'name' (the API name) and 'result' (the extracted data) fields.",
-                        'parameters': {
-                            'type': 'object',
-                            'properties': {
-                                'name': {
-                                    'type': 'string',
-                                    'description': 'The API name for this extraction (e.g., "Get Time")',
-                                },
-                                'result': {
-                                    'type': 'object',
-                                    'description': 'The extracted data as a JSON object (e.g., {"time": "12:22"})',
-                                    'additionalProperties': True,
-                                },
-                            },
-                            'required': ['name', 'result'],
-                        },
-                    },
-                }
-            elif tool_name == 'ui_not_as_expected':
-                # UI mismatch reporting tool
-                openai_tool = {
-                    'type': 'function',
-                    'function': {
-                        'name': 'ui_not_as_expected',
-                        'description': 'Report when the UI does not match expectations or behaves unexpectedly.',
-                        'parameters': {
-                            'type': 'object',
-                            'properties': {
-                                'reasoning': {
-                                    'type': 'string',
-                                    'description': 'Clear explanation of what was expected vs what was observed',
-                                }
-                            },
-                            'required': ['reasoning'],
-                        },
-                    },
-                }
-            else:
-                # Generic tool conversion
-                openai_tool = {
-                    'type': 'function',
-                    'function': {
-                        'name': tool['name'],
-                        'description': tool.get('description', f'Tool: {tool["name"]}'),
-                        'parameters': tool.get(
-                            'input_schema',
-                            {
-                                'type': 'object',
-                                'properties': {},
-                            },
-                        ),
-                    },
-                }
-
-            tools.append(openai_tool)
-
+        """Convert tool collection to OpenAI tools format using tool adapters."""
+        tools = tool_collection.to_openai_tools()
         logger.debug(
             f'OpenAI tools after conversion: {[t["function"]["name"] for t in tools]}'
         )
@@ -460,8 +311,10 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
         logger.info(
             f'Tools: {[t["function"]["name"] for t in tools] if tools else "None"}'
         )
+        logger.info(f'Tools: {tools}')
+        logger.info(f'Tenant schema: {self.tenant_schema}')
         logger.debug(f'Max tokens: {max_tokens}, Temperature: {temperature}')
-        logger.debug(f'Full messages: {full_messages}')
+        # logger.debug(f'Full messages: {full_messages}')
 
         response = await client.chat.completions.with_raw_response.create(
             model=model,

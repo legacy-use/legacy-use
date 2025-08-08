@@ -59,6 +59,10 @@ class ToolCollection:
     ) -> list[BetaToolUnionParam]:
         return [tool.to_params() for tool in self.tools]
 
+    def to_openai_tools(self) -> list[dict]:
+        """Return tools in OpenAI function calling format using each tool's adapter."""
+        return [tool.to_openai_tool() for tool in self.tools]
+
     async def run(
         self,
         *,

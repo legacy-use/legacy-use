@@ -19,6 +19,34 @@ class BaseAnthropicTool(metaclass=ABCMeta):
     ) -> BetaToolUnionParam:
         raise NotImplementedError
 
+    def to_openai_tool(self) -> dict:
+        """Return this tool in OpenAI function tool schema.
+
+        Default implementation converts the Anthropic input_schema (if any)
+        into an OpenAI function definition. Tools that do not expose an
+        input_schema via to_params (e.g., computer tool) should override this.
+        """
+        params = self.to_params()
+        name = params.get('name')  # type: ignore[arg-type]
+        description = params.get('description') or f'Tool: {name}'  # type: ignore[assignment]
+        input_schema = params.get('input_schema')  # type: ignore[assignment]
+
+        if not input_schema:
+            # If a tool has no input schema, provide an empty object schema by default
+            input_schema = {
+                'type': 'object',
+                'properties': {},
+            }
+
+        return {
+            'type': 'function',
+            'function': {
+                'name': name,
+                'description': description,
+                'parameters': input_schema,
+            },
+        }
+
 
 @dataclass(kw_only=True, frozen=True)
 class ToolResult:

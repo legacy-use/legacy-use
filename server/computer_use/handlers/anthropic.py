@@ -158,6 +158,7 @@ class AnthropicHandler(BaseProviderHandler):
 
     def prepare_tools(self, tool_collection: ToolCollection) -> Any:
         """Convert tool collection to Anthropic format."""
+        logger.info(f'tool_collection: {tool_collection}')
         return tool_collection.to_params()
 
     def get_betas(self) -> list[str]:
@@ -186,7 +187,9 @@ class AnthropicHandler(BaseProviderHandler):
         logger.debug(
             f'Tools being sent to Anthropic: {[t["name"] for t in tools] if tools else "None"}'
         )
-        logger.debug(f'Messages being sent to Anthropic: {messages}')
+        logger.info(f'Tools: {tools}')
+        logger.info(f'Tenant schema: {self.tenant_schema}')
+        # logger.debug(f'Messages being sent to Anthropic: {messages}')
         logger.debug(f'System being sent to Anthropic: {system}')
 
         try:

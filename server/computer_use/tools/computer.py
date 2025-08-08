@@ -57,6 +57,98 @@ class BaseComputerTool(BaseAnthropicTool):
     def to_params(self) -> BetaToolComputerUse20241022Param:
         return {'name': self.name, 'type': self.api_type, **self.options}
 
+    def to_openai_tool(self) -> dict:
+        """Return OpenAI function tool schema for the computer tool.
+
+        We expose a provider-agnostic schema that mirrors Anthropic's computer_use
+        while remaining compatible with OpenAI function calling.
+        """
+        # OpenAI function parameters must be a plain object without oneOf/anyOf/allOf at the top level
+
+        # Base actions common to all versions
+        base_actions_enum: list[str] = [
+            'screenshot',
+            'left_click',
+            'type',
+            'key',
+            'mouse_move',
+        ]
+
+        # Enhanced actions for 2025-01-24
+        enhanced_actions_enum: list[str] = [
+            'scroll',
+            'left_click_drag',
+            'right_click',
+            'middle_click',
+            'double_click',
+            'triple_click',
+            'left_mouse_down',
+            'left_mouse_up',
+            'hold_key',
+            'wait',
+        ]
+
+        return {
+            'type': 'function',
+            'function': {
+                'name': 'computer',
+                'description': 'Control the computer screen, keyboard, and mouse. ALWAYS start with action="screenshot". After every action, return a fresh screenshot (base64 PNG) and any observations.',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'action': {
+                            'type': 'string',
+                            'enum': base_actions_enum
+                            + (
+                                enhanced_actions_enum
+                                if self.api_type == 'computer_20250124'
+                                else []
+                            ),
+                            'description': 'Action to perform. Start with screenshot.',
+                        },
+                        'coordinate': {
+                            'type': 'array',
+                            'items': {'type': 'integer', 'minimum': 0},
+                            'minItems': 2,
+                            'maxItems': 2,
+                            'description': '[x, y] screen pixels for the action location',
+                        },
+                        'to': {
+                            'type': 'array',
+                            'items': {'type': 'integer', 'minimum': 0},
+                            'minItems': 2,
+                            'maxItems': 2,
+                            'description': 'End [x, y] for left_click_drag',
+                        },
+                        'text': {
+                            'type': 'string',
+                            'description': 'For action="type": literal characters only (no special keys).',
+                        },
+                        'key': {
+                            'type': 'string',
+                            'description': 'For action="key" or "hold_key": a key OR combo like "ctrl+s", "alt+tab", "shift+enter".',
+                        },
+                        'scroll_direction': {
+                            'type': 'string',
+                            'enum': ['up', 'down', 'left', 'right'],
+                            'description': 'Direction to scroll (for action="scroll")',
+                        },
+                        'scroll_amount': {
+                            'type': 'integer',
+                            'minimum': 0,
+                            'description': 'Mouse wheel notches (non-negative integer)',
+                        },
+                        'duration': {
+                            'type': 'number',
+                            'minimum': 0,
+                            'description': 'Seconds for action="wait" or how long to hold in action="hold_key"',
+                        },
+                    },
+                    'required': ['action'],
+                },
+            },
+        }
+
     async def __call__(
         self,
         *,
