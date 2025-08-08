@@ -24,7 +24,14 @@ from server.computer_use.tools import ToolCollection, ToolResult
 from server.computer_use.utils import _make_api_tool_result
 
 from openai import AsyncOpenAI
-from openai.types.responses import ToolParam, ComputerToolParam, FunctionToolParam
+from openai.types.responses import (
+    ToolParam,
+    ComputerToolParam,
+    FunctionToolParam,
+    ResponseInputParam,
+    Response,
+)
+from openai.types.responses.easy_input_message_param import EasyInputMessageParam
 
 
 class OpenAICUAHandler(BaseProviderHandler):
@@ -51,6 +58,7 @@ class OpenAICUAHandler(BaseProviderHandler):
         return AsyncOpenAI(api_key=api_key)
 
     def prepare_system(self, system_prompt: str) -> str:
+        # TODO: Remove, and find solution on how openAI can keep track on state of current job
         openai_instructions = """
         Keep meta information in your summary about where you are in the step by step guide. Keep also information about relevant information you extracted.
         Feel free to include additional information in your summary. There is no need to be short or concise.
@@ -59,7 +67,7 @@ class OpenAICUAHandler(BaseProviderHandler):
 
     def convert_to_provider_messages(
         self, messages: list[BetaMessageParam]
-    ) -> list[dict[str, Any]]:
+    ) -> ResponseInputParam:
         """
         Convert Anthropic-format messages to OpenAI Responses API `input` format:
         a list of objects with {role: 'user', content: [{type: input_text|input_image, ...}]}.
@@ -71,7 +79,7 @@ class OpenAICUAHandler(BaseProviderHandler):
                 messages, self.only_n_most_recent_images, min_removal_threshold=1
             )
 
-        provider_messages: list[dict[str, Any]] = []
+        provider_messages: ResponseInputParam = []
         for msg in messages:
             role = msg.get('role')
             content = msg.get('content')
@@ -79,24 +87,30 @@ class OpenAICUAHandler(BaseProviderHandler):
             if isinstance(content, str):
                 if role == 'user':
                     provider_messages.append(
-                        {
-                            'role': 'user',
-                            'content': [
-                                {'type': 'input_text', 'text': cast(str, content)}
-                            ],
-                        }
+                        cast(
+                            EasyInputMessageParam,
+                            {
+                                'role': 'user',
+                                'content': [
+                                    {'type': 'input_text', 'text': cast(str, content)}
+                                ],
+                            },
+                        )
                     )
                 else:
                     provider_messages.append(
-                        {
-                            'role': 'user',
-                            'content': [
-                                {
-                                    'type': 'input_text',
-                                    'text': f'Assistant said: {content}',
-                                }
-                            ],
-                        }
+                        cast(
+                            EasyInputMessageParam,
+                            {
+                                'role': 'user',
+                                'content': [
+                                    {
+                                        'type': 'input_text',
+                                        'text': f'Assistant said: {content}',
+                                    }
+                                ],
+                            },
+                        )
                     )
             elif isinstance(content, list):
                 input_parts: list[dict[str, Any]] = []
@@ -115,7 +129,11 @@ class OpenAICUAHandler(BaseProviderHandler):
                         if source.get('type') == 'base64' and source.get('data'):
                             data_url = f'data:{source.get("media_type", "image/png")};base64,{source.get("data")}'
                             input_parts.append(
-                                {'type': 'input_image', 'image_url': data_url}
+                                {
+                                    'type': 'input_image',
+                                    'detail': 'auto',
+                                    'image_url': data_url,
+                                }
                             )
                     elif btype == 'tool_result':
                         text_content = ''
@@ -140,12 +158,18 @@ class OpenAICUAHandler(BaseProviderHandler):
                             input_parts.append(
                                 {
                                     'type': 'input_image',
+                                    'detail': 'auto',
                                     'image_url': f'data:image/png;base64,{image_data}',
                                 }
                             )
 
                 if input_parts:
-                    provider_messages.append({'role': 'user', 'content': input_parts})
+                    provider_messages.append(
+                        cast(
+                            EasyInputMessageParam,
+                            {'role': 'user', 'content': input_parts},
+                        )
+                    )
 
         logger.info(
             f'Converted to {len(provider_messages)} OpenAI Responses input messages (CUA)'
@@ -223,28 +247,35 @@ class OpenAICUAHandler(BaseProviderHandler):
     async def call_api(
         self,
         client: AsyncOpenAI,
-        messages: list[Any],
+        messages: ResponseInputParam,
         system: str,
         tools: list[ToolParam],
         model: str,
         max_tokens: int,
         temperature: float = 0.0,
         **kwargs,
-    ) -> tuple[Any, httpx.Request, httpx.Response]:
+    ) -> tuple[Response, httpx.Request, httpx.Response]:
         logger.info('=== OpenAI CUA API Call ===')
         logger.info(f'Model: {model}')
         logger.info(f'Tools: {tools}')
         logger.info(f'Tenant schema: {self.tenant_schema}')
         logger.debug(f'Max tokens: {max_tokens}, Temperature: {temperature}')
 
-        # print input, but not the image
-        for msg in messages:
-            if (
-                msg.get('content')
-                and msg.get('content')[0].get('type') == 'input_image'
-            ):
-                continue
-            logger.info(f'Input message: {msg}')
+        # Print input, but hide large base64 images if present
+        for item in messages:
+            try:
+                if isinstance(item, dict):
+                    content = item.get('content')
+                    if isinstance(content, list) and content:
+                        first = content[0]
+                        if (
+                            isinstance(first, dict)
+                            and first.get('type') == 'input_image'
+                        ):
+                            continue
+                logger.info(f'Input message: {item}')
+            except Exception:
+                logger.info(f'Input message: {item}')
 
         response = await client.responses.with_raw_response.create(
             model=model,
@@ -263,7 +294,7 @@ class OpenAICUAHandler(BaseProviderHandler):
         return parsed_response, response.http_response.request, response.http_response
 
     def convert_from_provider_response(
-        self, response: Any
+        self, response: Response
     ) -> tuple[list[BetaContentBlockParam], str]:
         """Convert Responses API output to Anthropic blocks and stop reason."""
         content_blocks: list[BetaContentBlockParam] = []

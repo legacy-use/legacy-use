@@ -5,7 +5,7 @@ This handler manages all Anthropic-specific logic including Claude models
 via direct API, Bedrock, and Vertex AI.
 """
 
-from typing import Any, Optional
+from typing import Optional, cast
 
 import httpx
 from anthropic import (
@@ -22,6 +22,7 @@ from anthropic.types.beta import (
     BetaTextBlockParam,
     BetaToolResultBlockParam,
     BetaToolUnionParam,
+    BetaMessage,
 )
 
 from server.computer_use.client import LegacyUseClient
@@ -98,33 +99,33 @@ class AnthropicHandler(BaseProviderHandler):
 
         elif self.provider == APIProvider.BEDROCK:
             # AWS credentials from tenant settings (fallback to env settings)
-            aws_region = self.tenant_setting('AWS_REGION') or settings.AWS_REGION
-            aws_access_key = (
-                self.tenant_setting('AWS_ACCESS_KEY_ID') or settings.AWS_ACCESS_KEY_ID
+            aws_region = self.tenant_setting('AWS_REGION') or getattr(
+                settings, 'AWS_REGION', None
             )
-            aws_secret_key = (
-                self.tenant_setting('AWS_SECRET_ACCESS_KEY')
-                or settings.AWS_SECRET_ACCESS_KEY
+            aws_access_key = self.tenant_setting('AWS_ACCESS_KEY_ID') or getattr(
+                settings, 'AWS_ACCESS_KEY_ID', None
             )
-            aws_session_token = (
-                self.tenant_setting('AWS_SESSION_TOKEN') or settings.AWS_SESSION_TOKEN
+            aws_secret_key = self.tenant_setting('AWS_SECRET_ACCESS_KEY') or getattr(
+                settings, 'AWS_SECRET_ACCESS_KEY', None
+            )
+            aws_session_token = self.tenant_setting('AWS_SESSION_TOKEN') or getattr(
+                settings, 'AWS_SESSION_TOKEN', None
             )
 
-            # Initialize with available credentials
-            bedrock_kwargs = {'aws_region': aws_region}
-            if aws_access_key and aws_secret_key:
-                bedrock_kwargs['aws_access_key'] = aws_access_key
-                bedrock_kwargs['aws_secret_key'] = aws_secret_key
-                if aws_session_token:
-                    bedrock_kwargs['aws_session_token'] = aws_session_token
-
+            # Initialize with available credentials using explicit kwargs for clearer typing
             logger.info(f'Using AsyncAnthropicBedrock client with region: {aws_region}')
-            return AsyncAnthropicBedrock(**bedrock_kwargs)
+            return AsyncAnthropicBedrock(
+                aws_region=aws_region or '',
+                aws_access_key=aws_access_key or None,
+                aws_secret_key=aws_secret_key or None,
+                aws_session_token=aws_session_token or None,
+            )
 
         elif self.provider == APIProvider.LEGACYUSE_PROXY:
             proxy_key = (
                 self.tenant_setting('LEGACYUSE_PROXY_API_KEY')
-                or settings.LEGACYUSE_PROXY_API_KEY
+                or getattr(settings, 'LEGACYUSE_PROXY_API_KEY', None)
+                or ''
             )
             return LegacyUseClient(api_key=proxy_key)
 
@@ -180,13 +181,13 @@ class AnthropicHandler(BaseProviderHandler):
         self,
         client: AnthropicClient,
         messages: list[BetaMessageParam],
-        system: str,
+        system: BetaTextBlockParam,
         tools: list[BetaToolUnionParam],
         model: str,
         max_tokens: int,
         temperature: float = 0.0,
         **kwargs,
-    ) -> tuple[Any, httpx.Request, httpx.Response]:
+    ) -> tuple[BetaMessage, httpx.Request, httpx.Response]:
         """Make API call to Anthropic."""
         betas = self.get_betas()
 
@@ -201,17 +202,21 @@ class AnthropicHandler(BaseProviderHandler):
         logger.debug(f'System being sent to Anthropic: {system}')
 
         try:
+            # Some client variants expect `system` as str; extract from BetaTextBlockParam
+            system_text = (
+                system.get('text') if isinstance(system, dict) else str(system)
+            )
             raw_response = await client.beta.messages.with_raw_response.create(
                 max_tokens=max_tokens,
                 messages=messages,
                 model=model,
-                system=system,
+                system=system_text,
                 tools=tools,
                 betas=betas,
                 temperature=temperature,
             )
 
-            parsed_response = raw_response.parse()
+            parsed_response = cast(BetaMessage, raw_response.parse())
             logger.info(f'Parsed response: {parsed_response}')
             return (
                 parsed_response,
@@ -227,14 +232,14 @@ class AnthropicHandler(BaseProviderHandler):
             raise e
 
     def convert_from_provider_response(
-        self, response: Any
+        self, response: BetaMessage
     ) -> tuple[list[BetaContentBlockParam], str]:
         """
         Convert Anthropic response to content blocks and stop reason.
         Response is already in Anthropic format.
         """
         content_blocks = _response_to_params(response)
-        stop_reason = response.stop_reason
+        stop_reason = response.stop_reason or 'end_turn'
         return content_blocks, stop_reason
 
     def parse_tool_use(self, content_block: BetaContentBlockParam) -> Optional[dict]:
