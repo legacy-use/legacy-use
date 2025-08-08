@@ -71,6 +71,7 @@ class ToolCollection:
         session_id: str,
         session: Dict[str, Any] | None = None,
     ) -> ToolResult:
+        logger.info(f'ToolCollection.run: {name} {tool_input} {session_id} {session}')
         tool = self.tool_map.get(name)
         if not tool:
             return ToolFailure(error=f'Tool {name} is invalid')

@@ -11,7 +11,6 @@ from typing import Any, Optional
 import httpx
 from anthropic.types.beta import (
     BetaContentBlockParam,
-    BetaImageBlockParam,
     BetaMessageParam,
     BetaTextBlockParam,
     BetaToolResultBlockParam,
@@ -21,6 +20,7 @@ from anthropic.types.beta import (
 from server.computer_use.handlers.base import BaseProviderHandler
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolCollection, ToolResult
+from server.computer_use.utils import _make_api_tool_result
 
 from openai import AsyncOpenAI
 
@@ -56,10 +56,11 @@ class OpenAIHandler(BaseProviderHandler):
             **kwargs,
         )
         self.model = model
+        # Keep this handler focused on Chat Completions + function calling
 
     async def initialize_client(self, api_key: str, **kwargs) -> Any:
         """Initialize OpenAI client."""
-        # Note: This would require installing openai package
+        # Prefer tenant-specific key if available
         return AsyncOpenAI(api_key=api_key)
 
     def prepare_system(self, system_prompt: str) -> str:
@@ -67,31 +68,7 @@ class OpenAIHandler(BaseProviderHandler):
         Prepare system prompt for OpenAI.
         OpenAI uses a simple string for system prompts.
         """
-        # Add OpenAI-specific instructions to the system prompt
-        openai_instructions = """
-CRITICAL TOOL USAGE RULES FOR THIS TASK:
-
-1. ALWAYS START with computer(action="screenshot") to see the current screen state before any other action.
-
-2. For the 'computer' tool:
-   - First action MUST be: computer(action="screenshot")
-   - To open Windows settings: computer(action="key", key="Super_L") then type "settings"
-   - To click: computer(action="left_click", coordinate=[x, y])
-   - To type text: computer(action="type", text="your text")
-   - To press keys: computer(action="key", key="Return") or key="Tab", etc.
-
-3. For the 'extraction' tool - use ONLY when you have found the requested information:
-   - MUST pass: extraction(data={your_data})
-   - Example: extraction(data={"time": "12:22"})
-
-4. For 'ui_not_as_expected' tool - use when the UI doesn't match expectations:
-   - Pass: ui_not_as_expected(reasoning="explanation of what went wrong")
-   - Use this if a button doesn't exist, UI looks different, or actions fail
-
-5. IMPORTANT: After EVERY computer action, the system will return a screenshot. Look at it before proceeding.
-
-"""
-        return openai_instructions + system_prompt
+        return system_prompt
 
     def convert_to_provider_messages(
         self, messages: list[BetaMessageParam]
@@ -213,8 +190,7 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
                                                 image_data = source.get('data')
 
                                 if has_image and image_data:
-                                    # For screenshot results, we need to send the image as a user message
-                                    # First send the tool result confirmation
+                                    # For screenshot results, we must send a tool message to close the function call
                                     tool_msg = {
                                         'role': 'tool',
                                         'tool_call_id': tool_call_id,
@@ -223,22 +199,22 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
                                     }
                                     openai_messages.append(tool_msg)
 
-                                    # Then add a user message with the image
-                                    image_msg = {
-                                        'role': 'user',
-                                        'content': [
-                                            {
-                                                'type': 'text',
-                                                'text': 'Here is the screenshot result:',
+                                    # Additionally inject a user message so the model can SEE the image
+                                    # Keep this minimal and mirror Anthropic by providing the original text + image
+                                    user_parts = []
+                                    if text_content:
+                                        user_parts.append(
+                                            {'type': 'text', 'text': text_content}
+                                        )
+                                    user_parts.append(
+                                        {
+                                            'type': 'image_url',
+                                            'image_url': {
+                                                'url': f'data:image/png;base64,{image_data}'
                                             },
-                                            {
-                                                'type': 'image_url',
-                                                'image_url': {
-                                                    'url': f'data:image/png;base64,{image_data}'
-                                                },
-                                            },
-                                        ],
-                                    }
+                                        }
+                                    )
+                                    image_msg = {'role': 'user', 'content': user_parts}
                                     openai_messages.append(image_msg)
                                 else:
                                     # Text-only tool result
@@ -279,7 +255,6 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
         return openai_messages
 
     def prepare_tools(self, tool_collection: ToolCollection) -> list[dict]:
-        """Convert tool collection to OpenAI tools format using tool adapters."""
         tools = tool_collection.to_openai_tools()
         logger.debug(
             f'OpenAI tools after conversion: {[t["function"]["name"] for t in tools]}'
@@ -298,23 +273,23 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
         **kwargs,
     ) -> tuple[Any, httpx.Request, httpx.Response]:
         """Make API call to OpenAI."""
+        logger.info('=== OpenAI API Call ===')
+        logger.info(f'Model: {model}')
+        logger.info(f'Tenant schema: {self.tenant_schema}')
+        logger.debug(f'Max tokens: {max_tokens}, Temperature: {temperature}')
+
+        # Chat Completions API with function tools
         # Add system message at the beginning if provided
         full_messages = []
         if system:
             full_messages.append({'role': 'system', 'content': system})
         full_messages.extend(messages)
 
-        # Log the tools being sent to OpenAI for debugging
-        logger.info('=== OpenAI API Call ===')
-        logger.info(f'Model: {model}')
         logger.info(f'Messages: {len(full_messages)} total')
         logger.info(
             f'Tools: {[t["function"]["name"] for t in tools] if tools else "None"}'
         )
         logger.info(f'Tools: {tools}')
-        logger.info(f'Tenant schema: {self.tenant_schema}')
-        logger.debug(f'Max tokens: {max_tokens}, Temperature: {temperature}')
-        # logger.debug(f'Full messages: {full_messages}')
 
         response = await client.chat.completions.with_raw_response.create(
             model=model,
@@ -325,18 +300,7 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
         )
 
         parsed_response = response.parse()
-
-        # Log response info
-        logger.info('=== OpenAI API Response Received ===')
-        if parsed_response.choices and parsed_response.choices[0].message.tool_calls:
-            tool_calls = parsed_response.choices[0].message.tool_calls
-            logger.info(f'Response contains {len(tool_calls)} tool calls:')
-            for tc in tool_calls:
-                logger.info(f'  - {tc.function.name} (id: {tc.id[:20]}...)')
-                logger.debug(f'    Args: {tc.function.arguments[:100]}...')
-        else:
-            logger.info('Response contains text content (no tool calls)')
-        logger.info('=====================================')
+        logger.info(f'Parsed response: {parsed_response}')
 
         return parsed_response, response.http_response.request, response.http_response
 
@@ -353,7 +317,7 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
         """
         content_blocks = []
 
-        # Log the full response for debugging
+        # Log the full response for debugging (Chat Completions path)
         logger.debug(f'Full OpenAI response object: {response}')
 
         # Extract message from OpenAI response
@@ -370,6 +334,61 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
         # Convert content
         if message.content:
             content_blocks.append(BetaTextBlockParam(type='text', text=message.content))
+
+        # Helper: normalize key names for computer tool to match execution expectations
+        def _normalize_key_combo(combo: str) -> str:
+            if not isinstance(combo, str):
+                return combo
+            parts = [p.strip() for p in combo.replace(' ', '').split('+') if p.strip()]
+
+            alias_map = {
+                'esc': 'Escape',
+                'escape': 'Escape',
+                'enter': 'Return',
+                'return': 'Return',
+                'win': 'Super_L',
+                'windows': 'Super_L',
+                'super': 'Super_L',
+                'meta': 'Super_L',
+                'cmd': 'Super_L',
+                'backspace': 'BackSpace',
+                'del': 'Delete',
+                'delete': 'Delete',
+                'tab': 'Tab',
+                'space': 'space',
+                'pageup': 'Page_Up',
+                'pagedown': 'Page_Down',
+                'home': 'Home',
+                'end': 'End',
+                'up': 'Up',
+                'down': 'Down',
+                'left': 'Left',
+                'right': 'Right',
+                'printscreen': 'Print',
+                'prtsc': 'Print',
+            }
+
+            def normalize_part(p: str) -> str:
+                low = p.lower()
+                if low in {'ctrl', 'control'}:
+                    return 'ctrl'
+                if low in {'shift'}:
+                    return 'shift'
+                if low in {'alt'}:
+                    return 'alt'
+                if low in alias_map:
+                    return alias_map[low]
+                # Function keys
+                if low.startswith('f') and low[1:].isdigit():
+                    return f'F{int(low[1:])}'
+                # Single letters or digits: keep as-is
+                if len(p) == 1:
+                    return p
+                # Title-case common words like 'Escape' already handled; otherwise keep original
+                return p
+
+            normalized = [normalize_part(p) for p in parts]
+            return '+'.join(normalized)
 
         # Convert tool calls
         if message.tool_calls:
@@ -398,6 +417,21 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
                         # Map 'click' action to 'left_click' for compatibility
                         if tool_input.get('action') == 'click':
                             tool_input['action'] = 'left_click'
+
+                        # OpenAI schema uses 'key' for key-like inputs. Our tool expects 'text'
+                        # for actions 'key' and 'hold_key' (and optionally for 'scroll' modifier).
+                        action = tool_input.get('action')
+                        if action in {'key', 'hold_key', 'scroll'}:
+                            if 'text' not in tool_input and 'key' in tool_input:
+                                # Remap key -> text
+                                tool_input['text'] = tool_input.pop('key')
+                            # Normalize combo naming for xdotool compatibility
+                            if 'text' in tool_input and isinstance(
+                                tool_input['text'], str
+                            ):
+                                tool_input['text'] = _normalize_key_combo(
+                                    tool_input['text']
+                                )
 
                     # Special handling for extraction tool
                     elif tool_call.function.name == 'extraction':
@@ -503,92 +537,5 @@ CRITICAL TOOL USAGE RULES FOR THIS TASK:
     def make_tool_result(
         self, result: ToolResult, tool_use_id: str
     ) -> BetaToolResultBlockParam:
-        """
-        Create tool result block in Anthropic format.
-
-        This is the same format regardless of provider since we're storing
-        everything in Anthropic format in the database.
-        """
-        # Check if this is an extraction tool result
-        is_extraction = 'extraction' in tool_use_id
-
-        content: list[BetaTextBlockParam | BetaImageBlockParam] = []
-
-        if result.error:
-            return {
-                'type': 'tool_result',
-                'tool_use_id': tool_use_id,
-                'content': [],
-                'error': self._maybe_prepend_system(result, result.error),
-            }
-
-        if result.output:
-            # Special handling for extraction tool results
-            if is_extraction:
-                try:
-                    # Parse and validate the JSON
-                    json_data = json.loads(result.output)
-                    logger.info(f'Valid JSON extraction data: {json_data}')
-
-                    # Extract just the result field if present
-                    if isinstance(json_data, dict) and 'result' in json_data:
-                        result_data = json_data['result']
-                        formatted_output = json.dumps(
-                            result_data, indent=2, ensure_ascii=False
-                        )
-                    else:
-                        formatted_output = json.dumps(
-                            json_data, indent=2, ensure_ascii=False
-                        )
-
-                    content.append(
-                        {
-                            'type': 'text',
-                            'text': self._maybe_prepend_system(
-                                result, formatted_output
-                            ),
-                        }
-                    )
-                except json.JSONDecodeError as e:
-                    logger.error(f'Invalid JSON in extraction tool output: {e}')
-                    return {
-                        'type': 'tool_result',
-                        'tool_use_id': tool_use_id,
-                        'content': [],
-                        'error': f'Error: Invalid JSON in extraction tool output: {e}',
-                    }
-            else:
-                # Standard handling for non-extraction tools
-                content.append(
-                    {
-                        'type': 'text',
-                        'text': self._maybe_prepend_system(result, result.output),
-                    }
-                )
-
-        if result.base64_image:
-            content.append(
-                {
-                    'type': 'image',
-                    'source': {
-                        'type': 'base64',
-                        'media_type': 'image/png',
-                        'data': result.base64_image,
-                    },
-                }
-            )
-
-        if not content:
-            content.append({'type': 'text', 'text': 'system: Tool returned no output.'})
-
-        return {
-            'type': 'tool_result',
-            'tool_use_id': tool_use_id,
-            'content': content,
-        }
-
-    def _maybe_prepend_system(self, result: ToolResult, text: str) -> str:
-        """Prepend system message if present."""
-        if result.system:
-            return f'<system>{result.system}</system>\n{text}'
-        return text
+        """Create tool result block using existing utility to mirror Anthropic behavior."""
+        return _make_api_tool_result(result, tool_use_id)

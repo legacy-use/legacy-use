@@ -204,6 +204,7 @@ class AnthropicHandler(BaseProviderHandler):
             )
 
             parsed_response = raw_response.parse()
+            logger.info(f'Parsed response: {parsed_response}')
             return (
                 parsed_response,
                 raw_response.http_response.request,
