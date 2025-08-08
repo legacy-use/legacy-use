@@ -6,7 +6,7 @@ by mapping between OpenAI's format and the Anthropic format used for DB storage.
 """
 
 import json
-from typing import Any, Optional, cast
+from typing import Optional, cast
 
 import httpx
 from anthropic.types.beta import (
@@ -21,7 +21,6 @@ from server.computer_use.handlers.base import BaseProviderHandler
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolCollection, ToolResult
 from server.computer_use.utils import _make_api_tool_result
-# No custom OpenAI types here; we use the SDK's types directly
 
 from openai import AsyncOpenAI
 from openai.types.chat import (
@@ -72,7 +71,7 @@ class OpenAIHandler(BaseProviderHandler):
         self.model = model
         # Keep this handler focused on Chat Completions + function calling
 
-    async def initialize_client(self, api_key: str, **kwargs) -> Any:
+    async def initialize_client(self, api_key: str, **kwargs) -> AsyncOpenAI:
         """Initialize OpenAI client."""
         # Prefer tenant-specific key if available
         return AsyncOpenAI(api_key=api_key)
@@ -327,15 +326,15 @@ class OpenAIHandler(BaseProviderHandler):
 
     async def call_api(
         self,
-        client: Any,
-        messages: list[Any],
+        client: AsyncOpenAI,
+        messages: list[ChatCompletionMessageParam],
         system: str,
         tools: list[ChatCompletionToolParam],
         model: str,
         max_tokens: int,
         temperature: float = 0.0,
         **kwargs,
-    ) -> tuple[Any, httpx.Request, httpx.Response]:
+    ) -> tuple[ChatCompletion, httpx.Request, httpx.Response]:
         """Make API call to OpenAI."""
         logger.info('=== OpenAI API Call ===')
         logger.info(f'Model: {model}')
@@ -362,7 +361,7 @@ class OpenAIHandler(BaseProviderHandler):
         response = await client.chat.completions.with_raw_response.create(
             model=model,
             messages=full_messages,
-            tools=tools if tools else None,
+            tools=tools,
             max_tokens=max_tokens,
             temperature=temperature,
         )

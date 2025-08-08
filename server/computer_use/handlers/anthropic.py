@@ -21,6 +21,7 @@ from anthropic.types.beta import (
     BetaMessageParam,
     BetaTextBlockParam,
     BetaToolResultBlockParam,
+    BetaToolUnionParam,
 )
 
 from server.computer_use.client import LegacyUseClient
@@ -35,6 +36,11 @@ from server.computer_use.utils import (
     _response_to_params,
 )
 from server.settings import settings
+
+
+type AnthropicClient = (
+    AsyncAnthropic | AsyncAnthropicBedrock | AsyncAnthropicVertex | LegacyUseClient
+)
 
 
 class AnthropicHandler(BaseProviderHandler):
@@ -77,7 +83,7 @@ class AnthropicHandler(BaseProviderHandler):
         self.tool_beta_flag = tool_beta_flag
         self.image_truncation_threshold = 1
 
-    async def initialize_client(self, api_key: str, **kwargs) -> Any:
+    async def initialize_client(self, api_key: str, **kwargs) -> AnthropicClient:
         """Initialize the appropriate Anthropic client based on provider."""
         # Reload settings to get latest environment variables
         settings.__init__()
@@ -125,7 +131,7 @@ class AnthropicHandler(BaseProviderHandler):
         else:
             raise ValueError(f'Unsupported Anthropic provider: {self.provider}')
 
-    def prepare_system(self, system_prompt: str) -> Any:
+    def prepare_system(self, system_prompt: str) -> BetaTextBlockParam:
         """Prepare system prompt as Anthropic BetaTextBlockParam."""
         system = BetaTextBlockParam(type='text', text=system_prompt)
 
@@ -156,7 +162,9 @@ class AnthropicHandler(BaseProviderHandler):
 
         return messages
 
-    def prepare_tools(self, tool_collection: ToolCollection) -> Any:
+    def prepare_tools(
+        self, tool_collection: ToolCollection
+    ) -> list[BetaToolUnionParam]:
         """Convert tool collection to Anthropic format."""
         logger.info(f'tool_collection: {tool_collection}')
         return tool_collection.to_params()
@@ -170,10 +178,10 @@ class AnthropicHandler(BaseProviderHandler):
 
     async def call_api(
         self,
-        client: Any,
-        messages: list[Any],
-        system: Any,
-        tools: Any,
+        client: AnthropicClient,
+        messages: list[BetaMessageParam],
+        system: str,
+        tools: list[BetaToolUnionParam],
         model: str,
         max_tokens: int,
         temperature: float = 0.0,
@@ -197,7 +205,7 @@ class AnthropicHandler(BaseProviderHandler):
                 max_tokens=max_tokens,
                 messages=messages,
                 model=model,
-                system=[system],
+                system=system,
                 tools=tools,
                 betas=betas,
                 temperature=temperature,

@@ -24,6 +24,7 @@ from server.computer_use.tools import ToolCollection, ToolResult
 from server.computer_use.utils import _make_api_tool_result
 
 from openai import AsyncOpenAI
+from openai.types.responses import ToolParam, ComputerToolParam, FunctionToolParam
 
 
 class OpenAICUAHandler(BaseProviderHandler):
@@ -46,7 +47,7 @@ class OpenAICUAHandler(BaseProviderHandler):
         )
         self.model = model
 
-    async def initialize_client(self, api_key: str, **kwargs) -> Any:
+    async def initialize_client(self, api_key: str, **kwargs) -> AsyncOpenAI:
         return AsyncOpenAI(api_key=api_key)
 
     def prepare_system(self, system_prompt: str) -> str:
@@ -58,7 +59,7 @@ class OpenAICUAHandler(BaseProviderHandler):
 
     def convert_to_provider_messages(
         self, messages: list[BetaMessageParam]
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """
         Convert Anthropic-format messages to OpenAI Responses API `input` format:
         a list of objects with {role: 'user', content: [{type: input_text|input_image, ...}]}.
@@ -70,7 +71,7 @@ class OpenAICUAHandler(BaseProviderHandler):
                 messages, self.only_n_most_recent_images, min_removal_threshold=1
             )
 
-        provider_messages: list[dict] = []
+        provider_messages: list[dict[str, Any]] = []
         for msg in messages:
             role = msg.get('role')
             content = msg.get('content')
@@ -98,7 +99,7 @@ class OpenAICUAHandler(BaseProviderHandler):
                         }
                     )
             elif isinstance(content, list):
-                input_parts: list[dict] = []
+                input_parts: list[dict[str, Any]] = []
                 for block in content:
                     if not isinstance(block, dict):
                         continue
@@ -106,7 +107,9 @@ class OpenAICUAHandler(BaseProviderHandler):
                     if btype == 'text':
                         text_val = block.get('text', '')
                         if text_val:
-                            input_parts.append({'type': 'input_text', 'text': text_val})
+                            input_parts.append(
+                                {'type': 'input_text', 'text': str(text_val)}
+                            )
                     elif btype == 'image':
                         source = block.get('source', {})
                         if source.get('type') == 'base64' and source.get('data'):
@@ -131,7 +134,7 @@ class OpenAICUAHandler(BaseProviderHandler):
                                         image_data = ci.get('source', {}).get('data')
                         if text_content:
                             input_parts.append(
-                                {'type': 'input_text', 'text': text_content}
+                                {'type': 'input_text', 'text': str(text_content)}
                             )
                         if image_data:
                             input_parts.append(
@@ -149,7 +152,7 @@ class OpenAICUAHandler(BaseProviderHandler):
         )
         return provider_messages
 
-    def prepare_tools(self, tool_collection: ToolCollection) -> list[dict]:
+    def prepare_tools(self, tool_collection: ToolCollection) -> list[ToolParam]:
         """Replace `computer` tool with `computer_use_preview` and keep other tools in OpenAI format.
 
         - Extract display settings from the Anthropic `computer` tool if present
@@ -161,7 +164,7 @@ class OpenAICUAHandler(BaseProviderHandler):
         display_height = 768
         environment = 'windows'
 
-        openai_tools: list[dict] = []
+        openai_tools: list[Any] = []
 
         # Collect non-computer tools and capture display settings from computer tool
         try:
@@ -184,7 +187,7 @@ class OpenAICUAHandler(BaseProviderHandler):
             )
 
         # Add the computer_use_preview tool
-        preview_tool = {
+        preview_tool: ComputerToolParam = {
             'type': 'computer_use_preview',
             'display_width': display_width,
             'display_height': display_height,
@@ -192,15 +195,16 @@ class OpenAICUAHandler(BaseProviderHandler):
         }
 
         # Flatten function tools to Responses API tool schema: require top-level name/parameters
-        flattened_tools: list[dict] = []
+        flattened_tools: list[FunctionToolParam] = []
         for t in openai_tools:
-            if t.get('type') == 'function' and isinstance(t.get('function'), dict):
+            if t['type'] == 'function':
                 fn = t['function']
                 flattened_tools.append(
                     {
                         'type': 'function',
-                        'name': fn.get('name'),
-                        'description': fn.get('description'),
+                        'name': str(fn.get('name') or ''),
+                        'description': str(fn.get('description') or ''),
+                        'strict': False,  # TODO determent if True is better
                         'parameters': fn.get('parameters')
                         or {
                             'type': 'object',
@@ -208,10 +212,8 @@ class OpenAICUAHandler(BaseProviderHandler):
                         },
                     }
                 )
-            else:
-                flattened_tools.append(t)
 
-        tools_result = [preview_tool, *flattened_tools]
+        tools_result: list[ToolParam] = [preview_tool, *flattened_tools]
         logger.debug(
             f'OpenAI CUA tools prepared: preview + '
             f'{[t.get("name") if t.get("type") == "function" else t.get("type") for t in flattened_tools]}'
@@ -220,10 +222,10 @@ class OpenAICUAHandler(BaseProviderHandler):
 
     async def call_api(
         self,
-        client: Any,
+        client: AsyncOpenAI,
         messages: list[Any],
         system: str,
-        tools: list[dict],
+        tools: list[ToolParam],
         model: str,
         max_tokens: int,
         temperature: float = 0.0,

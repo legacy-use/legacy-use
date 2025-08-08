@@ -8,7 +8,7 @@ the appropriate handler based on the API provider.
 from typing import Dict, Optional, Type
 
 from server.computer_use.config import APIProvider
-from server.computer_use.handlers.base import BaseProviderHandler
+from server.computer_use.handlers.base import BaseProviderHandler, ProviderHandler
 from server.computer_use.logging import logger
 from server.computer_use.handlers.openai import OpenAIHandler
 from server.computer_use.handlers.openai_cua import OpenAICUAHandler
@@ -36,7 +36,7 @@ def get_handler(
     token_efficient_tools_beta: bool = False,
     only_n_most_recent_images: Optional[int] = None,
     **kwargs,
-) -> BaseProviderHandler:
+) -> ProviderHandler:
     """
     Get an instance of the appropriate handler for the given provider.
 
@@ -91,4 +91,5 @@ def get_handler(
     if handler_class != AnthropicHandler:
         handler_kwargs.pop('provider', None)
 
-    return handler_class(**handler_kwargs)
+    # Note: We return the protocol type for better static typing on handler methods
+    return handler_class(**handler_kwargs)  # type: ignore[return-value]
