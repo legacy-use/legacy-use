@@ -59,6 +59,10 @@ class ToolCollection:
     ) -> list[BetaToolUnionParam]:
         return [tool.to_params() for tool in self.tools]
 
+    def to_openai_tools(self) -> list[dict]:
+        """Return tools in OpenAI function calling format using each tool's adapter."""
+        return [tool.to_openai_tool() for tool in self.tools]
+
     async def run(
         self,
         *,
@@ -67,6 +71,7 @@ class ToolCollection:
         session_id: str,
         session: Dict[str, Any] | None = None,
     ) -> ToolResult:
+        logger.info(f'ToolCollection.run: {name} {tool_input} {session_id} {session}')
         tool = self.tool_map.get(name)
         if not tool:
             return ToolFailure(error=f'Tool {name} is invalid')

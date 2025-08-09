@@ -16,6 +16,8 @@ class APIProvider(StrEnum):
     BEDROCK = 'bedrock'
     VERTEX = 'vertex'
     LEGACYUSE_PROXY = 'legacyuse'
+    OPENAI = 'openai'  # Add support for OpenAI provider
+    OPENAI_CUA = 'openai_cua'  # OpenAI Responses API with computer_use_preview
 
 
 PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
@@ -23,6 +25,8 @@ PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.BEDROCK: 'eu.anthropic.claude-sonnet-4-20250514-v1:0',
     APIProvider.VERTEX: 'claude-sonnet-4@20250514',
     APIProvider.LEGACYUSE_PROXY: 'legacy-use-sonnet-4',  # model selection is handled server side
+    APIProvider.OPENAI: 'gpt-4o',  # Default OpenAI model with tool calling support
+    APIProvider.OPENAI_CUA: 'computer-use-preview',
 }
 
 
