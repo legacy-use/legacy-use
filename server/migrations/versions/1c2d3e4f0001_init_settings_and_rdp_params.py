@@ -9,7 +9,6 @@ Create Date: 2025-08-08 12:35:00.000000
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 from server.migrations.tenant import for_each_tenant_schema
 
@@ -77,5 +76,3 @@ def downgrade(schema: str) -> None:
     op.execute(f"""ALTER TABLE {schema}.targets DROP COLUMN IF EXISTS rdp_params""")
     op.execute(f"""DROP INDEX IF EXISTS {schema}.ix_settings_key""")
     op.execute(f"""DROP TABLE IF EXISTS {schema}.settings""")
-
-
