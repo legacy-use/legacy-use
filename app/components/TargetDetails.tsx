@@ -197,7 +197,7 @@ const TargetDetails = () => {
   const handleSessionChange = async event => {
     const sessionId = event.target.value;
     const session = targetSessions.find(s => s.id === sessionId);
-    
+
     // Fetch detailed session information including container_status
     try {
       const detailedSession = await getSession(sessionId);
