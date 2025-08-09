@@ -9,6 +9,98 @@ import time
 from typing import Dict, Optional, Tuple
 
 import httpx
+import base64
+
+def _discover_current_network() -> Optional[str]:
+    """Discover the current docker network name to attach spawned containers to.
+
+    Returns the first non-bridge network name of the running backend container if available.
+    """
+    try:
+        result = subprocess.run(
+            [
+                'docker',
+                'inspect',
+                'legacy-use-backend',
+                '--format',
+                '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}}{{end}}',
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        current_networks = result.stdout.strip().split()
+        for network in current_networks:
+            if network != 'bridge':
+                return network
+    except Exception:
+        # Best effort only
+        return None
+    return None
+
+def _decode_ovpn_config(config_value: Optional[str]) -> Optional[bytes]:
+    """Decode the provided vpn_config which may be base64 or plain text.
+
+    Returns bytes content suitable for writing to a file, or None if not provided.
+    """
+    if not config_value:
+        return None
+    # Try base64 decode first (frontend may have sent base64)
+    try:
+        decoded = base64.b64decode(config_value, validate=True)
+        # Heuristic: decoded should look like text
+        if decoded.strip():
+            return decoded
+    except Exception:
+        pass
+    # Fallback: treat as plain text
+    return config_value.encode('utf-8')
+
+def _create_volume(name: str) -> bool:
+    try:
+        subprocess.run(['docker', 'volume', 'create', name], capture_output=True, text=True, check=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def _remove_volume(name: str) -> None:
+    try:
+        subprocess.run(['docker', 'volume', 'rm', '-f', name], capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError:
+        pass
+
+def _populate_volume_with_ovpn(volume_name: str, file_path_in_volume: str, ovpn_bytes: bytes) -> bool:
+    """Populate a docker volume with the provided .ovpn content using a helper container.
+
+    We avoid host bind mounts since this service runs inside a container.
+    """
+    try:
+        helper_cmd = [
+            'docker', 'run', '--rm', '-i',
+            '-v', f'{volume_name}:/gluetun:rw',
+            'alpine:3.20',
+            '/bin/sh', '-c',
+            # Ensure path exists, set restrictive perms, write from stdin
+            f'mkdir -p $(dirname /{file_path_in_volume}) && umask 077 && cat > /{file_path_in_volume}',
+        ]
+        subprocess.run(helper_cmd, input=ovpn_bytes, capture_output=True, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        logging.getLogger(__name__).error(f'Failed to populate volume {volume_name}: {e.stderr}')
+        return False
+
+def _get_container_name(container_id: str) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ['docker', 'inspect', '-f', '{{.Name}}', container_id],
+            capture_output=True, text=True, check=True
+        )
+        name = result.stdout.strip()
+        if name.startswith('/'):
+            name = name[1:]
+        return name or None
+    except subprocess.CalledProcessError:
+        return None
 
 logger = logging.getLogger(__name__)
 
@@ -140,57 +232,105 @@ def launch_container(
         if container_params is None:
             container_params = {}
 
-        # Prepare docker run command
-        docker_cmd = [
-            'docker',
-            'run',
-            '-d',  # Run in detached mode
-            '--name',
-            container_name,  # Name container based on session ID
-        ]
+        # Discover custom network (if any) to attach sidecar/app
+        network = _discover_current_network()
 
-        # Check if we're running inside a docker-compose setup
-        # by checking if we're connected to a custom network
-        # and if so, extend the docker_cmd with the network name
-        import subprocess
-
-        try:
-            # Get current container's network info
-            result = subprocess.run(
-                [
-                    'docker',
-                    'inspect',
-                    'legacy-use-backend',
-                    '--format',
-                    '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}}{{end}}',
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-            current_networks = result.stdout.strip().split()
-
-            # If we're on a custom network (not just 'bridge'), join the target container to it
-            for network in current_networks:
-                if network != 'bridge':
-                    docker_cmd.extend(['--network', network])
-                    logger.info(f'Connecting target container to network: {network}')
-                    break
-        except Exception as e:
-            logger.warning(
-                f'Could not determine network configuration, using default: {e}'
-            )
-
-        # add options for openvpn
+        # If OpenVPN is requested, run a dedicated VPN sidecar (gluetun) and
+        # attach the app container to its network namespace.
         if container_params.get('REMOTE_VPN_TYPE', '').lower() == 'openvpn':
-            docker_cmd.extend(
-                [
-                    '--cap-add=NET_ADMIN',  # Required for VPN/TUN interface management
-                    '--cap-add=NET_RAW',  # Required for network interface configuration
-                    '--device=/dev/net/tun:/dev/net/tun',  # Required for VPN tunneling
+            vpn_name = f'{container_name}-vpn'
+            volume_name = f'{container_name}-ovpn'
+
+            ovpn_bytes = _decode_ovpn_config(container_params.get('VPN_CONFIG'))
+            if not ovpn_bytes:
+                logger.error('OpenVPN selected but no VPN_CONFIG provided')
+                return None, None
+
+            # Create and populate docker volume with the .ovpn file
+            if not _create_volume(volume_name):
+                logger.error(f'Failed to create volume {volume_name}')
+                return None, None
+            try:
+                # Write to /gluetun/openvpn/client.ovpn inside the volume
+                if not _populate_volume_with_ovpn(volume_name, 'gluetun/openvpn/client.ovpn', ovpn_bytes):
+                    _remove_volume(volume_name)
+                    return None, None
+
+                # Build and launch VPN container (gluetun) with kill switch
+                vpn_cmd = [
+                    'docker', 'run', '-d', '--name', vpn_name,
+                    '--cap-drop=ALL', '--cap-add=NET_ADMIN',
+                    '--device=/dev/net/tun:/dev/net/tun',
+                    '--read-only',
+                    '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=16m',
+                    '--tmpfs', '/run:rw,nosuid,nodev,noexec,size=8m',
+                    '-v', f'{volume_name}:/gluetun:ro',
+                    '-e', 'VPN_SERVICE_PROVIDER=custom',
+                    '-e', 'OPENVPN_CUSTOM_CONFIG=/gluetun/openvpn/client.ovpn',
+                    '-e', f'OPENVPN_USER={container_params.get("VPN_USERNAME", "") or ""}',
+                    '-e', f'OPENVPN_PASSWORD={container_params.get("VPN_PASSWORD", "") or ""}',
+                    '-e', 'FIREWALL_INPUT_PORTS=8088',
+                    # Gluetun defaults to killswitch on
+                    'qmcgaw/gluetun:latest',
                 ]
-            )
+                if network:
+                    vpn_cmd.extend(['--network', network])
+
+                logger.info(f'Launching VPN sidecar with command: {" ".join(vpn_cmd)}')
+                vpn_result = subprocess.run(vpn_cmd, capture_output=True, text=True, check=True)
+                vpn_container_id = vpn_result.stdout.strip()
+
+                # Build the app container command, attached to the VPN container network namespace
+                app_cmd = [
+                    'docker', 'run', '-d', '--name', container_name,
+                    '--network', f'container:{vpn_name}',
+                ]
+
+                # Prepare environment variables for the app container
+                # Set REMOTE_VPN_TYPE to direct so the app does not try to manage VPN itself
+                target_env = container_params.copy()
+                target_env['REMOTE_VPN_TYPE'] = 'direct'
+                # Remove any VPN_* secrets from the app container env
+                for k in ['VPN_CONFIG', 'VPN_USERNAME', 'VPN_PASSWORD']:
+                    target_env.pop(k, None)
+                for key, value in target_env.items():
+                    if value:
+                        app_cmd.extend(['-e', f'{key}={value}'])
+
+                # Image
+                app_cmd.append('legacy-use-target:local')
+                logger.info(f'Launching app container with command: {" ".join(app_cmd)}')
+                app_result = subprocess.run(app_cmd, capture_output=True, text=True, check=True)
+                app_container_id = app_result.stdout.strip()
+
+                # Determine IP from the VPN container (since app shares its network namespace)
+                container_ip = get_container_ip(vpn_container_id)
+                if not container_ip:
+                    logger.error(f'Could not get IP address for VPN container {vpn_container_id}')
+                    stop_container(app_container_id)
+                    # Stop sidecar and remove volume on failure
+                    try:
+                        subprocess.run(['docker', 'stop', vpn_container_id], capture_output=True, check=True)
+                        subprocess.run(['docker', 'rm', vpn_container_id], capture_output=True, check=True)
+                    except subprocess.CalledProcessError:
+                        pass
+                    _remove_volume(volume_name)
+                    return None, None
+
+                logger.info(f'Containers launched: app={app_container_id}, vpn={vpn_container_id}, ip={container_ip}')
+                return app_container_id, container_ip
+            except subprocess.CalledProcessError as e:
+                logger.error(f'Error launching VPN/app containers: {e.stderr}')
+                _remove_volume(volume_name)
+                return None, None
+
+        # Non-OpenVPN path: prepare docker run command for the app container as before
+        docker_cmd = [
+            'docker', 'run', '-d', '--name', container_name,
+        ]
+        if network:
+            docker_cmd.extend(['--network', network])
+            logger.info(f'Connecting target container to network: {network}')
 
         # Add environment variables from container_params
         for key, value in container_params.items():
@@ -236,12 +376,24 @@ def stop_container(container_id: str) -> bool:
         True if successful, False otherwise
     """
     try:
-        # Stop container
-        subprocess.run(
-            ['docker', 'stop', container_id], capture_output=True, check=True
-        )
+        # Stop main container
+        subprocess.run(['docker', 'stop', container_id], capture_output=True, check=True)
+        # Identify companion VPN and volume by name convention and stop/cleanup
+        container_name = _get_container_name(container_id)
+        if container_name:
+            vpn_name = f'{container_name}-vpn'
+            volume_name = f'{container_name}-ovpn'
+            try:
+                subprocess.run(['docker', 'stop', vpn_name], capture_output=True, check=True)
+            except subprocess.CalledProcessError:
+                pass
+            try:
+                subprocess.run(['docker', 'rm', vpn_name], capture_output=True, check=True)
+            except subprocess.CalledProcessError:
+                pass
+            _remove_volume(volume_name)
 
-        # Remove container
+        # Remove main container
         subprocess.run(['docker', 'rm', container_id], capture_output=True, check=True)
 
         logger.info(f'Stopped and removed container {container_id}')
