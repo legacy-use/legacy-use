@@ -35,7 +35,14 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { deleteTarget, getJobs, getTarget, getTargets, updateTarget, unarchiveTarget } from '../services/apiService';
+import {
+  deleteTarget,
+  getJobs,
+  getTarget,
+  getTargets,
+  updateTarget,
+  unarchiveTarget,
+} from '../services/apiService';
 import ResolutionRecommendation from './ResolutionRecommendation';
 import VPNConfigInputField from './VPNConfigInputField';
 

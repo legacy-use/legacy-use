@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -70,9 +71,7 @@ const ContainerLogsModal: React.FC<ContainerLogsModalProps> = ({
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>
         <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">
-            Container Logs - {sessionName}
-          </Typography>
+          <Typography variant="h6">Container Logs - {sessionName}</Typography>
           <Box display="flex" alignItems="center" gap={1}>
             <select
               value={lines}
@@ -134,4 +133,4 @@ const ContainerLogsModal: React.FC<ContainerLogsModalProps> = ({
   );
 };
 
-export default ContainerLogsModal; 
+export default ContainerLogsModal;
