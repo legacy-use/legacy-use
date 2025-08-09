@@ -15,7 +15,9 @@ WORKDIR $HOME
 COPY --chown=$USERNAME:$USERNAME package.json pnpm-lock.yaml $HOME/
 
 # Install all dependencies (including dev dependencies for building)
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate && \
+RUN npm install --global corepack@latest && \
+    corepack enable && \
+    corepack use pnpm && \
     cd $HOME && pnpm install --frozen-lockfile
 
 # Copy source code in correct structure
@@ -48,8 +50,6 @@ COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/tsconfig.json $HOME/biome.
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\
 set -e\n\
-\n\
-corepack enable && corepack prepare pnpm@9.0.0 --activate\n\
 \n\
 echo "Starting React app"\n\
 \n\
