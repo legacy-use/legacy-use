@@ -8,6 +8,9 @@ ENV USERNAME=legacy-use-mgmt
 ENV HOME=/home/$USERNAME
 RUN useradd -m -s /bin/bash -d $HOME $USERNAME
 
+# Setup corepack for pnpm
+RUN npm install --global corepack@latest
+
 USER $USERNAME
 WORKDIR $HOME
 
@@ -15,8 +18,7 @@ WORKDIR $HOME
 COPY --chown=$USERNAME:$USERNAME package.json pnpm-lock.yaml $HOME/
 
 # Install all dependencies (including dev dependencies for building)
-RUN npm install --global corepack@latest && \
-    corepack enable && \
+RUN corepack enable && \
     corepack use pnpm && \
     cd $HOME && pnpm install --frozen-lockfile
 
