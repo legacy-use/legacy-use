@@ -23,14 +23,14 @@ repos:
     hooks:
       - id: prettier
         name: prettier
-        entry: bash -c 'cd app && npm run format'
+        entry: bash -c 'cd app && pnpm run format'
         language: system
         files: ^app/.*\.(js|jsx)$
         pass_filenames: false
 
       - id: biome-lint
         name: biome-lint
-        entry: bash -c 'npm run lint:fix'
+        entry: bash -c 'pnpm run lint:fix'
         language: system
         files: ^app/.*\.(js|jsx)$
         pass_filenames: false
