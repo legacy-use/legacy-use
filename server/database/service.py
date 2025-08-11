@@ -527,6 +527,92 @@ class DatabaseService:
         finally:
             session.close()
 
+    def list_job_http_exchanges_bulk(self, job_ids, use_trimmed=True):
+        """
+        Get all HTTP exchange logs for multiple jobs in a single query.
+        
+        Args:
+            job_ids: List of job IDs
+            use_trimmed: Whether to use the trimmed content (without image data)
+                         instead of the full content
+
+        Returns:
+            Dict mapping job_id to list of HTTP exchange logs
+        """
+        session = self.Session()
+        try:
+            if not job_ids:
+                return {}
+                
+            if use_trimmed:
+                # Only load necessary columns when using trimmed content
+                # We explicitly don't select the 'content' column which can be large
+                columns = [
+                    JobLog.id,
+                    JobLog.job_id,
+                    JobLog.timestamp,
+                    JobLog.log_type,
+                    JobLog.content_trimmed,
+                ]
+                logs = (
+                    session.query(*columns)
+                    .filter(JobLog.job_id.in_(job_ids), JobLog.log_type == 'http_exchange')
+                    .order_by(JobLog.job_id, JobLog.timestamp)
+                    .all()
+                )
+
+                # Group logs by job_id and convert to dictionaries
+                result = {}
+                for log in logs:
+                    job_id = log.job_id
+                    if job_id not in result:
+                        result[job_id] = []
+                        
+                    # Convert to dictionary with selected columns only
+                    log_dict = {
+                        'id': log.id,
+                        'job_id': log.job_id,
+                        'timestamp': log.timestamp,
+                        'log_type': log.log_type,
+                    }
+                    # Use content_trimmed as content if available, otherwise set empty dict
+                    log_dict['content'] = (
+                        log.content_trimmed if log.content_trimmed is not None else {}
+                    )
+                    result[job_id].append(log_dict)
+                
+                # Ensure all job_ids have an entry (even if empty)
+                for job_id in job_ids:
+                    if job_id not in result:
+                        result[job_id] = []
+                        
+                return result
+            else:
+                # Load complete log records including the full content
+                logs = (
+                    session.query(JobLog)
+                    .filter(JobLog.job_id.in_(job_ids), JobLog.log_type == 'http_exchange')
+                    .order_by(JobLog.job_id, JobLog.timestamp)
+                    .all()
+                )
+                
+                # Group logs by job_id
+                result = {}
+                for log in logs:
+                    job_id = log.job_id
+                    if job_id not in result:
+                        result[job_id] = []
+                    result[job_id].append(self._to_dict(log))
+                
+                # Ensure all job_ids have an entry (even if empty)
+                for job_id in job_ids:
+                    if job_id not in result:
+                        result[job_id] = []
+                        
+                return result
+        finally:
+            session.close()
+
     def prune_old_logs(self, days=7):
         """Delete logs older than the specified number of days."""
         session = self.Session()

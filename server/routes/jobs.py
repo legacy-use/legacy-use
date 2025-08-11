@@ -102,14 +102,19 @@ async def list_all_jobs(
     jobs_data = db_tenant.list_jobs(limit=limit, offset=offset, filters=filters)
     total_count = db_tenant.count_jobs(filters=filters)
 
+    # Bulk fetch HTTP exchanges for all jobs to avoid N+1 queries
+    job_ids = [job_dict['id'] for job_dict in jobs_data]
+    all_http_exchanges = db_tenant.list_job_http_exchanges_bulk(
+        job_ids, use_trimmed=True
+    )
+    
     # Compute metrics for each job
     enriched_jobs = []
     for job_dict in jobs_data:
         # Convert dict to Job model if needed, or assume db returns dict compatible with Job model
         job_model = Job(**job_dict)
-        http_exchanges = db_tenant.list_job_http_exchanges(
-            job_model.id, use_trimmed=True
-        )
+        # Get the pre-fetched HTTP exchanges for this job
+        http_exchanges = all_http_exchanges.get(job_model.id, [])
         metrics = compute_job_metrics(job_dict, http_exchanges)
         job_model_dict = job_model.model_dump()  # Use model_dump() for Pydantic v2
         job_model_dict.update(metrics)
@@ -133,13 +138,18 @@ async def list_target_jobs(
 
     jobs_data = db_tenant.list_target_jobs(target_id, limit=limit, offset=offset)
 
+    # Bulk fetch HTTP exchanges for all jobs to avoid N+1 queries
+    job_ids = [job_dict['id'] for job_dict in jobs_data]
+    all_http_exchanges = db_tenant.list_job_http_exchanges_bulk(
+        job_ids, use_trimmed=True
+    )
+    
     # Compute metrics for each job
     enriched_jobs = []
     for job_dict in jobs_data:
         job_model = Job(**job_dict)
-        http_exchanges = db_tenant.list_job_http_exchanges(
-            job_model.id, use_trimmed=True
-        )
+        # Get the pre-fetched HTTP exchanges for this job
+        http_exchanges = all_http_exchanges.get(job_model.id, [])
         metrics = compute_job_metrics(job_dict, http_exchanges)
         job_model_dict = job_model.model_dump()
         job_model_dict.update(metrics)
