@@ -1,19 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Box,
-  Typography,
-  CircularProgress,
   Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   Tooltip,
+  Typography,
 } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import type React from 'react';
+import { useEffect, useState } from 'react';
 import { getSessionContainerLogs } from '../services/apiService';
 
 interface ContainerLogsModalProps {
@@ -70,9 +71,7 @@ const ContainerLogsModal: React.FC<ContainerLogsModalProps> = ({
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>
         <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">
-            Container Logs - {sessionName}
-          </Typography>
+          <Typography variant="h6">Container Logs - {sessionName}</Typography>
           <Box display="flex" alignItems="center" gap={1}>
             <select
               value={lines}
@@ -134,4 +133,4 @@ const ContainerLogsModal: React.FC<ContainerLogsModalProps> = ({
   );
 };
 
-export default ContainerLogsModal; 
+export default ContainerLogsModal;

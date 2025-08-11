@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 from uuid import UUID
 
 from sqlalchemy import Integer, cast, create_engine, func
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, joinedload
 
 from server.settings import settings
 
@@ -547,6 +547,23 @@ class DatabaseService:
         try:
             # Use ORM query instead of raw SQL
             query = session.query(APIDefinition)
+            if not include_archived:
+                query = query.filter(APIDefinition.is_archived.is_(False))
+
+            # Execute the query
+            api_defs = query.all()
+            return api_defs
+        finally:
+            session.close()
+
+    async def get_api_definitions_with_versions(self, include_archived=False):
+        """Get all API definitions with their versions eagerly loaded."""
+        session = self.Session()
+        try:
+            # Use ORM query with eager loading of versions
+            query = session.query(APIDefinition).options(
+                joinedload(APIDefinition.versions)
+            )
             if not include_archived:
                 query = query.filter(APIDefinition.is_archived.is_(False))
 

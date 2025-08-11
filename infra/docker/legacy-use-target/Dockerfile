@@ -26,7 +26,7 @@ RUN apt-get update && \
     openvpn \
     proxychains \
     # Remote clients
-    freerdp2-x11 \
+    freerdp3-x11 \
     tigervnc-viewer \
     # Python
     python3 \

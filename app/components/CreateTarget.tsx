@@ -43,6 +43,7 @@ const CreateTarget = () => {
     vpn_password: '',
     width: 1024,
     height: 768,
+    rdp_params: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -360,6 +361,23 @@ const CreateTarget = () => {
                 InputProps={{ inputProps: { min: 1 } }}
               />
             </Grid>
+
+            {/* RDP customization options */}
+            {(targetData.type.startsWith('rdp') || targetData.type.includes('rdp')) && (
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  label="FreeRDP parameters"
+                  name="rdp_params"
+                  value={targetData.rdp_params}
+                  onChange={handleChange}
+                  disabled={loading}
+                  placeholder="Defaults: /f +auto-reconnect +clipboard /cert:ignore. You can add or override here. Username (/u), Password (/p) and Host (/v) are always included."
+                />
+              </Grid>
+            )}
 
             {/* Resolution recommendation warning */}
             <Grid item xs={12}>

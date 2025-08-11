@@ -56,6 +56,8 @@ class Target(Base):
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     is_archived = Column(Boolean, default=False)
+    # RDP customization
+    rdp_params = Column(String, nullable=True)
 
     sessions = relationship(
         'Session', back_populates='target', cascade='all, delete-orphan'

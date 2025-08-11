@@ -16,13 +16,15 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from server.computer_use import APIProvider
 from server.routes import (
     api_router,
-    teaching_mode_router,
     job_router,
+    specs_router,
     target_router,
+    teaching_mode_router,
 )
 from server.routes.diagnostics import diagnostics_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
+from server.utils.api_prefix import api_prefix
 from server.utils.auth import get_api_key
 from server.utils.tenant_utils import get_tenant_from_request
 from server.utils.job_execution import job_queue_initializer
@@ -62,12 +64,6 @@ else:
     logger.warning(
         'API_SENTRY_DSN not found in environment variables. Sentry is disabled.'
     )
-
-# Normalized api slug prefix, based on settings.API_SLUG_PREFIX
-api_prefix = settings.API_SLUG_PREFIX.strip()
-if not api_prefix.startswith('/'):
-    api_prefix = '/' + api_prefix
-api_prefix = api_prefix.rstrip('/')
 
 
 def setup_provider_environment(tenant_schema: str):
@@ -144,6 +140,7 @@ async def auth_middleware(request: Request, call_next):
     if settings.SHOW_DOCS:
         whitelist_patterns.append(rf'^{api_prefix}/redoc(/.*)?$')
         whitelist_patterns.append(rf'^{api_prefix}/docs(/.*)?$')
+        whitelist_patterns.append(rf'^{api_prefix}/specs(/.*)?$')
         whitelist_patterns.append(rf'^{api_prefix}/openapi.json$')
 
     # Check if request path matches any whitelist pattern
@@ -286,6 +283,9 @@ app.include_router(
 
 # Include settings router
 app.include_router(settings_router, prefix=api_prefix)
+
+# Include specs router
+app.include_router(specs_router, prefix=api_prefix)
 
 
 # Root endpoint

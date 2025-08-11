@@ -26,7 +26,6 @@ import {
   hardDeleteSessionSessionsSessionIdHardDelete,
   hardDeleteTargetTargetsTargetIdHardDelete,
   type ImportApiDefinitionBody,
-  type ImportApiDefinitionRequest,
   importApiDefinitionApiDefinitionsImportPost,
   interruptJobTargetsTargetIdJobsJobIdInterruptPost,
   type Job,
