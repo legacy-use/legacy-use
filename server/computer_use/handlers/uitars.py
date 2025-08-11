@@ -36,7 +36,11 @@ from openai.types.chat import (
 from server.computer_use.handlers.base import BaseProviderHandler
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolCollection, ToolResult
-from server.computer_use.utils import _make_api_tool_result
+from server.computer_use.utils import (
+    _make_api_tool_result,
+    normalize_key_combo,
+    derive_center_coordinate,
+)
 from server.settings import settings
 
 
@@ -110,7 +114,7 @@ class UITARSHandler(BaseProviderHandler):
         # )
         # key = self.tenant_setting('UITARS_API_KEY') or api_key
 
-        base_url = 'https://api.XXXX.com/v1'
+        base_url = 'http://147.189.203.65:8000/v1/'
         key = 'sk-1234567890'
 
         if base_url:
@@ -272,7 +276,7 @@ class UITARSHandler(BaseProviderHandler):
         full_messages.extend(messages)
 
         # log the full_messages
-        # logger.info(f'Full messages: {full_messages}')
+        logger.info(f'Full messages: {full_messages}')
 
         # TODO: use instructor
         response = await client.chat.completions.with_raw_response.create(
@@ -353,82 +357,10 @@ class UITARSHandler(BaseProviderHandler):
                 logger.warning(f'UITARS failed to parse action segment: {seg2} ({e})')
 
         def _center_from_box(val: Any) -> Optional[tuple[int, int]]:
-            if val is None:
-                return None
-            s = str(val)
-            nums = [int(n) for n in re.findall(r'\d+', s)]
-            if not nums:
-                return None
-            if len(nums) >= 4:
-                x1, y1, x2, y2 = nums[:4]
-                return int((x1 + x2) / 2), int((y1 + y2) / 2)
-            if len(nums) >= 2:
-                x1, y1 = nums[:2]
-                return int(x1), int(y1)
-            return None
+            return derive_center_coordinate(val)
 
         def _normalize_key_combo(combo: str) -> str:
-            if not isinstance(combo, str):
-                return combo  # type: ignore[return-value]
-            # Accept "ctrl c" or "ctrl+c"; convert to ctrl+c style
-            combo = combo.replace('\n', ' ').replace('\t', ' ').strip()
-            combo = combo.replace('+', ' ')
-            parts = [p for p in combo.split(' ') if p]
-            # Heuristic ordering: modifiers before key
-            mod_set = {'ctrl', 'control', 'shift', 'alt', 'cmd', 'win', 'meta', 'super'}
-            ordered: list[str] = []
-            tail: list[str] = []
-            for p in parts:
-                lp = p.lower()
-                if lp in mod_set:
-                    ordered.append('ctrl' if lp in {'ctrl', 'control'} else lp)
-                else:
-                    tail.append(p)
-            parts2 = ordered + tail
-            # Map common aliases similar to OpenAI handler
-            alias_map = {
-                'esc': 'Escape',
-                'escape': 'Escape',
-                'enter': 'Return',
-                'return': 'Return',
-                'win': 'Super_L',
-                'windows': 'Super_L',
-                'super': 'Super_L',
-                'meta': 'Super_L',
-                'cmd': 'Super_L',
-                'backspace': 'BackSpace',
-                'del': 'Delete',
-                'delete': 'Delete',
-                'tab': 'Tab',
-                'space': 'space',
-                'pageup': 'Page_Up',
-                'pagedown': 'Page_Down',
-                'home': 'Home',
-                'end': 'End',
-                'up': 'Up',
-                'down': 'Down',
-                'left': 'Left',
-                'right': 'Right',
-                'printscreen': 'Print',
-                'prtsc': 'Print',
-            }
-
-            def normalize_part(p: str) -> str:
-                low = p.lower()
-                if low in {'ctrl', 'control'}:
-                    return 'ctrl'
-                if low in {'shift', 'alt'}:
-                    return low
-                if low in alias_map:
-                    return alias_map[low]
-                if low.startswith('f') and low[1:].isdigit():
-                    return f'F{int(low[1:])}'
-                if len(p) == 1:
-                    return p
-                return p
-
-            normalized = [normalize_part(p) for p in parts2]
-            return '+'.join(normalized)
+            return normalize_key_combo(combo)
 
         created_tool_blocks = 0
         for pa in parsed_actions:

@@ -56,8 +56,10 @@ async def sampling_loop(
     messages: list[BetaMessageParam],  # Keep for initial messages
     output_callback: Callable[[BetaContentBlockParam], None],
     tool_output_callback: Callable[[ToolResult, str], None],
-    api_response_callback: Callable[
-        [httpx.Request, httpx.Response | object | None, Exception | None], None
+    api_response_callback: Optional[
+        Callable[
+            [httpx.Request, httpx.Response | object | None, Exception | None], None
+        ]
     ] = None,
     max_tokens: int = 4096,
     tool_version: ToolVersion,
@@ -102,6 +104,11 @@ async def sampling_loop(
         tools.append(ToolCls())
 
     tool_collection = ToolCollection(*tools)
+    print(f'provider: {provider}')
+    provider = APIProvider.UITARS
+    model = 'ByteDance-Seed/UI-TARS-2B-SFT'
+
+    # Use the provider and model passed into the function; do not override here
 
     # Initialize handler for the provider
     handler = get_handler(

@@ -4,7 +4,7 @@ Utility functions for Computer Use API Gateway.
 
 import json
 from datetime import datetime
-from typing import Any, Dict, cast
+from typing import Any, Dict, Optional, cast
 
 from anthropic.types.beta import (
     BetaCacheControlEphemeralParam,
@@ -276,3 +276,99 @@ def _beta_message_param_to_job_message_content(
     (role and serialized message_content). Does not create a JobMessage DB model instance.
     """
     return beta_param.get('content')
+
+
+# Shared helpers for handlers
+def normalize_key_combo(combo: str) -> str:
+    """Normalize key-combination strings into a canonical form joined by '+'.
+
+    Examples:
+    - "ctrl c" -> "ctrl+c"
+    - "Ctrl+Shift+del" -> "ctrl+shift+Delete"
+    - "win+e" -> "Super_L+e"
+    """
+    if not isinstance(combo, str):
+        return combo  # type: ignore[return-value]
+
+    # Accept both separators; collapse to spaces first
+    compact = combo.replace('\n', ' ').replace('\t', ' ').strip()
+    compact = compact.replace('+', ' ')
+    parts = [p for p in compact.split(' ') if p]
+
+    # Order modifiers before non-modifiers
+    modifier_names = {'ctrl', 'control', 'shift', 'alt', 'cmd', 'win', 'meta', 'super'}
+    modifiers: list[str] = []
+    keys: list[str] = []
+    for p in parts:
+        lp = p.lower()
+        if lp in modifier_names:
+            modifiers.append('ctrl' if lp in {'ctrl', 'control'} else lp)
+        else:
+            keys.append(p)
+
+    ordered = modifiers + keys
+
+    alias_map = {
+        'esc': 'Escape',
+        'escape': 'Escape',
+        'enter': 'Return',
+        'return': 'Return',
+        'win': 'Super_L',
+        'windows': 'Super_L',
+        'super': 'Super_L',
+        'meta': 'Super_L',
+        'cmd': 'Super_L',
+        'backspace': 'BackSpace',
+        'del': 'Delete',
+        'delete': 'Delete',
+        'tab': 'Tab',
+        'space': 'space',
+        'pageup': 'Page_Up',
+        'pagedown': 'Page_Down',
+        'home': 'Home',
+        'end': 'End',
+        'up': 'Up',
+        'down': 'Down',
+        'left': 'Left',
+        'right': 'Right',
+        'printscreen': 'Print',
+        'prtsc': 'Print',
+    }
+
+    def normalize_part(p: str) -> str:
+        low = p.lower()
+        if low in {'ctrl', 'control'}:
+            return 'ctrl'
+        if low in {'shift', 'alt'}:
+            return low
+        if low in alias_map:
+            return alias_map[low]
+        if low.startswith('f') and low[1:].isdigit():
+            return f'F{int(low[1:])}'
+        if len(p) == 1:
+            return p
+        return p
+
+    normalized = [normalize_part(p) for p in ordered]
+    return '+'.join(normalized)
+
+
+def derive_center_coordinate(val: Any) -> Optional[tuple[int, int]]:
+    """Derive a center coordinate from a point or bounding box-like value.
+
+    Accepts strings like "x y" or "x1 y1 x2 y2", lists/tuples, or any
+    value containing digits. Returns (x, y) if derivable, else None.
+    """
+    if val is None:
+        return None
+    s = str(val)
+    nums = [int(n) for n in __import__('re').findall(r'\d+', s)]
+    if not nums:
+        return None
+    if len(nums) >= 4:
+        x1, y1, x2, y2 = nums[:4]
+        return int((x1 + x2) / 2), int((y1 + y2) / 2)
+    if len(nums) >= 2:
+        x1, y1 = nums[:2]
+        return int(x1), int(y1)
+    return None

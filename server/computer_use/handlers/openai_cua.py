@@ -21,7 +21,7 @@ from anthropic.types.beta import (
 from server.computer_use.handlers.base import BaseProviderHandler
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolCollection, ToolResult
-from server.computer_use.utils import _make_api_tool_result
+from server.computer_use.utils import _make_api_tool_result, normalize_key_combo
 
 from openai import AsyncOpenAI
 from openai.types.responses import (
@@ -314,54 +314,7 @@ class OpenAICUAHandler(BaseProviderHandler):
             mapped: dict[str, Any] = {}
 
             def _normalize_key_combo(combo: str) -> str:
-                if not isinstance(combo, str):
-                    return combo  # type: ignore[return-value]
-                parts = [
-                    p.strip() for p in combo.replace(' ', '').split('+') if p.strip()
-                ]
-                alias_map = {
-                    'esc': 'Escape',
-                    'escape': 'Escape',
-                    'enter': 'Return',
-                    'return': 'Return',
-                    'win': 'Super_L',
-                    'windows': 'Super_L',
-                    'super': 'Super_L',
-                    'meta': 'Super_L',
-                    'cmd': 'Super_L',
-                    'backspace': 'BackSpace',
-                    'del': 'Delete',
-                    'delete': 'Delete',
-                    'tab': 'Tab',
-                    'space': 'space',
-                    'pageup': 'Page_Up',
-                    'pagedown': 'Page_Down',
-                    'home': 'Home',
-                    'end': 'End',
-                    'up': 'Up',
-                    'down': 'Down',
-                    'left': 'Left',
-                    'right': 'Right',
-                    'printscreen': 'Print',
-                    'prtsc': 'Print',
-                    'ctrl': 'ctrl',
-                    'control': 'ctrl',
-                    'shift': 'shift',
-                    'alt': 'alt',
-                }
-
-                def normalize_part(p: str) -> str:
-                    low = p.lower()
-                    if low in alias_map:
-                        return alias_map[low]
-                    if low.startswith('f') and low[1:].isdigit():
-                        return f'F{int(low[1:])}'
-                    if len(p) == 1:
-                        return p
-                    return p
-
-                normalized = [normalize_part(p) for p in parts]
-                return '+'.join(normalized)
+                return normalize_key_combo(combo)
 
             if atype == 'click':
                 button = _get(action, 'button', 'left')
