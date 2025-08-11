@@ -12,6 +12,7 @@ from server.computer_use.handlers.base import BaseProviderHandler, ProviderHandl
 from server.computer_use.logging import logger
 from server.computer_use.handlers.openai import OpenAIHandler
 from server.computer_use.handlers.openai_cua import OpenAICUAHandler
+from server.computer_use.handlers.uitars import UITARSHandler
 
 # Registry mapping providers to handler classes
 HANDLER_REGISTRY: Dict[APIProvider, Type[BaseProviderHandler]] = {}
@@ -68,6 +69,7 @@ def get_handler(
         # OpenAI handler can be registered when ready for use:
         register_handler(APIProvider.OPENAI, OpenAIHandler)
         register_handler(APIProvider.OPENAI_CUA, OpenAICUAHandler)
+        register_handler(APIProvider.UITARS, UITARSHandler)
 
     handler_class = HANDLER_REGISTRY.get(provider)
 
