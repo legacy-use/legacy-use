@@ -31,10 +31,10 @@ from server.computer_use.handlers.base import BaseProviderHandler
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolCollection, ToolResult
 from server.computer_use.utils import (
-    _inject_prompt_caching,
     _make_api_tool_result,
-    _maybe_filter_to_n_most_recent_images,
     _response_to_params,
+    summarize_beta_messages,
+    summarize_beta_blocks,
 )
 from server.settings import settings
 
@@ -149,19 +149,10 @@ class AnthropicHandler(BaseProviderHandler):
         For Anthropic, messages are already in the correct format.
         Apply caching and image filtering if configured.
         """
-        # Apply prompt caching if enabled
-        if self.enable_prompt_caching:
-            _inject_prompt_caching(messages)
-
-        # Filter images if configured
-        if self.only_n_most_recent_images:
-            _maybe_filter_to_n_most_recent_images(
-                messages,
-                self.only_n_most_recent_images,
-                min_removal_threshold=self.image_truncation_threshold,
-            )
-
-        return messages
+        # Apply common preprocessing (prompt caching + image filtering)
+        return self.preprocess_messages(
+            messages, image_truncation_threshold=self.image_truncation_threshold
+        )
 
     def prepare_tools(
         self, tool_collection: ToolCollection
@@ -198,8 +189,8 @@ class AnthropicHandler(BaseProviderHandler):
         )
         logger.info(f'Tools: {tools}')
         logger.info(f'Tenant schema: {self.tenant_schema}')
-        # logger.debug(f'Messages being sent to Anthropic: {messages}')
-        logger.debug(f'System being sent to Anthropic: {system}')
+        logger.info(f'Input summary: {summarize_beta_messages(messages)}')
+        logger.debug('System being sent to Anthropic (text only)')
 
         try:
             # Some client variants expect `system` as str; extract from BetaTextBlockParam
@@ -217,7 +208,8 @@ class AnthropicHandler(BaseProviderHandler):
             )
 
             parsed_response = cast(BetaMessage, raw_response.parse())
-            logger.info(f'Parsed response: {parsed_response}')
+            blocks = _response_to_params(parsed_response)
+            logger.info(f'Output summary: {summarize_beta_blocks(blocks)}')
             return (
                 parsed_response,
                 raw_response.http_response.request,

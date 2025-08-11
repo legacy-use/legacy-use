@@ -16,6 +16,10 @@ from anthropic.types.beta import (
 
 from server.computer_use.tools import ToolCollection, ToolResult
 from server.settings_tenant import get_tenant_setting as _get_tenant_setting
+from server.computer_use.utils import (
+    _inject_prompt_caching,
+    _maybe_filter_to_n_most_recent_images,
+)
 
 
 @runtime_checkable
@@ -194,3 +198,28 @@ class BaseProviderHandler(ABC):
         if not self.tenant_schema:
             return None
         return _get_tenant_setting(self.tenant_schema, key)
+
+    def preprocess_messages(
+        self,
+        messages: list[BetaMessageParam],
+        *,
+        image_truncation_threshold: int = 1,
+    ) -> list[BetaMessageParam]:
+        """Apply common preprocessing such as prompt caching and image trimming.
+
+        This returns the same list object with modifications applied in-place
+        where appropriate, and also returns it for convenience.
+        """
+        # Prompt caching markers
+        if self.enable_prompt_caching:
+            _inject_prompt_caching(messages)
+
+        # Optional image trimming
+        if self.only_n_most_recent_images:
+            _maybe_filter_to_n_most_recent_images(
+                messages,
+                self.only_n_most_recent_images,
+                min_removal_threshold=image_truncation_threshold,
+            )
+
+        return messages

@@ -20,7 +20,6 @@ from anthropic.types.beta import (
 
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolResult
-from server.database.models import JobMessage
 
 
 def _load_system_prompt(system_prompt_suffix: str = '') -> str:
@@ -96,11 +95,15 @@ def _inject_prompt_caching(
         ):
             if breakpoints_remaining:
                 breakpoints_remaining -= 1
-                content[-1]['cache_control'] = BetaCacheControlEphemeralParam(
-                    {'type': 'ephemeral'}
+                from typing import cast as _cast
+
+                _cast(Dict[str, Any], content[-1])['cache_control'] = (
+                    BetaCacheControlEphemeralParam({'type': 'ephemeral'})
                 )
             else:
-                content[-1].pop('cache_control', None)
+                from typing import cast as _cast
+
+                _cast(Dict[str, Any], content[-1]).pop('cache_control', None)
                 # we'll only every have one extra turn per loop
                 break
 
@@ -163,12 +166,17 @@ def _make_api_tool_result(
 
     if result.error:
         # For error case, return the error in the expected format
-        return {
-            'type': 'tool_result',
-            'tool_use_id': tool_use_id,
-            'content': [],
-            'error': _maybe_prepend_system_tool_result(result, result.error),
-        }
+        from typing import cast as _cast
+
+        return _cast(
+            BetaToolResultBlockParam,
+            {
+                'type': 'tool_result',
+                'tool_use_id': tool_use_id,
+                'content': [],
+                'error': _maybe_prepend_system_tool_result(result, result.error),
+            },
+        )
 
     # For success case, prepare the content
     content: list[BetaTextBlockParam | BetaImageBlockParam] = []
@@ -214,12 +222,17 @@ def _make_api_tool_result(
             except json.JSONDecodeError as e:
                 logger.error(f'Invalid JSON in extraction tool output: {e}')
                 # Return error message when JSON is invalid
-                return {
-                    'type': 'tool_result',
-                    'tool_use_id': tool_use_id,
-                    'content': [],
-                    'error': f'Error: Invalid JSON in extraction tool output: {e}',
-                }
+                from typing import cast as _cast
+
+                return _cast(
+                    BetaToolResultBlockParam,
+                    {
+                        'type': 'tool_result',
+                        'tool_use_id': tool_use_id,
+                        'content': [],
+                        'error': f'Error: Invalid JSON in extraction tool output: {e}',
+                    },
+                )
         else:
             # Standard handling for non-extraction tools
             content.append(
@@ -255,7 +268,7 @@ def _maybe_prepend_system_tool_result(result: ToolResult, result_text: str):
     return result_text
 
 
-def _job_message_to_beta_message_param(job_message: JobMessage) -> BetaMessageParam:
+def _job_message_to_beta_message_param(job_message: Dict[str, Any]) -> BetaMessageParam:
     """Converts a JobMessage dictionary (or model instance) to a BetaMessageParam TypedDict."""
     # Deserialize from JSON to plain dict
     restored = {
@@ -270,12 +283,17 @@ def _job_message_to_beta_message_param(job_message: JobMessage) -> BetaMessagePa
 
 def _beta_message_param_to_job_message_content(
     beta_param: BetaMessageParam,
-) -> Dict[str, Any]:
+) -> list[Dict[str, Any]]:
     """
     Converts a BetaMessageParam TypedDict into components needed for a JobMessage
     (role and serialized message_content). Does not create a JobMessage DB model instance.
     """
-    return beta_param.get('content')
+    content = beta_param.get('content')
+    if isinstance(content, list):
+        return cast(list[Dict[str, Any]], content)
+    if isinstance(content, str):
+        return cast(list[Dict[str, Any]], [{'type': 'text', 'text': content}])
+    return []
 
 
 # Shared helpers for handlers
@@ -372,3 +390,117 @@ def derive_center_coordinate(val: Any) -> Optional[tuple[int, int]]:
         x1, y1 = nums[:2]
         return int(x1), int(y1)
     return None
+
+
+# ----------------------- Logging/Summary Helpers -----------------------
+
+
+def summarize_beta_messages(messages: list[BetaMessageParam]) -> Dict[str, Any]:
+    roles: Dict[str, int] = {}
+    total_text = 0
+    total_tool_result = 0
+    total_images = 0
+    total_thinking = 0
+    for m in messages:
+        r = m.get('role') or 'unknown'
+        roles[r] = roles.get(r, 0) + 1
+        content = m.get('content')
+        if isinstance(content, list):
+            for b in content:
+                if not isinstance(b, dict):
+                    continue
+                t = b.get('type')
+                if t == 'text':
+                    total_text += 1
+                elif t == 'tool_result':
+                    total_tool_result += 1
+                    # count images in tool_result content without printing
+                    for ci in b.get('content', []) or []:
+                        if isinstance(ci, dict) and ci.get('type') == 'image':
+                            total_images += 1
+                elif t == 'image':
+                    total_images += 1
+                elif t == 'thinking':
+                    total_thinking += 1
+    return {
+        'num_messages': len(messages),
+        'roles': roles,
+        'text_blocks': total_text,
+        'tool_result_blocks': total_tool_result,
+        'images': total_images,
+        'thinking_blocks': total_thinking,
+    }
+
+
+def summarize_openai_responses_input(messages: Any) -> Dict[str, Any]:
+    # messages: ResponseInputParam (list of dicts)
+    num_msgs = 0
+    text_parts = 0
+    image_parts = 0
+    for item in messages or []:
+        num_msgs += 1
+        if isinstance(item, dict):
+            content = item.get('content')
+            if isinstance(content, list):
+                for p in content:
+                    if isinstance(p, dict):
+                        t = p.get('type')
+                        if t in ('input_text', 'text'):
+                            text_parts += 1
+                        elif t in ('input_image', 'image_url'):
+                            image_parts += 1
+    return {
+        'num_messages': num_msgs,
+        'text_parts': text_parts,
+        'image_parts': image_parts,
+    }
+
+
+def summarize_openai_chat(messages: Any) -> Dict[str, Any]:
+    # messages: list[ChatCompletionMessageParam]
+    try:
+        num_msgs = 0
+        text_parts = 0
+        image_parts = 0
+        for m in messages or []:
+            num_msgs += 1
+            if isinstance(m, dict):
+                content = m.get('content')
+                if isinstance(content, list):
+                    for p in content:
+                        if isinstance(p, dict):
+                            t = p.get('type')
+                            if t == 'text':
+                                text_parts += 1
+                            elif t == 'image_url':
+                                image_parts += 1
+                elif isinstance(content, str):
+                    text_parts += 1
+        return {
+            'num_messages': num_msgs,
+            'text_parts': text_parts,
+            'image_parts': image_parts,
+        }
+    except Exception:
+        return {'num_messages': len(messages or []), 'text_parts': 0, 'image_parts': 0}
+
+
+def summarize_beta_blocks(blocks: list[BetaContentBlockParam]) -> Dict[str, Any]:
+    text_blocks = 0
+    tool_use_blocks = 0
+    images = 0
+    for b in blocks:
+        if not isinstance(b, dict):
+            continue
+        t = b.get('type')
+        if t == 'text':
+            text_blocks += 1
+        elif t == 'tool_use':
+            tool_use_blocks += 1
+        elif t == 'image':
+            images += 1
+    return {
+        'text_blocks': text_blocks,
+        'tool_use_blocks': tool_use_blocks,
+        'images': images,
+    }
