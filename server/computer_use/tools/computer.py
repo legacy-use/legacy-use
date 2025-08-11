@@ -3,7 +3,7 @@ import logging
 from typing import Literal, cast, Dict, Any
 
 import httpx
-from anthropic.types.beta import BetaToolComputerUse20241022Param, BetaToolUnionParam
+from anthropic.types.beta import BetaToolUnionParam
 
 from .base import BaseAnthropicTool, ToolError, ToolResult
 from openai.types.chat import ChatCompletionToolParam
@@ -56,9 +56,12 @@ class BaseComputerTool(BaseAnthropicTool):
             'display_number': self.display_num,
         }
 
-    def to_params(self) -> BetaToolComputerUse20241022Param:
-        # TODO: fix type
-        return {'name': self.name, 'type': self.api_type, **self.options}
+    def to_params(self) -> BetaToolUnionParam:
+        # Base reports the concrete api_type as union-compatible
+        return cast(
+            BetaToolUnionParam,
+            {'name': self.name, 'type': self.api_type, **self.options},
+        )
 
     def to_openai_tool(self) -> ChatCompletionToolParam:
         """Return OpenAI function tool schema for the computer tool.
@@ -152,6 +155,80 @@ class BaseComputerTool(BaseAnthropicTool):
             },
         }
 
+    # --- SSOT hooks ---
+    def internal_spec(self) -> dict:
+        return {
+            'name': 'computer',
+            'version': self.api_type,
+            'description': 'Remote computer control tool',
+            'actions': [
+                # Base actions
+                {'name': 'screenshot', 'params': {}},
+                {
+                    'name': 'left_click',
+                    'params': {'coordinate': {'type': 'array[int,int]'}},
+                },
+                {
+                    'name': 'mouse_move',
+                    'params': {'coordinate': {'type': 'array[int,int]'}},
+                },
+                {'name': 'type', 'params': {'text': {'type': 'string'}}},
+                {'name': 'key', 'params': {'text': {'type': 'string'}}},
+                # Enhanced actions
+                {
+                    'name': 'scroll',
+                    'params': {
+                        'scroll_direction': {'enum': ['up', 'down', 'left', 'right']},
+                        'scroll_amount': {'type': 'integer'},
+                    },
+                },
+                {
+                    'name': 'left_click_drag',
+                    'params': {
+                        'coordinate': {'type': 'array[int,int]'},
+                        'to': {'type': 'array[int,int]'},
+                    },
+                },
+                {
+                    'name': 'right_click',
+                    'params': {'coordinate': {'type': 'array[int,int]'}},
+                },
+                {
+                    'name': 'middle_click',
+                    'params': {'coordinate': {'type': 'array[int,int]'}},
+                },
+                {
+                    'name': 'double_click',
+                    'params': {'coordinate': {'type': 'array[int,int]'}},
+                },
+                {
+                    'name': 'triple_click',
+                    'params': {'coordinate': {'type': 'array[int,int]'}},
+                },
+                {
+                    'name': 'left_mouse_down',
+                    'params': {'coordinate': {'type': 'array[int,int]'}},
+                },
+                {
+                    'name': 'left_mouse_up',
+                    'params': {'coordinate': {'type': 'array[int,int]'}},
+                },
+                {
+                    'name': 'hold_key',
+                    'params': {
+                        'text': {'type': 'string'},
+                        'duration': {'type': 'number'},
+                    },
+                },
+                {'name': 'wait', 'params': {'duration': {'type': 'number'}}},
+            ],
+            'options': self.options,
+            'normalization': {
+                'key_aliases': True,
+                'scroll_units': 'wheel_notches',
+            },
+        }
+
     async def __call__(
         self,
         *,
@@ -206,7 +283,7 @@ class BaseComputerTool(BaseAnthropicTool):
         timeout = httpx.Timeout(60.0, connect=10.0)
 
         # Construct the payload with only non-None parameters
-        payload = {'api_type': self.api_type}
+        payload: Dict[str, Any] = {'api_type': self.api_type}
         if text is not None:
             payload['text'] = text
         if coordinate is not None:
@@ -247,17 +324,20 @@ class BaseComputerTool(BaseAnthropicTool):
 class ComputerTool20241022(BaseComputerTool, BaseAnthropicTool):
     api_type = 'computer_20241022'
 
-    def to_params(self) -> BetaToolComputerUse20241022Param:
-        return {'name': self.name, 'type': self.api_type, **self.options}
+    def to_params(self) -> BetaToolUnionParam:
+        return cast(
+            BetaToolUnionParam,
+            {'name': self.name, 'type': 'computer_20241022', **self.options},
+        )
 
 
 class ComputerTool20250124(BaseComputerTool, BaseAnthropicTool):
     api_type = 'computer_20250124'
 
-    def to_params(self):
+    def to_params(self) -> BetaToolUnionParam:
         return cast(
             BetaToolUnionParam,
-            {'name': self.name, 'type': self.api_type, **self.options},
+            {'name': self.name, 'type': 'computer_20250124', **self.options},
         )
 
     async def __call__(

@@ -30,8 +30,10 @@ from openai.types.chat import (
     ChatCompletionContentPartParam,
     ChatCompletionContentPartTextParam,
     ChatCompletionMessageParam,
+    ChatCompletionToolParam,
 )
 
+from server.computer_use.tools.base import BaseAnthropicTool
 from server.computer_use.utils import normalize_key_combo, derive_center_coordinate
 
 
@@ -86,6 +88,99 @@ def build_openai_preview_tool(
             'environment': environment,
         },
     )
+
+
+# -------------------- Internal spec → OpenAI functions --------------------
+
+
+def _spec_to_openai_responses_function(spec: dict) -> FunctionToolParam:
+    name = str(spec.get('name') or '')
+    description = str(spec.get('description') or f'Tool: {name}')
+    parameters = cast(
+        dict[str, Any], spec.get('input_schema') or {'type': 'object', 'properties': {}}
+    )
+    return cast(
+        FunctionToolParam,
+        {
+            'type': 'function',
+            'name': name,
+            'description': description,
+            'strict': False,
+            'parameters': parameters,
+        },
+    )
+
+
+def internal_specs_to_openai_responses_functions(
+    tools: List[BaseAnthropicTool],
+) -> List[FunctionToolParam]:
+    result: List[FunctionToolParam] = []
+    for tool in tools:
+        if getattr(tool, 'name', None) == 'computer':
+            # Do not expand for CUA; preview tool replaces it
+            continue
+        result.append(_spec_to_openai_responses_function(tool.internal_spec()))
+    return result
+
+
+def _spec_to_openai_chat_function(spec: dict) -> ChatCompletionToolParam:
+    name = str(spec.get('name') or '')
+    description = str(spec.get('description') or f'Tool: {name}')
+    parameters = cast(
+        dict[str, Any], spec.get('input_schema') or {'type': 'object', 'properties': {}}
+    )
+    return cast(
+        ChatCompletionToolParam,
+        {
+            'type': 'function',
+            'function': {
+                'name': name,
+                'description': description,
+                'parameters': parameters,
+            },
+        },
+    )
+
+
+def expand_computer_to_openai_chat_functions(
+    tool: BaseAnthropicTool,
+) -> List[ChatCompletionToolParam]:
+    spec = tool.internal_spec()
+    actions: list[dict] = cast(list[dict], spec.get('actions') or [])
+    funcs: List[ChatCompletionToolParam] = []
+    for action in actions:
+        aname = str(action.get('name') or '')
+        params = cast(dict[str, Any], action.get('params') or {})
+        funcs.append(
+            cast(
+                ChatCompletionToolParam,
+                {
+                    'type': 'function',
+                    'function': {
+                        'name': aname,
+                        'description': f'Computer action: {aname}',
+                        'parameters': {
+                            'type': 'object',
+                            'properties': params,
+                            'required': [],
+                        },
+                    },
+                },
+            )
+        )
+    return funcs
+
+
+def internal_specs_to_openai_chat_functions(
+    tools: List[BaseAnthropicTool],
+) -> List[ChatCompletionToolParam]:
+    result: List[ChatCompletionToolParam] = []
+    for tool in tools:
+        if getattr(tool, 'name', None) == 'computer':
+            result.extend(expand_computer_to_openai_chat_functions(tool))
+        else:
+            result.append(_spec_to_openai_chat_function(tool.internal_spec()))
+    return result
 
 
 # ------------------------ Message Converters -----------------------

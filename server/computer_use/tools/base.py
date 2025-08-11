@@ -1,9 +1,8 @@
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, fields, replace
-from typing import Any, Optional, cast
+from typing import Any
 
 from anthropic.types.beta import BetaToolUnionParam
-from openai.types.chat import ChatCompletionToolParam
 
 
 class BaseAnthropicTool(metaclass=ABCMeta):
@@ -20,32 +19,26 @@ class BaseAnthropicTool(metaclass=ABCMeta):
     ) -> BetaToolUnionParam:
         raise NotImplementedError
 
-    def to_openai_tool(self) -> ChatCompletionToolParam:
-        """Return this tool in OpenAI function tool schema.
+    # Removed: OpenAI-specific conversion now handled by central converters using internal_spec()
 
-        Default implementation converts the Anthropic input_schema (if any)
-        into an OpenAI function definition. Tools that do not expose an
-        input_schema via to_params (e.g., computer tool) should override this.
+    # --- Single-source-of-truth spec for provider compilers ---
+    def internal_spec(self) -> dict:
+        """Provider-agnostic spec for this tool (actions, params, docs).
+
+        Default implementation derives a minimal spec from to_params().
+        Rich tools (e.g., computer) should override this to include
+        actions, per-action params, normalization rules, and options.
         """
         params = self.to_params()
-        name = cast(str, params['name'])
-        description = cast(Optional[str], params.get('description')) or f'Tool: {name}'
-        input_schema = cast(Optional[dict[str, Any]], params.get('input_schema'))
-
-        if not input_schema:
-            # If a tool has no input schema, provide an empty object schema by default
-            input_schema = {
+        return {
+            'name': params.get('name'),
+            'description': params.get('description'),
+            'input_schema': params.get('input_schema')
+            or {
                 'type': 'object',
                 'properties': {},
-            }
-
-        return {
-            'type': 'function',
-            'function': {
-                'name': name,
-                'description': description,
-                'parameters': input_schema,
             },
+            'options': {},
         }
 
 

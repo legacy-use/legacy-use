@@ -37,11 +37,11 @@ def validate_tool_input(
 
     if missing_params:
         logger.error(
-            f'Tool {tool.name} input is missing required parameters: {missing_params}'
+            f'Tool {tool.to_params().get("name")} input is missing required parameters: {missing_params}'
         )
         return (
             False,
-            f'Tool {tool.name} input is missing required parameters: {missing_params}',
+            f'Tool {tool.to_params().get("name")} input is missing required parameters: {missing_params}',
         )
 
     return True, None
@@ -59,9 +59,7 @@ class ToolCollection:
     ) -> list[BetaToolUnionParam]:
         return [tool.to_params() for tool in self.tools]
 
-    def to_openai_tools(self) -> list[dict]:
-        """Return tools in OpenAI function calling format using each tool's adapter."""
-        return [tool.to_openai_tool() for tool in self.tools]
+    # Removed: OpenAI-specific conversion is handled by central converters
 
     async def run(
         self,
