@@ -27,6 +27,7 @@ from server.utils.job_callbacks import (
     _create_output_callback,
 )
 from server.utils.job_locks import get_target_lock, _check_preconditions_and_set_running
+from server.utils.hatchet_client import trigger_target_orchestrator
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -380,65 +381,13 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
         if job_id_str in running_job_tasks:
             del running_job_tasks[job_id_str]
 
-
-async def enqueue_job(job_obj: Job, tenant_schema: str):
-    """
-    Updates a job's status to QUEUED and enqueues it using Hatchet.
-
-    Args:
-        job_obj: The Job Pydantic model instance to enqueue.
-        tenant_schema: The tenant schema for this job.
-    """
-    from server.database.multi_tenancy import with_db
-    from server.utils.hatchet_client import enqueue_job_with_hatchet
-
-    # 1. Update status in DB first
-    with with_db(tenant_schema) as db_session:
-        db_service = TenantAwareDatabaseService(db_session)
+        # Kick orchestrator to dispatch the next head-of-line (if any)
         try:
-            db_service.update_job_status(job_obj.id, JobStatus.QUEUED)
-            logger.info(
-                f'Job {job_obj.id} status updated to QUEUED in database for tenant {tenant_schema}.'
-            )
-            # Update the local object's status as well
-            job_obj.status = JobStatus.QUEUED
+            trigger_target_orchestrator(tenant_schema, str(job.target_id))
         except Exception as e:
             logger.error(
-                f'Failed to update job {job_obj.id} status to QUEUED in DB for tenant {tenant_schema}: {e}',
-                exc_info=True,
+                f'Failed to trigger orchestrator in finally for tenant {tenant_schema} target {job.target_id}: {e}'
             )
-            # Raise an exception to prevent potentially queueing a job
-            # whose status couldn't be persisted.
-            raise RuntimeError(
-                f'Failed to update job {job_obj.id} status before queueing for tenant {tenant_schema}'
-            ) from e
 
-    # 2. Enqueue job using Hatchet with per-target concurrency
-    try:
-        hatchet_run_id = enqueue_job_with_hatchet(
-            job_id=str(job_obj.id),
-            tenant_schema=tenant_schema,
-            target_id=str(job_obj.target_id),
-        )
 
-        # Add a standard log entry
-        log_message = 'Job added to queue'
-        add_job_log(str(job_obj.id), 'system', log_message, tenant_schema)
-        logger.info(
-            f'Job {job_obj.id} enqueued with Hatchet (run ID: {hatchet_run_id}) '
-            f'for tenant {tenant_schema} target {job_obj.target_id}'
-        )
-
-    except Exception as e:
-        logger.error(
-            f'Failed to enqueue job {job_obj.id} with Hatchet for tenant {tenant_schema}: {e}',
-            exc_info=True,
-        )
-        # Update job status back to ERROR since we couldn't enqueue it
-        with with_db(tenant_schema) as db_session:
-            db_service = TenantAwareDatabaseService(db_session)
-            db_service.update_job_status(job_obj.id, JobStatus.ERROR)
-
-        raise RuntimeError(
-            f'Failed to enqueue job {job_obj.id} with Hatchet for tenant {tenant_schema}'
-        ) from e
+# enqueue_job removed — queuing is handled in routes and dispatched by orchestrator

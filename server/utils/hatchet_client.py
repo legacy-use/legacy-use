@@ -53,3 +53,31 @@ def enqueue_job_with_hatchet(job_id: str, tenant_schema: str, target_id: str) ->
     )
 
     return str(result)
+
+
+def trigger_target_orchestrator(tenant_schema: str, target_id: str) -> str:
+    """
+    Trigger the per-target orchestrator workflow. This is idempotent due to the
+    Hatchet concurrency key (tenant:target_id) and the orchestrator's own loop.
+
+    Args:
+        tenant_schema: The tenant schema
+        target_id: The target ID
+
+    Returns:
+        The Hatchet task run ID
+    """
+    from server.utils.hatchet_tasks import (
+        TargetOrchestratorInput,
+        orchestrate_target,
+    )
+
+    orchestrator_input = TargetOrchestratorInput(
+        tenant_schema=tenant_schema, target_id=target_id
+    )
+
+    result = orchestrate_target.run(input=orchestrator_input)
+    logger.info(
+        f'Triggered orchestrator for tenant {tenant_schema} target {target_id}: {result}'
+    )
+    return str(result)

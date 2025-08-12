@@ -5,7 +5,7 @@ Hatchet worker for registering and processing tasks.
 import logging
 
 # Import the tasks to register them
-from server.utils.hatchet_tasks import execute_job
+from server.utils.hatchet_tasks import execute_job, orchestrate_target
 from server.utils.hatchet_client import get_hatchet_client
 
 # Get the shared Hatchet client instance
@@ -26,7 +26,9 @@ def main():
     logger.info('Starting worker to process tasks...')
 
     # Start the Hatchet worker with the job execution task
-    hatchet.worker('legacy-use-worker', workflows=[execute_job]).start()
+    hatchet.worker(
+        'legacy-use-worker', workflows=[execute_job, orchestrate_target]
+    ).start()
 
 
 if __name__ == '__main__':

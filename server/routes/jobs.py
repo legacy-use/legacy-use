@@ -33,16 +33,15 @@ from server.utils.db_dependencies import get_tenant_db
 from server.utils.tenant_utils import get_tenant_from_request
 from server.utils.job_execution import (
     add_job_log,
-    enqueue_job,
     running_job_tasks,
 )
+from server.utils.hatchet_client import trigger_target_orchestrator
 from server.utils.job_utils import compute_job_metrics
 from server.utils.telemetry import (
     capture_job_canceled,
     capture_job_created,
     capture_job_interrupted,
     capture_job_resolved,
-    capture_job_resumed,
 )
 
 # Set up logging
@@ -230,9 +229,11 @@ async def create_job(
     # Create job object from the dictionary returned by the database
     job_obj = Job(**db_job_dict)
 
-    # Use the new helper function to update status, add to queue, and ensure processor runs
-
-    await enqueue_job(job_obj, tenant['schema'])
+    # Set QUEUED, do not directly run. Let per-target orchestrator do FIFO.
+    db_tenant.update_job_status(job_obj.id, JobStatus.QUEUED)
+    add_job_log(str(job_obj.id), 'system', 'Job queued', tenant['schema'])
+    # Trigger orchestrator for this target (idempotent)
+    trigger_target_orchestrator(tenant['schema'], str(target_id))
 
     capture_job_created(request, job_obj)
 
@@ -692,10 +693,10 @@ async def resume_job(
             detail=f"Job {job_id} cannot be resumed from state '{current_status}'. Only paused or error jobs can be resumed.",
         )
 
-    # Create job object and enqueue it
-    job_obj = Job(**job_data)
-    job_obj.status = JobStatus.QUEUED  # Set status to QUEUED instead of PAUSED
-    await enqueue_job(job_obj, tenant['schema'])
+    # Resume: set QUEUED and trigger orchestrator so it dispatches this job first
+    db_tenant.update_job_status(job_id, JobStatus.QUEUED)
+    add_job_log(job_id_str, 'system', 'Job resumed and queued', tenant['schema'])
+    trigger_target_orchestrator(tenant['schema'], str(target_id))
 
     # Add log entry for the resume action
     add_job_log(
@@ -705,6 +706,6 @@ async def resume_job(
         tenant['schema'],
     )
 
-    capture_job_resumed(request, job_obj)
-
-    return job_obj
+    # Return updated job
+    updated = db_tenant.get_job(job_id)
+    return Job(**updated)
