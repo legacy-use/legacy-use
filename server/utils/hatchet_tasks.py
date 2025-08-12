@@ -48,15 +48,21 @@ async def execute_job(input: JobExecutionInput, ctx: Context) -> Dict[str, Any]:
     )
 
     try:
-        # Get job from database
-        with with_db(input.tenant_schema) as db_session:
-            db_service = TenantAwareDatabaseService(db_session)
-            job_data = db_service.get_job(input.job_id)
+        # Get job from database (offload sync DB to thread)
+        import asyncio as _asyncio
 
-            if not job_data:
-                raise ValueError(f'Job {input.job_id} not found')
+        def _fetch_job_sync():
+            with with_db(input.tenant_schema) as db_session:
+                db_service = TenantAwareDatabaseService(db_session)
+                data = db_service.get_job(input.job_id)
+                return data
 
-            job = Job(**job_data)
+        job_data = await _asyncio.to_thread(_fetch_job_sync)
+
+        if not job_data:
+            raise ValueError(f'Job {input.job_id} not found')
+
+        job = Job(**job_data)
 
         # Execute the job using existing logic
         await execute_api_in_background_with_tenant(job, input.tenant_schema)
@@ -97,29 +103,35 @@ async def orchestrate_target(
     from server.models.base import JobStatus
     from server.utils.hatchet_client import enqueue_job_with_hatchet
 
-    with with_db(input.tenant_schema) as db_session:
-        db = TenantAwareDatabaseService(db_session)
+    import asyncio as _asyncio
 
-        # If any PAUSED/ERROR job exists for this target, do not dispatch others
-        blocking = db.is_target_queue_paused(input.target_id)
-        if blocking and blocking.get('is_paused'):
-            return {'status': 'blocked'}
+    def _select_next_job_sync():
+        with with_db(input.tenant_schema) as db_session:
+            db = TenantAwareDatabaseService(db_session)
+            blocking = db.is_target_queue_paused(input.target_id)
+            if blocking and blocking.get('is_paused'):
+                return {'blocked': True, 'job': None}
+            queued_desc = db.list_jobs_by_status_and_target(
+                input.target_id, [JobStatus.QUEUED.value], limit=1000, offset=0
+            )
+            if not queued_desc:
+                return {'blocked': False, 'job': None}
+            return {'blocked': False, 'job': queued_desc[-1]}
 
-        # Select head-of-line queued job for this target using DB ordering (desc)
-        queued_desc = db.list_jobs_by_status_and_target(
-            input.target_id, [JobStatus.QUEUED.value], limit=1000, offset=0
-        )
-        if not queued_desc:
-            return {'status': 'idle'}
-
-        # Head-of-line is the oldest job; list is desc, so pick the last item
-        next_job = queued_desc[-1]
+    sel = await _asyncio.to_thread(_select_next_job_sync)
+    if sel['blocked']:
+        return {'status': 'blocked'}
+    if not sel['job']:
+        return {'status': 'idle'}
+    next_job = sel['job']
 
     # Run the head-of-line job via existing execute_job task
-    enqueue_job_with_hatchet(
-        job_id=str(next_job['id']),
-        tenant_schema=input.tenant_schema,
-        target_id=input.target_id,
+    # Offload task trigger to avoid blocking
+    await _asyncio.to_thread(
+        enqueue_job_with_hatchet,
+        str(next_job['id']),
+        input.tenant_schema,
+        input.target_id,
     )
 
     return {'status': 'dispatched', 'job_id': str(next_job['id'])}

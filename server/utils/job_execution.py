@@ -56,8 +56,12 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
     # Track token usage for this job - Use a list to allow modification by nonlocal callback
     running_token_total_ref = [0]
 
-    # Add initial job log
-    add_job_log(job_id_str, 'system', 'Queue picked up job', tenant_schema)
+    # Add initial job log (offload sync DB)
+    import asyncio as _asyncio
+
+    await _asyncio.to_thread(
+        add_job_log, job_id_str, 'system', 'Queue picked up job', tenant_schema
+    )
 
     # Flag to track if we're requeuing due to a conflict
     requeuing_due_to_conflict = False
@@ -101,17 +105,20 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
                 )
 
             # Update job with result and API exchanges using tenant-aware database service
-            with with_db(tenant_schema) as db_session:
-                db_service = TenantAwareDatabaseService(db_session)
-                updated_job = db_service.update_job(
-                    job.id,
-                    {
-                        'status': api_response.status,
-                        'result': api_response.extraction,
-                        'completed_at': datetime.now(),
-                        'updated_at': datetime.now(),
-                    },
-                )
+            def _update_job_sync():
+                with with_db(tenant_schema) as db_session:
+                    db_service = TenantAwareDatabaseService(db_session)
+                    return db_service.update_job(
+                        job.id,
+                        {
+                            'status': api_response.status,
+                            'result': api_response.extraction,
+                            'completed_at': datetime.now(),
+                            'updated_at': datetime.now(),
+                        },
+                    )
+
+            updated_job = await _asyncio.to_thread(_update_job_sync)
 
             # Check if the job status is paused or error, which will implicitly pause the target's queue
             if api_response.status in [JobStatus.PAUSED, JobStatus.ERROR]:
@@ -123,14 +130,16 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
                     api_response.status == JobStatus.PAUSED
                     and 'API Credits Exceeded' in str(api_response.reason)
                 ):
-                    add_job_log(
+                    await _asyncio.to_thread(
+                        add_job_log,
                         job_id_str,
                         'error',
                         f'Target {job.target_id} queue will be paused due to insufficient credits',
                         tenant_schema,
                     )
                 else:
-                    add_job_log(
+                    await _asyncio.to_thread(
+                        add_job_log,
                         job_id_str,
                         'system',
                         f'Target {job.target_id} queue will be paused due to job {api_response.status.value}',
@@ -156,7 +165,9 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
             # if status is not success, add the reason
             if api_response.status != JobStatus.SUCCESS:
                 msg += f' and reason: {api_response.reason}'
-            add_job_log(job_id_str, 'system', msg, tenant_schema)
+            await _asyncio.to_thread(
+                add_job_log, job_id_str, 'system', msg, tenant_schema
+            )
 
             # Include token usage in the job data for telemetry
             # TODO: This is a hack to get the token usage into the job data for telemetry,
@@ -165,17 +176,18 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
             from server.utils.job_utils import compute_job_metrics
 
             # Use tenant-aware database service for getting HTTP exchanges
-            with with_db(tenant_schema) as db_session:
-                db_service = TenantAwareDatabaseService(db_session)
-                http_exchanges = db_service.list_job_http_exchanges(
-                    job.id, use_trimmed=True
-                )
-                metrics = compute_job_metrics(updated_job, http_exchanges)
-                job_with_tokens = updated_job.copy()
-                job_with_tokens['total_input_tokens'] = metrics['total_input_tokens']
-                job_with_tokens['total_output_tokens'] = metrics['total_output_tokens']
+            def _fetch_exchanges_sync():
+                with with_db(tenant_schema) as db_session:
+                    db_service = TenantAwareDatabaseService(db_session)
+                    return db_service.list_job_http_exchanges(job.id, use_trimmed=True)
 
-                capture_job_resolved(None, job_with_tokens, manual_resolution=False)
+            http_exchanges = await _asyncio.to_thread(_fetch_exchanges_sync)
+            metrics = compute_job_metrics(updated_job, http_exchanges)
+            job_with_tokens = updated_job.copy()
+            job_with_tokens['total_input_tokens'] = metrics['total_input_tokens']
+            job_with_tokens['total_output_tokens'] = metrics['total_output_tokens']
+
+            capture_job_resolved(None, job_with_tokens, manual_resolution=False)
 
         except asyncio.CancelledError:
             # Job was cancelled during API execution
@@ -187,30 +199,37 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
             # Check if cancellation was due to token limit
             if running_token_total > settings.TOKEN_LIMIT:
                 error_message = f'Job was automatically terminated: exceeded token limit of {settings.TOKEN_LIMIT} tokens (used {running_token_total} tokens)'
-                add_job_log(job_id_str, 'system', error_message, tenant_schema)
+                await _asyncio.to_thread(
+                    add_job_log, job_id_str, 'system', error_message, tenant_schema
+                )
             else:
-                add_job_log(
-                    job_id_str, 'system', 'API execution was cancelled', tenant_schema
+                await _asyncio.to_thread(
+                    add_job_log,
+                    job_id_str,
+                    'system',
+                    'API execution was cancelled',
+                    tenant_schema,
                 )
 
             # Update job status to ERROR using tenant-aware database service
-            with with_db(tenant_schema) as db_session:
-                db_service = TenantAwareDatabaseService(db_session)
-                db_service.update_job(
-                    job.id,
-                    {
-                        'status': JobStatus.ERROR,
-                        'error': 'Job was automatically terminated: exceeded token limit'
-                        if running_token_total > settings.TOKEN_LIMIT
-                        else 'Job was interrupted by user',
-                        'completed_at': datetime.now(),
-                        'updated_at': datetime.now(),
-                        'total_input_tokens': running_token_total
-                        // 2,  # Rough estimate
-                        'total_output_tokens': running_token_total
-                        // 2,  # Rough estimate
-                    },
-                )
+            def _update_cancel_sync():
+                with with_db(tenant_schema) as db_session:
+                    db_service = TenantAwareDatabaseService(db_session)
+                    db_service.update_job(
+                        job.id,
+                        {
+                            'status': JobStatus.ERROR,
+                            'error': 'Job was automatically terminated: exceeded token limit'
+                            if running_token_total > settings.TOKEN_LIMIT
+                            else 'Job was interrupted by user',
+                            'completed_at': datetime.now(),
+                            'updated_at': datetime.now(),
+                            'total_input_tokens': running_token_total // 2,
+                            'total_output_tokens': running_token_total // 2,
+                        },
+                    )
+
+            await _asyncio.to_thread(_update_cancel_sync)
 
             # Set completion future with error if it exists
             try:
@@ -241,15 +260,20 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
 
         # Check if this was due to token limit
         if running_token_total > settings.TOKEN_LIMIT:
-            add_job_log(
+            await _asyncio.to_thread(
+                add_job_log,
                 job_id_str,
                 'system',
                 f'Job execution was cancelled due to token limit ({running_token_total}/{settings.TOKEN_LIMIT})',
                 tenant_schema,
             )
         else:
-            add_job_log(
-                job_id_str, 'system', 'Job execution was cancelled', tenant_schema
+            await _asyncio.to_thread(
+                add_job_log,
+                job_id_str,
+                'system',
+                'Job execution was cancelled',
+                tenant_schema,
             )
 
         # Clean up target lock regardless of errors - Only if not requeuing
@@ -307,21 +331,25 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
         )
 
         # Update job with error using tenant-aware database service
-        with with_db(tenant_schema) as db_session:
-            db_service = TenantAwareDatabaseService(db_session)
-            db_service.update_job(
-                job.id,
-                {
-                    'status': JobStatus.ERROR,
-                    'error': error_message,
-                    'completed_at': datetime.now(),
-                    'updated_at': datetime.now(),
-                },
-            )
+        def _update_error_sync():
+            with with_db(tenant_schema) as db_session:
+                db_service = TenantAwareDatabaseService(db_session)
+                db_service.update_job(
+                    job.id,
+                    {
+                        'status': JobStatus.ERROR,
+                        'error': error_message,
+                        'completed_at': datetime.now(),
+                        'updated_at': datetime.now(),
+                    },
+                )
+
+        await _asyncio.to_thread(_update_error_sync)
 
         # Log that the target queue will be paused
         logger.info(f'Target {job.target_id} queue will be paused due to job error')
-        add_job_log(
+        await _asyncio.to_thread(
+            add_job_log,
             job_id_str,
             'system',
             f'Target {job.target_id} queue will be paused due to job error',
@@ -346,10 +374,16 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
             logger.error(f'Error setting completion future with error: {e}')
 
         # Log the error
-        add_job_log(
-            job_id_str, 'system', f'Error executing job: {error_message}', tenant_schema
+        await _asyncio.to_thread(
+            add_job_log,
+            job_id_str,
+            'system',
+            f'Error executing job: {error_message}',
+            tenant_schema,
         )
-        add_job_log(job_id_str, 'error', error_traceback, tenant_schema)
+        await _asyncio.to_thread(
+            add_job_log, job_id_str, 'error', error_traceback, tenant_schema
+        )
     finally:
         # Only clean up target lock if we're not requeuing due to a conflict
         # This prevents the lock from being released prematurely
