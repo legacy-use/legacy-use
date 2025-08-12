@@ -105,8 +105,8 @@ async def sampling_loop(
 
     tool_collection = ToolCollection(*tools)
     print(f'provider: {provider}')
-    provider = APIProvider.ANTHROPIC
-    model = 'claude-sonnet-4-20250514'
+    provider = APIProvider.OPENAI
+    model = 'gpt-4o'
 
     # Use the provider and model passed into the function; do not override here
 
@@ -350,7 +350,7 @@ async def sampling_loop(
                 result = await tool_collection.run(
                     name=content_block['name'],
                     tool_input=cast(dict[str, Any], content_block['input']),
-                    session_id=session_id,
+                    session_id=session_id or '',
                     session=session_obj,
                 )
 

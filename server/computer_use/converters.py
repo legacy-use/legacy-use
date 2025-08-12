@@ -294,80 +294,134 @@ def beta_messages_to_openai_chat(
                         ChatCompletionMessageParam, {'role': 'user', 'content': content}
                     )
                 )
-            else:
+            elif role == 'assistant':
                 provider_messages.append(
                     cast(
                         ChatCompletionMessageParam,
-                        {'role': 'user', 'content': f'Assistant said: {content}'},
+                        {'role': 'assistant', 'content': content},
+                    )
+                )
+            else:
+                # Fallback: treat unknown roles as user
+                provider_messages.append(
+                    cast(
+                        ChatCompletionMessageParam,
+                        {'role': 'user', 'content': str(content)},
                     )
                 )
         elif isinstance(content, list):
-            parts: list[ChatCompletionContentPartParam] = []
-            for block in content:
-                if not isinstance(block, dict):
-                    continue
-                btype = block.get('type')
-                if btype == 'text':
-                    txt = block.get('text', '')
-                    if txt:
-                        parts.append(
-                            cast(
-                                ChatCompletionContentPartTextParam,
-                                {'type': 'text', 'text': str(txt)},
+            # For list content, preserve role: user → parts, assistant → collapse to text
+            if role == 'user':
+                parts: list[ChatCompletionContentPartParam] = []
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    btype = block.get('type')
+                    if btype == 'text':
+                        txt = block.get('text', '')
+                        if txt:
+                            parts.append(
+                                cast(
+                                    ChatCompletionContentPartTextParam,
+                                    {'type': 'text', 'text': str(txt)},
+                                )
                             )
-                        )
-                elif btype == 'image':
-                    source = block.get('source', {})
-                    if source.get('type') == 'base64' and source.get('data'):
-                        parts.append(
-                            cast(
-                                ChatCompletionContentPartImageParam,
-                                {
-                                    'type': 'image_url',
-                                    'image_url': {
-                                        'url': f'data:{source.get("media_type", "image/png")};base64,{source.get("data")}',
+                    elif btype == 'image':
+                        source = block.get('source', {})
+                        if source.get('type') == 'base64' and source.get('data'):
+                            parts.append(
+                                cast(
+                                    ChatCompletionContentPartImageParam,
+                                    {
+                                        'type': 'image_url',
+                                        'image_url': {
+                                            'url': f'data:{source.get("media_type", "image/png")};base64,{source.get("data")}',
+                                        },
                                     },
-                                },
+                                )
                             )
+                    elif btype == 'tool_result':
+                        text_content = ''
+                        image_data = None
+                        if 'error' in block:
+                            text_content = str(block['error'])
+                        else:
+                            for ci in block.get('content', []) or []:
+                                if isinstance(ci, dict):
+                                    if ci.get('type') == 'text':
+                                        text_content = ci.get('text', '')
+                                    elif (
+                                        ci.get('type') == 'image'
+                                        and ci.get('source', {}).get('type') == 'base64'
+                                    ):
+                                        image_data = ci.get('source', {}).get('data')
+                        if text_content:
+                            parts.append(
+                                cast(
+                                    ChatCompletionContentPartTextParam,
+                                    {'type': 'text', 'text': str(text_content)},
+                                )
+                            )
+                        if image_data:
+                            parts.append(
+                                cast(
+                                    ChatCompletionContentPartImageParam,
+                                    {
+                                        'type': 'image_url',
+                                        'image_url': {
+                                            'url': f'data:image/png;base64,{image_data}'
+                                        },
+                                    },
+                                )
+                            )
+                if parts:
+                    provider_messages.append(
+                        cast(
+                            ChatCompletionMessageParam,
+                            {'role': 'user', 'content': parts},
                         )
-                elif btype == 'tool_result':
-                    text_content = ''
-                    image_data = None
-                    if 'error' in block:
-                        text_content = str(block['error'])
-                    else:
+                    )
+            elif role == 'assistant':
+                # Collapse assistant blocks to a single text string; drop images/tool_result visuals
+                texts: list[str] = []
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get('type') == 'text' and block.get('text'):
+                        texts.append(str(block.get('text')))
+                    elif block.get('type') == 'tool_result':
+                        # include any textual parts from tool_result
                         for ci in block.get('content', []) or []:
-                            if isinstance(ci, dict):
-                                if ci.get('type') == 'text':
-                                    text_content = ci.get('text', '')
-                                elif (
-                                    ci.get('type') == 'image'
-                                    and ci.get('source', {}).get('type') == 'base64'
-                                ):
-                                    image_data = ci.get('source', {}).get('data')
-                    if text_content:
-                        parts.append(
-                            cast(
-                                ChatCompletionContentPartTextParam,
-                                {'type': 'text', 'text': str(text_content)},
-                            )
-                        )
-                    if image_data:
-                        parts.append(
-                            cast(
-                                ChatCompletionContentPartImageParam,
-                                {
-                                    'type': 'image_url',
-                                    'image_url': {
-                                        'url': f'data:image/png;base64,{image_data}'
-                                    },
-                                },
-                            )
-                        )
-            if parts:
+                            if (
+                                isinstance(ci, dict)
+                                and ci.get('type') == 'text'
+                                and ci.get('text')
+                            ):
+                                texts.append(str(ci.get('text')))
+                content_str = '\n'.join(t for t in texts if t)
                 provider_messages.append(
-                    cast(ChatCompletionMessageParam, {'role': 'user', 'content': parts})
+                    cast(
+                        ChatCompletionMessageParam,
+                        {'role': 'assistant', 'content': content_str},
+                    )
                 )
+            else:
+                # Fallback: treat as user with text-only collapse
+                texts: list[str] = []
+                for block in content:
+                    if (
+                        isinstance(block, dict)
+                        and block.get('type') == 'text'
+                        and block.get('text')
+                    ):
+                        texts.append(str(block.get('text')))
+                if texts:
+                    provider_messages.append(
+                        cast(
+                            ChatCompletionMessageParam,
+                            {'role': 'user', 'content': '\n'.join(texts)},
+                        )
+                    )
     return provider_messages
 
 

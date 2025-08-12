@@ -99,6 +99,9 @@ class OpenAIHandler(BaseProviderHandler):
             "tool_calls": [...] (for assistant messages with tools),
             "tool_call_id": str (for tool messages)
         }
+
+        IMPORTANT: OpenAI requires all tool messages to directly follow the assistant
+        message with tool_calls, without any user messages in between.
         """
         # Apply image filtering if configured
         if self.only_n_most_recent_images:
@@ -115,7 +118,10 @@ class OpenAIHandler(BaseProviderHandler):
         logger.info(
             f'Converting {len(messages)} messages from Anthropic to OpenAI format'
         )
-        for msg_idx, msg in enumerate(messages):
+
+        msg_idx = 0
+        while msg_idx < len(messages):
+            msg = messages[msg_idx]
             role = msg['role']
             content = msg['content']
             logger.debug(
@@ -136,182 +142,196 @@ class OpenAIHandler(BaseProviderHandler):
                         'content': content,
                     }
                     openai_messages.append(assistant_msg)
+                msg_idx += 1
+
             elif isinstance(content, list):
-                # Complex message with multiple content blocks
-                content_parts: list[ChatCompletionContentPartParam] = []
-                tool_calls: list[ChatCompletionMessageToolCallParam] = []
+                # Check if this message contains tool results
+                has_tool_results = any(
+                    isinstance(block, dict) and block.get('type') == 'tool_result'
+                    for block in content
+                )
 
-                for block in content:
-                    if isinstance(block, dict):
-                        block_type = block.get('type')
+                if has_tool_results and role == 'user':
+                    # This is a tool result message - collect all consecutive tool result messages
+                    tool_messages: list[ChatCompletionToolMessageParam] = []
+                    accumulated_images: list[
+                        tuple[str, str]
+                    ] = []  # (text, base64_data)
 
-                        if block_type == 'text':
-                            content_parts.append(
+                    # Process this message and look ahead for more tool result messages
+                    current_idx = msg_idx
+                    while current_idx < len(messages):
+                        current_msg = messages[current_idx]
+                        current_role = current_msg['role']
+                        current_content = current_msg['content']
+
+                        # Only process user messages with tool_result blocks
+                        if current_role != 'user' or not isinstance(
+                            current_content, list
+                        ):
+                            break
+
+                        has_tool_result = False
+                        for block in current_content:
+                            if (
+                                isinstance(block, dict)
+                                and block.get('type') == 'tool_result'
+                            ):
+                                has_tool_result = True
+                                tool_call_id = block.get('tool_use_id')
+                                text_content = ''
+                                image_data = None
+
+                                if 'error' in block:
+                                    text_content = str(block['error'])
+                                elif 'content' in block and isinstance(
+                                    block['content'], list
+                                ):
+                                    for content_item in block['content']:
+                                        if isinstance(content_item, dict):
+                                            if content_item.get('type') == 'text':
+                                                text_content = content_item.get(
+                                                    'text', ''
+                                                )
+                                            elif content_item.get('type') == 'image':
+                                                source = content_item.get('source', {})
+                                                if source.get('type') == 'base64':
+                                                    image_data = source.get('data')
+
+                                # Create tool message
+                                tool_msg: ChatCompletionToolMessageParam = {
+                                    'role': 'tool',
+                                    'tool_call_id': str(tool_call_id or 'tool_call'),
+                                    'content': str(
+                                        text_content or 'Tool executed successfully'
+                                    ),
+                                }
+                                tool_messages.append(tool_msg)
+
+                                # Accumulate image if present
+                                if image_data:
+                                    accumulated_images.append(
+                                        (text_content, str(image_data))
+                                    )
+
+                        if not has_tool_result:
+                            break
+                        current_idx += 1
+
+                    # Add all tool messages first
+                    openai_messages.extend(tool_messages)
+
+                    # Then add accumulated images as a single user message
+                    if accumulated_images:
+                        user_parts: list[ChatCompletionContentPartParam] = []
+                        for text, img_data in accumulated_images:
+                            if text:
+                                user_parts.append(
+                                    cast(
+                                        ChatCompletionContentPartTextParam,
+                                        {'type': 'text', 'text': text},
+                                    )
+                                )
+                            user_parts.append(
                                 cast(
-                                    ChatCompletionContentPartTextParam,
+                                    ChatCompletionContentPartImageParam,
                                     {
-                                        'type': 'text',
-                                        'text': block.get('text', ''),
+                                        'type': 'image_url',
+                                        'image_url': {
+                                            'url': f'data:image/png;base64,{img_data}'
+                                        },
                                     },
                                 )
                             )
+                        image_msg: ChatCompletionUserMessageParam = {
+                            'role': 'user',
+                            'content': user_parts,
+                        }
+                        openai_messages.append(image_msg)
 
-                        elif block_type == 'image':
-                            # Convert image block
-                            source = block.get('source', {})
-                            if source.get('type') == 'base64':
+                    # Skip the messages we've processed
+                    msg_idx = current_idx
+
+                else:
+                    # Not a tool result message - process normally
+                    content_parts: list[ChatCompletionContentPartParam] = []
+                    tool_calls: list[ChatCompletionMessageToolCallParam] = []
+
+                    for block in content:
+                        if isinstance(block, dict):
+                            block_type = block.get('type')
+
+                            if block_type == 'text':
                                 content_parts.append(
                                     cast(
-                                        ChatCompletionContentPartImageParam,
+                                        ChatCompletionContentPartTextParam,
                                         {
-                                            'type': 'image_url',
-                                            'image_url': {
-                                                'url': f'data:{source.get("media_type", "image/png")};base64,{source.get("data", "")}',
-                                            },
+                                            'type': 'text',
+                                            'text': block.get('text', ''),
                                         },
                                     )
                                 )
 
-                        elif block_type == 'tool_use':
-                            # Convert tool use to OpenAI tool_calls
-                            tool_calls.append(
-                                cast(
-                                    ChatCompletionMessageToolCallParam,
-                                    {
-                                        'id': str(block.get('id') or ''),
-                                        'type': 'function',
-                                        'function': {
-                                            'name': str(block.get('name') or ''),
-                                            'arguments': json.dumps(
-                                                block.get('input', {})
-                                            ),
-                                        },
-                                    },
-                                )
-                            )
-
-                        elif block_type == 'tool_result':
-                            # OpenAI handles tool results differently - they need special handling for images
-                            tool_call_id = block.get('tool_use_id')
-
-                            # Check if this is a screenshot result (has image content)
-                            has_image = False
-                            image_data = None
-                            text_content = ''
-
-                            if 'error' in block:
-                                # Error case - simple text message
-                                tool_msg: ChatCompletionToolMessageParam = {
-                                    'role': 'tool',
-                                    'tool_call_id': str(tool_call_id or 'tool_call'),
-                                    'content': str(block['error']),
-                                }
-                                openai_messages.append(tool_msg)
-                            elif 'content' in block and isinstance(
-                                block['content'], list
-                            ):
-                                # Process content items
-                                for content_item in block['content']:
-                                    if isinstance(content_item, dict):
-                                        if content_item.get('type') == 'text':
-                                            text_content = content_item.get('text', '')
-                                        elif content_item.get('type') == 'image':
-                                            has_image = True
-                                            source = content_item.get('source', {})
-                                            if source.get('type') == 'base64':
-                                                image_data = source.get('data')
-
-                                if has_image and image_data:
-                                    # For screenshot results, we must send a tool message to close the function call
-                                    tool_msg2: ChatCompletionToolMessageParam = {
-                                        'role': 'tool',
-                                        'tool_call_id': str(
-                                            tool_call_id or 'tool_call'
-                                        ),
-                                        'content': str(
-                                            text_content
-                                            or 'Screenshot taken successfully'
-                                        ),
-                                    }
-                                    openai_messages.append(tool_msg2)
-
-                                    # Additionally inject a user message so the model can SEE the image
-                                    # Keep this minimal and mirror Anthropic by providing the original text + image
-                                    user_parts: list[
-                                        ChatCompletionContentPartParam
-                                    ] = []
-                                    if text_content:
-                                        user_parts.append(
-                                            cast(
-                                                ChatCompletionContentPartTextParam,
-                                                {
-                                                    'type': 'text',
-                                                    'text': text_content,
-                                                },
-                                            )
-                                        )
-                                    user_parts.append(
+                            elif block_type == 'image':
+                                source = block.get('source', {})
+                                if source.get('type') == 'base64':
+                                    content_parts.append(
                                         cast(
                                             ChatCompletionContentPartImageParam,
                                             {
                                                 'type': 'image_url',
                                                 'image_url': {
-                                                    'url': f'data:image/png;base64,{image_data}'
+                                                    'url': f'data:{source.get("media_type", "image/png")};base64,{source.get("data", "")}',
                                                 },
                                             },
                                         )
                                     )
-                                    image_msg: ChatCompletionUserMessageParam = {
-                                        'role': 'user',
-                                        'content': user_parts,
-                                    }
-                                    openai_messages.append(image_msg)
-                                else:
-                                    # Text-only tool result
-                                    tool_msg3: ChatCompletionToolMessageParam = {
-                                        'role': 'tool',
-                                        'tool_call_id': str(
-                                            tool_call_id or 'tool_call'
-                                        ),
-                                        'content': str(
-                                            text_content or 'Tool executed successfully'
-                                        ),
-                                    }
-                                    openai_messages.append(tool_msg3)
-                            else:
-                                # No content - simple success message
-                                tool_msg4: ChatCompletionToolMessageParam = {
-                                    'role': 'tool',
-                                    'tool_call_id': str(tool_call_id or 'tool_call'),
-                                    'content': 'Tool executed successfully',
-                                }
-                                openai_messages.append(tool_msg4)
 
-                            continue  # Skip adding to current message
+                            elif block_type == 'tool_use':
+                                tool_calls.append(
+                                    cast(
+                                        ChatCompletionMessageToolCallParam,
+                                        {
+                                            'id': str(block.get('id') or ''),
+                                            'type': 'function',
+                                            'function': {
+                                                'name': str(block.get('name') or ''),
+                                                'arguments': json.dumps(
+                                                    block.get('input', {})
+                                                ),
+                                            },
+                                        },
+                                    )
+                                )
 
-                # Add content and tool calls to message
-                if role == 'user' and content_parts:
-                    user_msg2: ChatCompletionUserMessageParam = {
-                        'role': 'user',
-                        'content': content_parts,
-                    }
-                    openai_messages.append(user_msg2)
-                elif role != 'user':
-                    assistant_msg2: ChatCompletionAssistantMessageParam = {
-                        'role': 'assistant',
-                    }
-                    if content_parts:
-                        # For assistant, content must be str or specific assistant parts.
-                        # We collapse text parts into a single string and drop images.
-                        texts: list[str] = []
-                        for part in content_parts:
-                            if isinstance(part, dict) and part.get('type') == 'text':
-                                texts.append(str(part.get('text') or ''))
-                        if texts:
-                            assistant_msg2['content'] = '\n'.join(t for t in texts if t)
-                    if tool_calls:
-                        assistant_msg2['tool_calls'] = tool_calls
-                    openai_messages.append(assistant_msg2)
+                    # Add the message based on role
+                    if role == 'user' and content_parts:
+                        user_msg2: ChatCompletionUserMessageParam = {
+                            'role': 'user',
+                            'content': content_parts,
+                        }
+                        openai_messages.append(user_msg2)
+                    elif role == 'assistant':
+                        assistant_msg2: ChatCompletionAssistantMessageParam = {
+                            'role': 'assistant',
+                        }
+                        if content_parts:
+                            texts: list[str] = []
+                            for part in content_parts:
+                                if (
+                                    isinstance(part, dict)
+                                    and part.get('type') == 'text'
+                                ):
+                                    texts.append(str(part.get('text') or ''))
+                            if texts:
+                                assistant_msg2['content'] = '\n'.join(
+                                    t for t in texts if t
+                                )
+                        if tool_calls:
+                            assistant_msg2['tool_calls'] = tool_calls
+                        openai_messages.append(assistant_msg2)
+
+                    msg_idx += 1
 
         logger.info(f'Converted to {len(openai_messages)} OpenAI messages')
         logger.debug(f'Message types: {[m["role"] for m in openai_messages]}')
