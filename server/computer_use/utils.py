@@ -371,7 +371,35 @@ def normalize_key_combo(combo: str) -> str:
     return '+'.join(normalized)
 
 
-def derive_center_coordinate(val: Any) -> Optional[tuple[int, int]]:
+def convert_point_resolution(
+    point: tuple[int, int],
+    *,
+    from_resolution: tuple[int, int],
+    to_resolution: tuple[int, int],
+) -> tuple[int, int]:
+    """Convert a coordinate from one resolution to another using independent x/y scales.
+
+    Rounds to nearest integer to produce pixel coordinates.
+    """
+    print(f'Converting point {point} from {from_resolution} to {to_resolution}')
+    from_w, from_h = from_resolution
+    to_w, to_h = to_resolution
+    if from_w <= 0 or from_h <= 0:
+        return point
+    scale_x = to_w / float(from_w)
+    scale_y = to_h / float(from_h)
+    x, y = point
+    result_x, result_y = int(round(x * scale_x)), int(round(y * scale_y))
+    print(f'Result: {result_x}, {result_y}')
+    return result_x, result_y
+
+
+def derive_center_coordinate(
+    val: Any,
+    *,
+    scale_from: Optional[tuple[int, int]] = None,
+    scale_to: Optional[tuple[int, int]] = None,
+) -> Optional[tuple[int, int]]:
     """Derive a center coordinate from a point or bounding box-like value.
 
     Accepts strings like "x y" or "x1 y1 x2 y2", lists/tuples, or any
@@ -385,11 +413,24 @@ def derive_center_coordinate(val: Any) -> Optional[tuple[int, int]]:
         return None
     if len(nums) >= 4:
         x1, y1, x2, y2 = nums[:4]
-        return int((x1 + x2) / 2), int((y1 + y2) / 2)
-    if len(nums) >= 2:
+        cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
+    elif len(nums) >= 2:
         x1, y1 = nums[:2]
-        return int(x1), int(y1)
-    return None
+        cx, cy = int(x1), int(y1)
+    else:
+        return None
+
+    # mock for now
+    scale_from = (1920, 1080)
+    scale_to = (1920, 1080)
+
+    # Optional scaling support. For now, used to convert 1920x1080 → 1024x768.
+    if scale_from and scale_to:
+        cx, cy = convert_point_resolution(
+            (cx, cy), from_resolution=scale_from, to_resolution=scale_to
+        )
+
+    return cx, cy
 
 
 # ----------------------- Logging/Summary Helpers -----------------------
