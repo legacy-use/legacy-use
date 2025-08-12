@@ -68,6 +68,7 @@ async def health_check():
 
 class ToolUseRequest20241022(BaseModel):
     """Request model for computer_20241022 API type."""
+
     api_type: Literal['computer_20241022'] = 'computer_20241022'
     text: Optional[str] = None
     coordinate: Optional[Tuple[int, int]] = None
@@ -78,6 +79,7 @@ class ToolUseRequest20241022(BaseModel):
 
 class ToolUseRequest20250124(BaseModel):
     """Request model for computer_20250124 API type."""
+
     api_type: Literal['computer_20250124'] = 'computer_20250124'
     text: Optional[str] = None
     coordinate: Optional[Tuple[int, int]] = None
@@ -92,12 +94,14 @@ class ToolUseRequest20250124(BaseModel):
 
 # Discriminated union for request body
 ToolUseBody = Annotated[
-    Union[ToolUseRequest20241022, ToolUseRequest20250124], 
-    Field(discriminator='api_type')
+    Union[ToolUseRequest20241022, ToolUseRequest20250124],
+    Field(discriminator='api_type'),
 ]
 
 
-@app.post('/tool_use/{action}', response_model=ToolResult, response_model_exclude_none=True)
+@app.post(
+    '/tool_use/{action}', response_model=ToolResult, response_model_exclude_none=True
+)
 async def tool_use(
     action: Action_20250124 = FastAPIPath(..., description='The action to perform'),
     request: Optional[ToolUseBody] = None,
@@ -107,16 +111,14 @@ async def tool_use(
         # Default to computer_20250124 when no body is provided
         request = ToolUseRequest20250124()
 
+    params_log = request.model_dump(exclude={'api_type'}, exclude_none=True)
     logger.info(
-        f'Received tool_use request: action={action}, api_type={request.api_type}, '
-        f'text={request.text}, coordinate={request.coordinate}, '
-        f'scroll_direction={request.scroll_direction}, scroll_amount={request.scroll_amount}, '
-        f'duration={request.duration}, key={request.key}'
+        f'Received tool_use request: action={action}, api_type={request.api_type}, params={params_log}'
     )
 
     # Get valid actions and tool class from registry
     valid_actions, tool_class = API_TYPE_REGISTRY[request.api_type]
-    
+
     # Validate action is supported by the selected api_type
     if action not in valid_actions:
         logger.warning(f"Action '{action}' is not supported by {request.api_type}")
@@ -130,10 +132,8 @@ async def tool_use(
         # Build parameters generically from the validated model
         params = request.model_dump(exclude={'api_type'}, exclude_none=True)
         params['action'] = action
-        
-        logger.info(
-            f'Dispatching to {tool_class.__name__} for action={action}'
-        )
+
+        logger.info(f'Dispatching to {tool_class.__name__} for action={action}')
         computer_actions = tool_class()
         result = await computer_actions(**params)
 
