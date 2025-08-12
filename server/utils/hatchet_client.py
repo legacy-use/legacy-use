@@ -76,6 +76,7 @@ def trigger_target_orchestrator(tenant_schema: str, target_id: str) -> str:
         tenant_schema=tenant_schema, target_id=target_id
     )
 
+    # .run may perform network I/O; keep it off the event loop caller
     result = orchestrate_target.run(input=orchestrator_input)
     logger.info(
         f'Triggered orchestrator for tenant {tenant_schema} target {target_id}: {result}'

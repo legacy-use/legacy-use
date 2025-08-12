@@ -78,8 +78,9 @@ class TargetOrchestratorInput(BaseModel):
     name='orchestrate_target',
     input_validator=TargetOrchestratorInput,
     concurrency=ConcurrencyExpression(
-        # One orchestrator per tenant:target
-        expression="input.tenant_schema + ':' + input.target_id",
+        # One orchestrator per tenant:target, but on a distinct key so it doesn't
+        # occupy the execution slot used by execute_job
+        expression="input.tenant_schema + ':' + input.target_id + ':orchestrator'",
         max_runs=1,
         limit_strategy=ConcurrencyLimitStrategy.GROUP_ROUND_ROBIN,
     ),

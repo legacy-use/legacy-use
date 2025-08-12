@@ -23,6 +23,7 @@ from typing import Annotated, Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Request, Depends
+import asyncio
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -233,7 +234,9 @@ async def create_job(
     db_tenant.update_job_status(job_obj.id, JobStatus.QUEUED)
     add_job_log(str(job_obj.id), 'system', 'Job queued', tenant['schema'])
     # Trigger orchestrator for this target (idempotent)
-    trigger_target_orchestrator(tenant['schema'], str(target_id))
+    await asyncio.to_thread(
+        trigger_target_orchestrator, tenant['schema'], str(target_id)
+    )
 
     capture_job_created(request, job_obj)
 
@@ -696,7 +699,9 @@ async def resume_job(
     # Resume: set QUEUED and trigger orchestrator so it dispatches this job first
     db_tenant.update_job_status(job_id, JobStatus.QUEUED)
     add_job_log(job_id_str, 'system', 'Job resumed and queued', tenant['schema'])
-    trigger_target_orchestrator(tenant['schema'], str(target_id))
+    await asyncio.to_thread(
+        trigger_target_orchestrator, tenant['schema'], str(target_id)
+    )
 
     # Add log entry for the resume action
     add_job_log(

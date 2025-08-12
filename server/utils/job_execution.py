@@ -383,7 +383,12 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
 
         # Kick orchestrator to dispatch the next head-of-line (if any)
         try:
-            trigger_target_orchestrator(tenant_schema, str(job.target_id))
+            # Offload trigger to avoid blocking the event loop
+            import asyncio as _asyncio
+
+            await _asyncio.to_thread(
+                trigger_target_orchestrator, tenant_schema, str(job.target_id)
+            )
         except Exception as e:
             logger.error(
                 f'Failed to trigger orchestrator in finally for tenant {tenant_schema} target {job.target_id}: {e}'
