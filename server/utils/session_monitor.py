@@ -102,7 +102,7 @@ async def monitor_sessions_for_tenant(tenant_schema: str):
 
                 # Check container status
                 container_status = await get_container_status(
-                    container_id, state=current_state
+                    container_id, session_state=current_state
                 )
                 is_running = container_status.get('state', {}).get('Running', False)
 

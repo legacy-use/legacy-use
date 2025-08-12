@@ -525,7 +525,6 @@ const ApiList = () => {
           )}
         </Box>
       </Box>
-
       {/* Target selector */}
       <Paper sx={{ p: 2, mb: 3 }}>
         <FormControl fullWidth variant="outlined">
@@ -548,10 +547,9 @@ const ApiList = () => {
           </Select>
         </FormControl>
       </Paper>
-
       {/* Rest of the component */}
       <Grid container spacing={3}>
-        <Grid item xs={12}>
+        <Grid size={12}>
           {!selectedTarget && (
             <Typography variant="body1" color="textSecondary" sx={{ mb: 2 }}>
               View and test available APIs
@@ -561,7 +559,7 @@ const ApiList = () => {
 
         {apis.length > 0 ? (
           apis.map(api => (
-            <Grid item xs={12} key={api.name}>
+            <Grid key={api.name} size={12}>
               <Card>
                 <CardContent sx={{ pb: 0 }}>
                   <Box
@@ -684,7 +682,14 @@ const ApiList = () => {
                       {api.parameters && api.parameters.length > 0 ? (
                         <Grid container spacing={2}>
                           {api.parameters.map(param => (
-                            <Grid item xs={12} sm={6} md={4} key={param.name}>
+                            <Grid
+                              key={param.name}
+                              size={{
+                                xs: 12,
+                                sm: 6,
+                                md: 4,
+                              }}
+                            >
                               <TextField
                                 label={`${param.name}${param.type === 'list' ? ' (JSON Array)' : ''}`}
                                 fullWidth
@@ -713,14 +718,13 @@ const ApiList = () => {
             </Grid>
           ))
         ) : (
-          <Grid item xs={12}>
+          <Grid size={{ xs: 12 }}>
             <Paper sx={{ p: 3, textAlign: 'center' }}>
               <Typography variant="h6">No APIs available</Typography>
             </Paper>
           </Grid>
         )}
       </Grid>
-
       {/* Hidden file input for importing API definitions */}
       <input
         type="file"
@@ -729,7 +733,6 @@ const ApiList = () => {
         accept=".json"
         onChange={handleFileUpload}
       />
-
       {/* Snackbar for notifications */}
       <Snackbar
         open={snackbarOpen}
@@ -737,14 +740,12 @@ const ApiList = () => {
         onClose={handleSnackbarClose}
         message={snackbarMessage}
       />
-
       {/* Add API Dialog */}
       <AddApiDialog
         open={addApiDialogOpen}
         onClose={handleAddApiClose}
         onApiAdded={handleApiAdded}
       />
-
       {/* Duplicate API Dialog */}
       <DuplicateApiDialog
         open={duplicateApiDialogOpen}

@@ -25,10 +25,10 @@ def upgrade(schema: str) -> None:
     op.add_column(
         'targets',
         sa.Column('rdp_params', sa.String(), nullable=True),
-        schema='tenant_default',
+        schema=schema,
     )
 
 
 @for_each_tenant_schema
 def downgrade(schema: str) -> None:
-    op.drop_column('targets', 'rdp_params', schema='tenant_default')
+    op.drop_column('targets', 'rdp_params', schema=schema)

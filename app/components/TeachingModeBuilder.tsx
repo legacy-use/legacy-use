@@ -35,14 +35,12 @@ export default function TeachingModeBuilder({
       .join('\n---\n\n');
 
     const apiDefinition = await importApiDefinition({
-      api_definition: {
-        name: `teaching-${timestamp}`,
-        description: `Teaching API definition from ${timestamp}`,
-        prompt: prompt,
-        prompt_cleanup: analyzeResult.prompt_cleanup,
-        response_example: analyzeResult.response_example,
-        parameters: parameters,
-      },
+      name: `teaching-${timestamp}`,
+      description: `Teaching API definition from ${timestamp}`,
+      prompt: prompt,
+      prompt_cleanup: analyzeResult.prompt_cleanup,
+      response_example: analyzeResult.response_example,
+      parameters: parameters,
     });
 
     const result = await createJob(currentSession.target_id, {

@@ -191,23 +191,25 @@ const CreateTarget = () => {
       <Typography variant="h5" gutterBottom>
         Create New Target
       </Typography>
-
       {success && (
         <Alert severity="success" sx={{ mb: 3 }}>
           Target created successfully!
         </Alert>
       )}
-
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
       )}
-
       <Paper sx={{ p: 3 }}>
         <form onSubmit={handleSubmit}>
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Target Name"
@@ -221,7 +223,12 @@ const CreateTarget = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={4}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 4,
+              }}
+            >
               <FormControl fullWidth>
                 <InputLabel>Type</InputLabel>
                 <Select
@@ -247,7 +254,12 @@ const CreateTarget = () => {
               </FormControl>
             </Grid>
 
-            <Grid item xs={12} md={8}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 8,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Host"
@@ -262,7 +274,12 @@ const CreateTarget = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={4}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 4,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Port"
@@ -277,7 +294,7 @@ const CreateTarget = () => {
               />
             </Grid>
 
-            <Grid item xs={12}>
+            <Grid size={12}>
               {/* Show OpenVPN security warning when OpenVPN is selected */}
               {targetData.type === 'rdp+openvpn' && (
                 <Alert severity="warning" sx={{ mb: 2 }}>
@@ -302,7 +319,12 @@ const CreateTarget = () => {
               />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
+            <Grid
+              size={{
+                xs: 12,
+                sm: 6,
+              }}
+            >
               <TextField
                 fullWidth
                 variant="outlined"
@@ -315,7 +337,12 @@ const CreateTarget = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6,
+              }}
+            >
               <TextField
                 fullWidth
                 label="VNC/RDP Password"
@@ -330,7 +357,12 @@ const CreateTarget = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Width (px)"
@@ -346,7 +378,12 @@ const CreateTarget = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Height (px)"
@@ -364,7 +401,7 @@ const CreateTarget = () => {
 
             {/* RDP customization options */}
             {(targetData.type.startsWith('rdp') || targetData.type.includes('rdp')) && (
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <TextField
                   fullWidth
                   multiline
@@ -380,7 +417,7 @@ const CreateTarget = () => {
             )}
 
             {/* Resolution recommendation warning */}
-            <Grid item xs={12}>
+            <Grid size={12}>
               <ResolutionRecommendation
                 width={targetData.width}
                 height={targetData.height}
@@ -389,7 +426,7 @@ const CreateTarget = () => {
               />
             </Grid>
 
-            <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+            <Grid sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }} size={12}>
               <Button variant="outlined" onClick={() => navigate('/targets')} disabled={loading}>
                 Cancel
               </Button>

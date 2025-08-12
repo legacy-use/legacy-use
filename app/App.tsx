@@ -47,18 +47,6 @@ const darkTheme = createTheme({
       paper: '#1e1e1e',
     },
   },
-  shape: {
-    borderRadius: 12, // Slightly rounded corners for all components
-  },
-  components: {
-    MuiAppBar: {
-      styleOverrides: {
-        root: {
-          backgroundColor: '#1e1e1e',
-        },
-      },
-    },
-  },
 });
 
 // Context for sharing selected session across components
@@ -350,10 +338,7 @@ const AppLayout = () => {
           <Grid container sx={{ height: '100%' }}>
             {/* Left panel - adjusts width based on whether VNC viewer is shown */}
             <Grid
-              item
-              xs={12}
-              md={showRightPanel ? 4 : 12}
-              lg={showRightPanel ? 3.6 : 12}
+              size={{ xs: 12, sm: showRightPanel ? 4 : 12, lg: showRightPanel ? 3.6 : 12 }}
               sx={{
                 height: '100%',
                 overflow: 'auto',
@@ -367,10 +352,11 @@ const AppLayout = () => {
             {/* Right panel - shown for session details or API page with selected session */}
             {showRightPanel && (
               <Grid
-                item
-                xs={12}
-                md={showRightPanel ? 8 : 12}
-                lg={showRightPanel ? 8.4 : 12}
+                size={{
+                  xs: 12,
+                  md: showRightPanel ? 8 : 12,
+                  lg: showRightPanel ? 8.4 : 12,
+                }}
                 sx={{ height: '100%', p: 2 }}
               >
                 {showVncViewer && <VncViewer viewOnly={!isTeachingMode} />}
@@ -401,12 +387,7 @@ function App() {
       <CssBaseline />
       <ApiKeyProvider>
         <AiProvider>
-          <Router
-            future={{
-              v7_relativeSplatPath: true,
-              v7_startTransition: true,
-            }}
-          >
+          <Router>
             <Routes>
               <Route element={<AppLayout />}>
                 <Route path="" element={<Dashboard />} />

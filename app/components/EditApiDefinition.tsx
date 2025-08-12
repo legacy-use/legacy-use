@@ -429,28 +429,30 @@ const EditApiDefinition = () => {
           </Select>
         </FormControl>
       </Box>
-
       {apiDefinition.is_archived && (
         <Alert severity="warning" sx={{ mb: 3 }}>
           This API is archived. You cannot edit it. Please unarchive it from the API list page
           first.
         </Alert>
       )}
-
       {isVersionModified && !apiDefinition.is_archived && (
         <Alert severity="warning" sx={{ mb: 3 }}>
           You have unsaved changes to this version. Save your changes or select another version to
           discard them.
         </Alert>
       )}
-
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           Basic Information
         </Typography>
 
         <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 6,
+            }}
+          >
             <TextField
               label="API Name"
               fullWidth
@@ -460,7 +462,12 @@ const EditApiDefinition = () => {
               disabled={true}
             />
           </Grid>
-          <Grid item xs={12} md={6}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 6,
+            }}
+          >
             <TextField
               label="Description"
               fullWidth
@@ -474,7 +481,6 @@ const EditApiDefinition = () => {
           </Grid>
         </Grid>
       </Paper>
-
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           Parameters
@@ -483,10 +489,15 @@ const EditApiDefinition = () => {
         {apiDefinition.parameters && apiDefinition.parameters.length > 0 ? (
           <Grid container spacing={2}>
             {apiDefinition.parameters.map((param, index) => (
-              <Grid item xs={12} key={param.id}>
+              <Grid key={param.id} size={12}>
                 <Card variant="outlined" sx={{ p: 2 }}>
                   <Grid container spacing={2}>
-                    <Grid item xs={12} sm={4}>
+                    <Grid
+                      size={{
+                        xs: 12,
+                        sm: 4,
+                      }}
+                    >
                       <TextField
                         label="Parameter Name"
                         value={param.name}
@@ -496,7 +507,12 @@ const EditApiDefinition = () => {
                         disabled={apiDefinition.is_archived}
                       />
                     </Grid>
-                    <Grid item xs={12} sm={4}>
+                    <Grid
+                      size={{
+                        xs: 12,
+                        sm: 4,
+                      }}
+                    >
                       <FormControl fullWidth margin="normal" disabled={apiDefinition.is_archived}>
                         <InputLabel id={`param-type-label-${index}`}>Type</InputLabel>
                         <Select
@@ -510,7 +526,12 @@ const EditApiDefinition = () => {
                         </Select>
                       </FormControl>
                     </Grid>
-                    <Grid item xs={12} sm={4}>
+                    <Grid
+                      size={{
+                        xs: 12,
+                        sm: 4,
+                      }}
+                    >
                       <TextField
                         label="Default Value"
                         value={param.default || ''}
@@ -520,7 +541,7 @@ const EditApiDefinition = () => {
                         disabled={apiDefinition.is_archived}
                       />
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid size={12}>
                       <TextField
                         label="Description"
                         value={param.description || ''}
@@ -566,7 +587,6 @@ const EditApiDefinition = () => {
           </Button>
         )}
       </Paper>
-
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           Prompt Configuration
@@ -599,7 +619,6 @@ const EditApiDefinition = () => {
           disabled={apiDefinition.is_archived}
         />
       </Paper>
-
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           Response Example
@@ -629,7 +648,6 @@ const EditApiDefinition = () => {
           disabled={apiDefinition.is_archived}
         />
       </Paper>
-
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
         <Button variant="outlined" onClick={() => navigate('/apis')}>
           Cancel
@@ -645,7 +663,6 @@ const EditApiDefinition = () => {
           </Button>
         )}
       </Box>
-
       <Snackbar
         open={snackbarOpen}
         autoHideDuration={6000}

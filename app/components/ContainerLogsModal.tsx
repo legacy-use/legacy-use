@@ -1,4 +1,6 @@
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import PauseIcon from '@mui/icons-material/Pause';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import {
   Alert,
@@ -14,7 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import type React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getSessionContainerLogs } from '../services/apiService';
 
 interface ContainerLogsModalProps {
@@ -34,9 +36,15 @@ const ContainerLogsModal: React.FC<ContainerLogsModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lines, setLines] = useState(1000);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(5000); // 5 seconds default
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchLogs = async () => {
-    setLoading(true);
+  const fetchLogs = async (isAutoRefresh = false) => {
+    // Only show loading indicator for manual refreshes, not auto-refreshes
+    if (!isAutoRefresh) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const response = await getSessionContainerLogs(sessionId, lines);
@@ -45,7 +53,9 @@ const ContainerLogsModal: React.FC<ContainerLogsModalProps> = ({
       setError(err instanceof Error ? err.message : 'Failed to fetch logs');
       setLogs('');
     } finally {
-      setLoading(false);
+      if (!isAutoRefresh) {
+        setLoading(false);
+      }
     }
   };
 
@@ -55,8 +65,35 @@ const ContainerLogsModal: React.FC<ContainerLogsModalProps> = ({
     }
   }, [open, sessionId, lines]);
 
+  // Auto-refresh effect
+  useEffect(() => {
+    if (open && autoRefresh) {
+      intervalRef.current = setInterval(() => {
+        fetchLogs(true);
+      }, refreshInterval);
+    } else if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [open, autoRefresh, refreshInterval, sessionId, lines]);
+
   const handleRefresh = () => {
     fetchLogs();
+  };
+
+  const toggleAutoRefresh = () => {
+    setAutoRefresh(!autoRefresh);
+  };
+
+  const handleIntervalChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    setRefreshInterval(Number(event.target.value));
   };
 
   const handleCopyLogs = () => {
@@ -83,6 +120,23 @@ const ContainerLogsModal: React.FC<ContainerLogsModalProps> = ({
               <option value={1000}>Last 1000 lines</option>
               <option value={2000}>Last 2000 lines</option>
             </select>
+            <select
+              value={refreshInterval}
+              onChange={handleIntervalChange}
+              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              disabled={!autoRefresh}
+            >
+              <option value={1000}>1s</option>
+              <option value={2000}>2s</option>
+              <option value={5000}>5s</option>
+              <option value={10000}>10s</option>
+              <option value={30000}>30s</option>
+            </select>
+            <Tooltip title={autoRefresh ? 'Disable auto-refresh' : 'Enable auto-refresh'}>
+              <IconButton onClick={toggleAutoRefresh} size="small">
+                {autoRefresh ? <PauseIcon /> : <PlayArrowIcon />}
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Copy logs to clipboard">
               <IconButton onClick={handleCopyLogs} size="small">
                 <ContentCopyIcon />

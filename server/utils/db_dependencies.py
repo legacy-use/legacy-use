@@ -116,7 +116,7 @@ def get_shared_db() -> Generator[DatabaseService, None, None]:
     Yields:
         DatabaseService: Shared database service
     """
-    from server.database import db_shared
+    from server.database.shared import db_shared
 
     yield db_shared
 

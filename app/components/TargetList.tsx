@@ -385,7 +385,6 @@ const TargetList = () => {
       <Typography variant="body1" color="textSecondary" paragraph>
         Manage your targets for API sessions
       </Typography>
-
       {targetsWithDetails.length === 0 ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <ComputerIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
@@ -533,7 +532,6 @@ const TargetList = () => {
           />
         </Paper>
       )}
-
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={handleDeleteCancel}>
         <DialogTitle>{hardDelete ? 'Permanently Delete Target?' : 'Archive Target?'}</DialogTitle>
@@ -558,7 +556,6 @@ const TargetList = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Edit Target Dialog */}
       <Dialog open={editTargetDialogOpen} onClose={handleEditCancel} maxWidth="md" fullWidth>
         <DialogTitle>Edit Target</DialogTitle>
@@ -569,7 +566,12 @@ const TargetList = () => {
           </DialogContentText>
 
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Target Name"
@@ -584,7 +586,12 @@ const TargetList = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={8}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 8,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Host"
@@ -600,7 +607,12 @@ const TargetList = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={4}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 4,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Port"
@@ -616,7 +628,7 @@ const TargetList = () => {
               />
             </Grid>
 
-            <Grid item xs={12}>
+            <Grid size={12}>
               <VPNConfigInputField
                 targetData={editFormData}
                 validationErrors={validationErrors}
@@ -625,7 +637,12 @@ const TargetList = () => {
               />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
+            <Grid
+              size={{
+                xs: 12,
+                sm: 6,
+              }}
+            >
               <TextField
                 fullWidth
                 variant="outlined"
@@ -639,7 +656,12 @@ const TargetList = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Password"
@@ -654,7 +676,12 @@ const TargetList = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Width (px)"
@@ -671,7 +698,12 @@ const TargetList = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6,
+              }}
+            >
               <TextField
                 fullWidth
                 label="Height (px)"
@@ -690,7 +722,7 @@ const TargetList = () => {
 
             {/* RDP customization options */}
             {(editFormData.type?.startsWith('rdp') || editFormData.type?.includes('rdp')) && (
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <TextField
                   fullWidth
                   multiline
@@ -707,7 +739,7 @@ const TargetList = () => {
             )}
 
             {/* Resolution recommendation warning */}
-            <Grid item xs={12}>
+            <Grid size={12}>
               <ResolutionRecommendation
                 width={editFormData.width || 1024}
                 height={editFormData.height || 768}
@@ -737,7 +769,6 @@ const TargetList = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Notification for target updates */}
       <Snackbar
         open={notificationOpen}

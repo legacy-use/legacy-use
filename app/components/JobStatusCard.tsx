@@ -245,19 +245,19 @@ const JobStatusCard = ({
         </Box>
         {/* Second line: Essential information */}
         <Grid container spacing={0.5} sx={{ mb: 0.5, mt: 0 }} alignItems="center">
-          <Grid item>
+          <Grid>
             <Typography variant="body2" color="textSecondary">
               <strong>Created:</strong> {formatDate(job.created_at)}
             </Typography>
           </Grid>
-          <Grid item>
+          <Grid>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               {renderDurationAndTokens()}
             </Box>
           </Grid>
           {/* API Version info and link */}
           {versionInfo ? (
-            <Grid item sx={{ display: 'flex', alignItems: 'center' }}>
+            <Grid sx={{ display: 'flex', alignItems: 'center' }}>
               <Typography
                 variant="body2"
                 color="textSecondary"
@@ -286,7 +286,7 @@ const JobStatusCard = ({
               </Typography>
             </Grid>
           ) : loadingVersion ? (
-            <Grid item>
+            <Grid>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Typography variant="body2" color="textSecondary" sx={{ mr: 1 }}>
                   <strong>API Version:</strong>

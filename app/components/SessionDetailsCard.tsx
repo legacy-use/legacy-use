@@ -68,7 +68,12 @@ const SessionDetailsCard = ({
         <CardContent>
           <Grid container spacing={2}>
             {selectedSession.is_archived && (
-              <Grid item xs={12} sm={6}>
+              <Grid
+                size={{
+                  xs: 12,
+                  sm: 6,
+                }}
+              >
                 <Typography variant="body2" color="textSecondary">
                   Archive Reason: {selectedSession.archive_reason || 'Not specified'}
                 </Typography>
@@ -76,7 +81,7 @@ const SessionDetailsCard = ({
             )}
             {selectedSession.container_status && (
               <>
-                <Grid item xs={12}>
+                <Grid size={12}>
                   <Box display="flex" alignItems="center">
                     <Typography variant="body2" color="textSecondary" sx={{ mr: 1 }}>
                       Container Status:{' '}
@@ -109,7 +114,7 @@ const SessionDetailsCard = ({
                     </IconButton>
                   </Box>
                 </Grid>
-                <Grid item xs={12}>
+                <Grid size={12}>
                   <Collapse in={showContainerDetails}>
                     <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
                       <Typography variant="subtitle2" gutterBottom>
@@ -219,12 +224,22 @@ const SessionDetailsCard = ({
                 </Grid>
               </>
             )}
-            <Grid item xs={12} sm={6}>
+            <Grid
+              size={{
+                xs: 12,
+                sm: 6,
+              }}
+            >
               <Typography variant="body2" color="textSecondary">
                 Status: {selectedSession.status}
               </Typography>
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid
+              size={{
+                xs: 12,
+                sm: 6,
+              }}
+            >
               <Box display="flex" alignItems="center">
                 <Typography variant="body2" color="textSecondary">
                   State:

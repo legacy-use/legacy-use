@@ -390,7 +390,6 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
           Sign up with your email to receive $5 in credits for free to explore legacy-use's
           automation capabilities.
         </Typography>
-
         {/* Main signup section */}
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -399,7 +398,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
           </Box>
 
           <Grid container spacing={2}>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Email Address"
@@ -410,7 +409,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
                 variant="outlined"
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="What software do you want to automate?"
@@ -423,7 +422,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
                 placeholder="e.g., DATEV, SAP, Lexware, Navision, ..."
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Referral Code (Optional)"
@@ -446,7 +445,6 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
             {loading ? 'Processing...' : 'Get $5 Credits for free'}
           </Button>
         </Paper>
-
         {/* Activation key option */}
         <Typography
           variant="caption"
@@ -465,14 +463,12 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
             Enter it here
           </Link>
         </Typography>
-
         {/* Divider */}
         <Divider sx={{ my: 3 }}>
           <Typography variant="body2" color="text.secondary">
             OR
           </Typography>
         </Divider>
-
         {/* Secondary option */}
         <Typography variant="body2" color="text.secondary" paragraph align="center">
           Already have API keys? Skip the credits and configure your own provider credentials.
@@ -550,7 +546,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
             AWS Bedrock Configuration
           </Typography>
           <Grid container spacing={2}>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Access Key ID"
@@ -561,7 +557,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
                 variant="outlined"
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Secret Access Key"
@@ -573,7 +569,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
                 variant="outlined"
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Region"
@@ -592,7 +588,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
             Google Vertex AI Configuration
           </Typography>
           <Grid container spacing={2}>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Project ID"
@@ -603,7 +599,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
                 variant="outlined"
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Region"

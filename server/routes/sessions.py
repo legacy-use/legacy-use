@@ -12,7 +12,7 @@ from uuid import UUID
 import httpx
 import requests
 import websockets
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -28,7 +28,6 @@ from server.models.base import (
     SessionUpdate,
 )
 from server.utils.db_dependencies import get_tenant_db, get_tenant_db_websocket
-from server.utils.tenant_utils import get_tenant_from_request
 from server.utils.docker_manager import (
     get_container_status,
     launch_container,
@@ -38,6 +37,7 @@ from server.utils.telemetry import (
     capture_session_created,
     capture_session_deleted,
 )
+from server.utils.tenant_utils import get_tenant_from_request
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ async def list_sessions(
     for session in sessions:
         if container_id := session.get('container_id'):
             container_status = await get_container_status(
-                container_id, state=session.get('state')
+                container_id, session_state=session.get('state')
             )
             session['container_status'] = container_status
 
@@ -123,7 +123,7 @@ async def create_session(
             # Add container status
             if container_id := session_data.get('container_id'):
                 container_status = await get_container_status(
-                    container_id, state=session_data.get('state')
+                    container_id, session_state=session_data.get('state')
                 )
                 session_data['container_status'] = container_status
 
@@ -186,7 +186,7 @@ async def create_session(
         # Add container status
         if container_id := db_session.get('container_id'):
             container_status = await get_container_status(
-                container_id, state=db_session.get('state')
+                container_id, session_state=db_session.get('state')
             )
             db_session['container_status'] = container_status
     else:
@@ -207,7 +207,7 @@ async def get_session(session_id: UUID, db_tenant=Depends(get_tenant_db)):
         # If the session has a container_id, get container status
         if container_id := session.get('container_id'):
             container_status = await get_container_status(
-                container_id, state=session.get('state')
+                container_id, session_state=session.get('state')
             )
             # Add container status to session data
             session['container_status'] = container_status
@@ -232,7 +232,7 @@ async def update_session(
     # Add container status if container_id exists
     if container_id := updated_session.get('container_id'):
         container_status = await get_container_status(
-            container_id, state=updated_session.get('state')
+            container_id, session_state=updated_session.get('state')
         )
         updated_session['container_status'] = container_status
 

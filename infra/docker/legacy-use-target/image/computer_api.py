@@ -1,16 +1,23 @@
 import os
 from fastapi import FastAPI, HTTPException, Path as FastAPIPath
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union, get_args
 
 from computer import (
+    Action_20241022,
     Action_20250124,
     ScrollDirection,
     ComputerTool20241022,
     ComputerTool20250124,
+    ToolError,
     run,
 )
 from recording import router as recording_router
+
+import logging
+
+logger = logging.getLogger('computer_api')
 
 # Create FastAPI app
 app = FastAPI(
@@ -68,28 +75,69 @@ class ToolUseRequest(BaseModel):
 @app.post('/tool_use/{action}')
 async def tool_use(
     action: Action_20250124 = FastAPIPath(..., description='The action to perform'),
-    request: ToolUseRequest = None,
+    request: Optional[ToolUseRequest] = None,
 ):
     """Execute a specific computer action"""
     if request is None:
         request = ToolUseRequest()
 
-    # Instantiate the appropriate computer actions class based on api_type
-    if request.api_type == 'computer_20241022':
-        computer_actions = ComputerTool20241022()
-    else:
-        # Default to the newer version
-        computer_actions = ComputerTool20250124()
-
-    print(f'action: {action}')
-    print(f'request: {request}')
-
-    return await computer_actions(
-        action=action,
-        text=request.text,
-        coordinate=request.coordinate,
-        scroll_direction=request.scroll_direction,
-        scroll_amount=request.scroll_amount,
-        duration=request.duration,
-        key=request.key,
+    logger.info(
+        f'Received tool_use request: action={action}, api_type={request.api_type}, '
+        f'text={request.text}, coordinate={request.coordinate}, '
+        f'scroll_direction={request.scroll_direction}, scroll_amount={request.scroll_amount}, '
+        f'duration={request.duration}, key={request.key}'
     )
+
+    # Validate action is supported by the selected api_type
+    if request.api_type == 'computer_20241022':
+        valid_actions = get_args(Action_20241022)
+        computer_actions = ComputerTool20241022()
+        params = {
+            'action': action,
+            'text': request.text,
+            'coordinate': request.coordinate,
+        }
+    else:
+        valid_actions = [v for t in get_args(Action_20250124) for v in get_args(t)]
+        computer_actions = ComputerTool20250124()
+        params = {
+            'action': action,
+            'text': request.text,
+            'coordinate': request.coordinate,
+            'scroll_direction': request.scroll_direction,
+            'scroll_amount': request.scroll_amount,
+            'duration': request.duration,
+            'key': request.key,
+        }
+
+    if action not in valid_actions:
+        logger.warning(f"Action '{action}' is not supported by {request.api_type}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                'output': None,
+                'error': f"Action '{action}' is not supported by {request.api_type}",
+                'base64_image': None,
+            },
+        )
+
+    try:
+        logger.info(
+            f'Dispatching to {type(computer_actions).__name__} for action={action}'
+        )
+        result = await computer_actions(**params)
+
+        logger.info(f"tool_use action '{action}' completed successfully")
+        return result
+    except ToolError as exc:
+        logger.error(f'ToolError during tool_use: {exc}')
+        return JSONResponse(
+            status_code=400,
+            content={'output': None, 'error': exc.message, 'base64_image': None},
+        )
+    except Exception as exc:
+        logger.exception(f'Unhandled exception during tool_use: {exc}')
+        return JSONResponse(
+            status_code=500,
+            content={'output': None, 'error': str(exc), 'base64_image': None},
+        )

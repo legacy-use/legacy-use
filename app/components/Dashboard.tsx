@@ -106,11 +106,17 @@ const Dashboard = () => {
           {jobs.length > 0 ? (
             jobs.map(job => (
               <React.Fragment key={job.id}>
-                <ListItem button component={RouterLink} to={`/jobs/${job.target_id}/${job.id}`}>
+                <ListItem
+                  button
+                  component={RouterLink}
+                  to={`/jobs/${job.target_id}/${job.id}`}
+                  sx={{ color: 'white' }}
+                >
                   <ListItemText
                     primary={
                       <Box
                         sx={{
+                          color: 'white',
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
@@ -153,7 +159,7 @@ const Dashboard = () => {
           {sessions.length > 0 ? (
             sessions.slice(0, 3).map(session => (
               <React.Fragment key={session.id}>
-                <ListItem button component={RouterLink} to={`/sessions`}>
+                <ListItem button component={RouterLink} to={`/sessions`} sx={{ color: 'white' }}>
                   <ListItemText
                     primary={session.name || `Session ${session.id.substring(0, 8)}`}
                     secondary={`Target: ${session.target_id.substring(0, 8)}`}
@@ -168,7 +174,7 @@ const Dashboard = () => {
             </ListItem>
           )}
           {sessions.length > 3 && (
-            <ListItem button component={RouterLink} to="/sessions">
+            <ListItem button component={RouterLink} to="/sessions" sx={{ color: 'white' }}>
               <ListItemText primary={`View all ${sessions.length} sessions`} />
             </ListItem>
           )}
@@ -187,7 +193,7 @@ const Dashboard = () => {
           {targets.length > 0 ? (
             targets.slice(0, 3).map(target => (
               <React.Fragment key={target.id}>
-                <ListItem button component={RouterLink} to="/targets">
+                <ListItem button component={RouterLink} to="/targets" sx={{ color: 'white' }}>
                   <ListItemText
                     primary={
                       <Box
@@ -220,7 +226,7 @@ const Dashboard = () => {
             </ListItem>
           )}
           {targets.length > 3 && (
-            <ListItem button component={RouterLink} to="/targets">
+            <ListItem button component={RouterLink} to="/targets" sx={{ color: 'white' }}>
               <ListItemText primary={`View all ${targets.length} targets`} />
             </ListItem>
           )}
@@ -239,7 +245,7 @@ const Dashboard = () => {
           {apis.length > 0 ? (
             apis.slice(0, 3).map(api => (
               <React.Fragment key={api.name}>
-                <ListItem button component={RouterLink} to="/apis">
+                <ListItem button component={RouterLink} to="/apis" sx={{ color: 'white' }}>
                   <ListItemText
                     primary={api.name}
                     secondary={
@@ -256,7 +262,7 @@ const Dashboard = () => {
             </ListItem>
           )}
           {apis.length > 3 && (
-            <ListItem button component={RouterLink} to="/apis">
+            <ListItem button component={RouterLink} to="/apis" sx={{ color: 'white' }}>
               <ListItemText primary={`View all ${apis.length} APIs`} />
             </ListItem>
           )}

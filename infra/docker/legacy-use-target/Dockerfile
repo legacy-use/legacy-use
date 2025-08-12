@@ -19,6 +19,8 @@ RUN apt-get update && \
     # Input monitoring tools
     xinput \
     x11-utils \
+    # DNS tools
+    dnsutils \
     # Network tools
     net-tools \
     netcat-openbsd \
@@ -28,6 +30,11 @@ RUN apt-get update && \
     # Remote clients
     freerdp3-x11 \
     tigervnc-viewer \
+    # Smart card and security libraries
+    libpcsclite1 \
+    pcscd \
+    # Kerberos support
+    krb5-user \
     # Python
     python3 \
     python3-pip \

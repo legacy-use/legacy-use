@@ -213,7 +213,7 @@ const JobsList = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">All Jobs</Typography>
         <Tooltip title="Refresh">
@@ -222,11 +222,16 @@ const JobsList = () => {
           </IconButton>
         </Tooltip>
       </Box>
-
       {/* Filter controls */}
       <Paper sx={{ p: 2, mb: 3 }}>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid
+            size={{
+              xs: 12,
+              sm: 6,
+              md: 3,
+            }}
+          >
             <FormControl fullWidth size="small">
               <InputLabel id="status-filter-label">Status</InputLabel>
               <Select
@@ -247,7 +252,13 @@ const JobsList = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid
+            size={{
+              xs: 12,
+              sm: 6,
+              md: 3,
+            }}
+          >
             <FormControl fullWidth size="small">
               <InputLabel id="target-filter-label">Target</InputLabel>
               <Select
@@ -269,7 +280,13 @@ const JobsList = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid
+            size={{
+              xs: 12,
+              sm: 6,
+              md: 3,
+            }}
+          >
             <FormControl fullWidth size="small">
               <InputLabel id="api-filter-label">API</InputLabel>
               <Select
@@ -291,7 +308,13 @@ const JobsList = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid
+            size={{
+              xs: 12,
+              sm: 6,
+              md: 3,
+            }}
+          >
             <Box display="flex" justifyContent="space-between">
               <Button
                 variant="contained"
@@ -308,7 +331,6 @@ const JobsList = () => {
           </Grid>
         </Grid>
       </Paper>
-
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -407,7 +429,6 @@ const JobsList = () => {
           </TableBody>
         </Table>
       </TableContainer>
-
       <TablePagination
         component="div"
         count={totalCount}
