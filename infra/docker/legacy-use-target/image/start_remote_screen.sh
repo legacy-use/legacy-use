@@ -32,7 +32,7 @@ test_vpn_dns() {
             resolved_ip=$(dig +short "$test_host" 2>/dev/null | head -1)
         fi
 
-        if [ -n "$resolved_ip" ]; then
+        if [ "$resolved_ip" != "" ]; then
             echo "Successfully resolved $test_host to $resolved_ip through VPN"
         else
             echo "Warning: Could not resolve $test_host through VPN DNS"
@@ -42,20 +42,20 @@ test_vpn_dns() {
 
 # Function to extract and test load balancer hostnames from RDP parameters
 test_load_balancer_dns() {
-    if [ "$REMOTE_VPN_TYPE" = 'openvpn' ] && [ -n "${RDP_PARAMS}" ]; then
+    if [ "$REMOTE_VPN_TYPE" = 'openvpn' ] && [ "$RDP_PARAMS" != "" ]; then
         echo "Checking for load balancer hostnames in RDP parameters..."
 
         # Extract load-balance-info parameter if present
-        local lb_info=$(echo "${RDP_PARAMS}" | grep -o '/load-balance-info:[^[:space:]]*' | sed 's|/load-balance-info:||' | tr -d '"')
+        local lb_info=$(echo "$RDP_PARAMS" | grep -o '/load-balance-info:[^[:space:]]*' | sed 's|/load-balance-info:||' | tr -d '"')
 
-        if [ -n "$lb_info" ]; then
+        if [ "$lb_info" != "" ]; then
             echo "Found load balancer info: $lb_info"
 
             # Extract hostname from various load balancer formats
             # Format: tsv://MS Terminal Services Plugin.1.HOSTNAME
             local lb_hostname=$(echo "$lb_info" | sed -n 's|.*Plugin\.1\.||p')
 
-            if [ -n "$lb_hostname" ]; then
+            if [ "$lb_hostname" != "" ]; then
                 echo "Extracted load balancer hostname: $lb_hostname"
                 test_vpn_dns "$lb_hostname"
             fi
@@ -101,9 +101,9 @@ if [ "$REMOTE_CLIENT_TYPE" = 'rdp' ]; then
         fi
 
         # Build argv as array; no quotes after the colon
-        ARGS=(/u:${REMOTE_USERNAME} /p:${REMOTE_PASSWORD} /v:${HOST_IP}:${HOST_PORT})
+        ARGS=(/u:"$REMOTE_USERNAME" /p:"$REMOTE_PASSWORD" /v:"$HOST_IP:$HOST_PORT")
 
-        if [ -n "${RDP_PARAMS}" ]; then
+        if [ "$RDP_PARAMS" != "" ]; then
             # Parse RDP_PARAMS handling both quoted and unquoted parameters safely
             echo "Parsing RDP_PARAMS: ${RDP_PARAMS}"
 
@@ -126,7 +126,7 @@ if [ "$REMOTE_CLIENT_TYPE" = 'rdp' ]; then
             ip route 2>/dev/null | head -10 || echo "Could not show routes"
         fi
 
-        $PROXY_CMD xfreerdp3 "${ARGS[@]}"
+        "$PROXY_CMD" xfreerdp3 "${ARGS[@]}"
 
         echo "RDP connection failed, retrying in 3 sec..."
         sleep 3
@@ -144,7 +144,7 @@ ${REMOTE_PASSWORD}
 EOF
     chmod 600 ~/.vnc/passwd
     while true; do
-        $PROXY_CMD xtigervncviewer -FullScreen -MenuKey=none -passwd ~/.vnc/passwd -ReconnectOnError=0 -AlertOnFatalError=0 ${HOST_IP}:${HOST_PORT}
+        "$PROXY_CMD" xtigervncviewer -FullScreen -MenuKey=none -passwd ~/.vnc/passwd -ReconnectOnError=0 -AlertOnFatalError=0 "$HOST_IP:$HOST_PORT"
         echo "VNC connection failed, retrying in 5 secs..."
         sleep 1  # wait before retrying in case of a crash or error
     done

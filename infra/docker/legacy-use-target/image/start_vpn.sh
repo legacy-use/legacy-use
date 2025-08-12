@@ -36,7 +36,7 @@ EOF
 elif [ "$REMOTE_VPN_TYPE" = 'tailscale' ]; then
     echo "Starting tailscale..."
     sudo tailscaled --tun=userspace-networking  --socks5-server=localhost:1080  &
-    sudo tailscale up --authkey=${VPN_CONFIG}
+    sudo tailscale up --authkey="$VPN_CONFIG"
 elif [ "$REMOTE_VPN_TYPE" = 'openvpn' ]; then
     echo "Starting openvpn..."
 
@@ -195,25 +195,25 @@ EOF
     # Common corporate internal networks
     INTERNAL_NETWORKS="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
 
-    for network in $INTERNAL_NETWORKS; do
+    for network in "${INTERNAL_NETWORKS[@]}"; do
         # Check if route to this internal network exists
-        if ! ip route get $(echo $network | cut -d/ -f1) 2>/dev/null | grep -q "dev tun0"; then
+        if ! ip route get "$(echo "$network" | cut -d/ -f1)" 2>/dev/null | grep -q "dev tun0"; then
             # Check if this network might be reachable via VPN by testing if target is in range
             if echo "$HOST_IP" | grep -qE "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)"; then
                 echo "Adding route for internal network $network via tun0"
-                sudo ip route add $network dev tun0 2>/dev/null || echo "Failed to add route for $network"
+                sudo ip route add "$network" dev tun0 2>/dev/null || echo "Failed to add route for $network"
             fi
         fi
     done
 
     # Ensure specific route to target host goes via VPN
-    if [ -n "$HOST_IP" ] && echo "$HOST_IP" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"; then
+    if [ "$HOST_IP" != "" ] && echo "$HOST_IP" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"; then
         echo "Ensuring route to target $HOST_IP goes via VPN..."
         # Remove any existing route to the host via default gateway
         sudo ip route del "$HOST_IP" 2>/dev/null || true
         # Add explicit route via tun0
         sudo ip route add "$HOST_IP" dev tun0 2>/dev/null || echo "Note: Could not add specific route for $HOST_IP"
-    elif [ -n "$HOST_IP" ] && ! echo "$HOST_IP" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"; then
+    elif [ "$HOST_IP" != "" ] && ! echo "$HOST_IP" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"; then
         echo "HOST_IP is a hostname: $HOST_IP - will rely on DNS resolution through VPN"
     fi
 
@@ -229,29 +229,29 @@ EOF
     echo ""
     echo "=== Testing DNS resolution ==="
     nslookup google.com || echo "Google DNS lookup failed"
-    nslookup $HOST_IP || echo "HOST_IP DNS lookup failed"
-    dig $HOST_IP || echo "dig failed"
+    nslookup "$HOST_IP" || echo "HOST_IP DNS lookup failed"
+    dig "$HOST_IP" || echo "dig failed"
     echo ""
     echo "=== Testing connectivity ==="
     echo "Testing ping to google.com (should work via default route)"
     ping -c 1 -W 5 google.com || echo "Google ping failed"
 
     echo "Testing ping to $HOST_IP via default route"
-    ping -c 1 -W 5 $HOST_IP || echo "HOST_IP ping via default failed"
+    ping -c 1 -W 5 "$HOST_IP" || echo "HOST_IP ping via default failed"
 
     echo "Testing ping to $HOST_IP via tun0 interface"
-    ping -I tun0 -c 1 -W 5 $HOST_IP || echo "HOST_IP ping via tun0 failed"
+    ping -I tun0 -c 1 -W 5 "$HOST_IP" || echo "HOST_IP ping via tun0 failed"
 
     # If hostname resolution fails, try manual DNS resolution through VPN
-    if [ -n "$HOST_IP" ] && ! echo "$HOST_IP" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"; then
+    if [ "$HOST_IP" != "" ] && ! echo "$HOST_IP" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"; then
         echo "Attempting DNS resolution of $HOST_IP through VPN..."
 
         # Get VPN DNS servers from resolv.conf
         VPN_DNS=$(grep nameserver /etc/resolv.conf | head -1 | awk '{print $2}')
-        if [ -n "$VPN_DNS" ]; then
+        if [ "$VPN_DNS" != "" ]; then
             echo "Using VPN DNS server: $VPN_DNS"
             RESOLVED_IP=$(nslookup "$HOST_IP" "$VPN_DNS" 2>/dev/null | grep -A1 "Name:" | grep "Address:" | awk '{print $2}' | head -1)
-            if [ -n "$RESOLVED_IP" ]; then
+            if [ "$RESOLVED_IP" != "" ]; then
                 echo "Resolved $HOST_IP to $RESOLVED_IP via VPN DNS"
                 echo "Testing ping to resolved IP via tun0:"
                 ping -I tun0 -c 1 -W 5 "$RESOLVED_IP" || echo "Ping to resolved IP failed"
