@@ -105,8 +105,8 @@ async def sampling_loop(
 
     tool_collection = ToolCollection(*tools)
     print(f'provider: {provider}')
-    provider = APIProvider.OPENAI
-    model = 'gpt-4o'
+    provider = APIProvider.OPENAI_CUA
+    model = 'computer-use-preview'
 
     # Use the provider and model passed into the function; do not override here
 

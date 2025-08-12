@@ -6,7 +6,7 @@ and maps its output to our Anthropic-format content blocks and tool_use inputs
 for execution by our existing `computer` tool.
 """
 
-from typing import Optional
+from typing import Optional, Any, cast
 
 import httpx
 from anthropic.types.beta import (
@@ -26,7 +26,6 @@ from server.computer_use.utils import (
 from server.computer_use.converters import (
     extract_display_from_computer_tool,
     build_openai_preview_tool,
-    beta_messages_to_openai_responses_input,
     responses_output_to_blocks,
     internal_specs_to_openai_responses_functions,
 )
@@ -76,18 +75,149 @@ class OpenAICUAHandler(BaseProviderHandler):
         self, messages: list[BetaMessageParam]
     ) -> ResponseInputParam:
         """
-        Convert Anthropic-format messages to OpenAI Responses API `input` format:
-        a list of objects with {role: 'user', content: [{type: input_text|input_image, ...}]}.
+        Convert Anthropic-format messages to OpenAI Responses API `input` format.
+
+        The Responses API only accepts user input messages, so we need to convert
+        the conversation history into a format that preserves context while fitting
+        the API constraints.
         """
         # Apply common preprocessing (prompt caching off for this handler; trim images to 1)
         self.preprocess_messages(messages, image_truncation_threshold=1)
-        provider_messages: ResponseInputParam = beta_messages_to_openai_responses_input(
-            messages
+        provider_messages: ResponseInputParam = (
+            self._convert_messages_for_responses_api(messages)
         )
         logger.info(
             f'Converted to {len(provider_messages)} OpenAI Responses input messages (CUA)'
         )
         return provider_messages
+
+    def _convert_messages_for_responses_api(
+        self, messages: list[BetaMessageParam]
+    ) -> ResponseInputParam:
+        """
+        Convert messages to OpenAI Responses API format.
+
+        Since the Responses API only accepts user input messages, we use the simple
+        converter that maintains essential conversation context.
+        """
+        # Use the existing converter from converters.py but with some preprocessing
+        from server.computer_use.converters import (
+            beta_messages_to_openai_responses_input,
+        )
+
+        # The existing converter handles the basics, but we can improve it by
+        # pre-processing to consolidate related messages
+        consolidated_messages = self._consolidate_messages(messages)
+
+        # Now convert using the standard converter
+        return beta_messages_to_openai_responses_input(consolidated_messages)
+
+    def _consolidate_messages(
+        self, messages: list[BetaMessageParam]
+    ) -> list[BetaMessageParam]:
+        """
+        Consolidate related messages to reduce fragmentation.
+
+        Groups assistant messages with their corresponding tool results.
+        """
+        if not messages:
+            return []
+
+        consolidated = []
+        i = 0
+
+        while i < len(messages):
+            msg = messages[i]
+            role = msg.get('role')
+
+            # For user messages, check if it's just tool results
+            if role == 'user':
+                content = msg.get('content')
+                if isinstance(content, list):
+                    # Check if this is purely tool results
+                    has_only_tool_results = all(
+                        isinstance(block, dict) and block.get('type') == 'tool_result'
+                        for block in content
+                    )
+
+                    if has_only_tool_results and i > 0:
+                        # This is a tool result following an assistant message
+                        # Merge it with the previous message if it was an assistant message
+                        prev_msg = consolidated[-1] if consolidated else None
+                        if prev_msg and prev_msg.get('role') == 'assistant':
+                            # Merge the tool result into the assistant message
+                            prev_content = prev_msg.get('content', [])
+                            if not isinstance(prev_content, list):
+                                prev_content = (
+                                    [
+                                        cast(
+                                            Any,
+                                            {'type': 'text', 'text': str(prev_content)},
+                                        )
+                                    ]
+                                    if prev_content
+                                    else []
+                                )
+                            else:
+                                # Make a copy to avoid modifying the original
+                                prev_content = list(prev_content)
+
+                            # Add tool results as text blocks in the assistant message
+                            for block in content:
+                                if (
+                                    isinstance(block, dict)
+                                    and block.get('type') == 'tool_result'
+                                ):
+                                    if 'error' in block:
+                                        prev_content.append(
+                                            cast(
+                                                Any,
+                                                {
+                                                    'type': 'text',
+                                                    'text': f'[Tool Error: {block["error"]}]',
+                                                },
+                                            )
+                                        )
+                                    else:
+                                        # Extract result content
+                                        result_content = block.get('content', [])
+                                        for rc in result_content:
+                                            if isinstance(rc, dict):
+                                                if rc.get('type') == 'text':
+                                                    text = rc.get('text', '')
+                                                    if (
+                                                        text
+                                                        and text
+                                                        != 'Tool executed successfully'
+                                                    ):
+                                                        prev_content.append(
+                                                            cast(
+                                                                Any,
+                                                                {
+                                                                    'type': 'text',
+                                                                    'text': f'[Tool Result: {text}]',
+                                                                },
+                                                            )
+                                                        )
+                                                elif rc.get('type') == 'image':
+                                                    # Keep image block - it will be handled by the converter
+                                                    prev_content.append(cast(Any, rc))
+
+                            # Update the previous message
+                            consolidated[-1] = {**prev_msg, 'content': prev_content}
+                            i += 1
+                            continue
+
+                # Regular user message
+                consolidated.append(msg)
+                i += 1
+
+            else:
+                # Assistant or system message
+                consolidated.append(msg)
+                i += 1
+
+        return consolidated
 
     def prepare_tools(self, tool_collection: ToolCollection) -> list[ToolParam]:
         """Replace `computer` tool with `computer_use_preview` and keep other tools in OpenAI format.
@@ -133,6 +263,21 @@ class OpenAICUAHandler(BaseProviderHandler):
         logger.info(f'Tenant schema: {self.tenant_schema}')
         logger.info(f'Input summary: {summarize_openai_responses_input(messages)}')
         logger.debug(f'Tools sent: {[t.get("type") for t in tools]}')
+
+        # iterate recursively and shorten any message longer than 10000 characters to 10
+        def shorten_message(message):
+            if isinstance(message, list):
+                return [shorten_message(m) for m in message]
+            elif isinstance(message, dict):
+                return {
+                    shorten_message(k): shorten_message(v) for k, v in message.items()
+                }
+            elif isinstance(message, str):
+                if len(message) > 10000:
+                    return message[:7] + '...'
+            return message
+
+        logger.info(f'Conversation structure: {shorten_message(messages)}')
 
         response = await client.responses.with_raw_response.create(
             model=model,
