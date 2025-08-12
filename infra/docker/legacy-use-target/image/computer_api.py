@@ -1,8 +1,7 @@
 import os
 from fastapi import FastAPI, HTTPException, Path as FastAPIPath
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from typing import Literal, Optional, Tuple, Union, get_args
+from pydantic import BaseModel, Field
+from typing import Literal, Optional, Tuple, Union, get_args, Annotated
 
 from computer import (
     Action_20241022,
@@ -11,6 +10,7 @@ from computer import (
     ComputerTool20241022,
     ComputerTool20250124,
     ToolError,
+    ToolResult,
     run,
 )
 from recording import router as recording_router
@@ -31,6 +31,12 @@ app.include_router(recording_router)
 
 # Get target type from environment variable, defaulting to "generic"
 REMOTE_CLIENT_TYPE = os.getenv('REMOTE_CLIENT_TYPE', 'generic')
+
+# API type registry for validation and tool instantiation
+API_TYPE_REGISTRY = {
+    'computer_20241022': (get_args(Action_20241022), ComputerTool20241022),
+    'computer_20250124': (get_args(Action_20250124), ComputerTool20250124),
+}
 
 
 async def check_program_connection() -> bool:
@@ -60,26 +66,46 @@ async def health_check():
     return {'status': 'ok', 'target_type': REMOTE_CLIENT_TYPE}
 
 
-class ToolUseRequest(BaseModel):
+class ToolUseRequest20241022(BaseModel):
+    """Request model for computer_20241022 API type."""
+    api_type: Literal['computer_20241022'] = 'computer_20241022'
+    text: Optional[str] = None
+    coordinate: Optional[Tuple[int, int]] = None
+
+    class Config:
+        extra = 'forbid'
+
+
+class ToolUseRequest20250124(BaseModel):
+    """Request model for computer_20250124 API type."""
+    api_type: Literal['computer_20250124'] = 'computer_20250124'
     text: Optional[str] = None
     coordinate: Optional[Tuple[int, int]] = None
     scroll_direction: Optional[ScrollDirection] = None
     scroll_amount: Optional[int] = None
     duration: Optional[Union[int, float]] = None
     key: Optional[str] = None
-    api_type: Optional[Literal['computer_20241022', 'computer_20250124']] = (
-        'computer_20250124'
-    )
+
+    class Config:
+        extra = 'forbid'
 
 
-@app.post('/tool_use/{action}')
+# Discriminated union for request body
+ToolUseBody = Annotated[
+    Union[ToolUseRequest20241022, ToolUseRequest20250124], 
+    Field(discriminator='api_type')
+]
+
+
+@app.post('/tool_use/{action}', response_model=ToolResult, response_model_exclude_none=True)
 async def tool_use(
     action: Action_20250124 = FastAPIPath(..., description='The action to perform'),
-    request: Optional[ToolUseRequest] = None,
+    request: Optional[ToolUseBody] = None,
 ):
     """Execute a specific computer action"""
     if request is None:
-        request = ToolUseRequest()
+        # Default to computer_20250124 when no body is provided
+        request = ToolUseRequest20250124()
 
     logger.info(
         f'Received tool_use request: action={action}, api_type={request.api_type}, '
@@ -88,56 +114,42 @@ async def tool_use(
         f'duration={request.duration}, key={request.key}'
     )
 
+    # Get valid actions and tool class from registry
+    valid_actions, tool_class = API_TYPE_REGISTRY[request.api_type]
+    
     # Validate action is supported by the selected api_type
-    if request.api_type == 'computer_20241022':
-        valid_actions = get_args(Action_20241022)
-        computer_actions = ComputerTool20241022()
-        params = {
-            'action': action,
-            'text': request.text,
-            'coordinate': request.coordinate,
-        }
-    else:
-        valid_actions = get_args(Action_20250124)
-        computer_actions = ComputerTool20250124()
-        params = {
-            'action': action,
-            'text': request.text,
-            'coordinate': request.coordinate,
-            'scroll_direction': request.scroll_direction,
-            'scroll_amount': request.scroll_amount,
-            'duration': request.duration,
-            'key': request.key,
-        }
-
     if action not in valid_actions:
         logger.warning(f"Action '{action}' is not supported by {request.api_type}")
-        return JSONResponse(
-            status_code=400,
-            content={
-                'output': None,
-                'error': f"Action '{action}' is not supported by {request.api_type}",
-                'base64_image': None,
-            },
+        return ToolResult(
+            output=None,
+            error=f"Action '{action}' is not supported by {request.api_type}",
+            base64_image=None,
         )
 
     try:
+        # Build parameters generically from the validated model
+        params = request.model_dump(exclude={'api_type'}, exclude_none=True)
+        params['action'] = action
+        
         logger.info(
-            f'Dispatching to {type(computer_actions).__name__} for action={action}'
+            f'Dispatching to {tool_class.__name__} for action={action}'
         )
+        computer_actions = tool_class()
         result = await computer_actions(**params)
 
         logger.info(f"tool_use action '{action}' completed successfully")
         return result
     except ToolError as exc:
         logger.error(f'ToolError during tool_use: {exc}')
-        return JSONResponse(
-            status_code=400,
-            content={'output': None, 'error': exc.message, 'base64_image': None},
+        return ToolResult(
+            output=None,
+            error=exc.message,
+            base64_image=None,
         )
     except Exception as exc:
         logger.exception(f'Unhandled exception during tool_use: {exc}')
-        return JSONResponse(
-            status_code=500,
-            content={'output': None, 'error': str(exc), 'base64_image': None},
+        return ToolResult(
+            output=None,
+            error=str(exc),
+            base64_image=None,
         )
