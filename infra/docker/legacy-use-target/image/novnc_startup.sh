@@ -11,7 +11,7 @@ echo "starting noVNC"
 ##--vnc 192.168.64.2:5900 \
 # Wait for noVNC to start
 timeout=10
-while [ $timeout -gt 0 ]; do
+while [ "$timeout" -gt 0 ]; do
     if netstat -tuln | grep -q ":6080 "; then
         break
     fi
