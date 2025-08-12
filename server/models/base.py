@@ -46,6 +46,7 @@ class APIDefinitionRuntime:
     # TODO: Move the prompt template in to seperate file
     def _build_full_prompt_template(self) -> str:
         """Build the full prompt template with cleanup and response example instructions."""
+        return self.prompt
         # Build the full prompt with standard instructions
         prompt_full = f'''{self.prompt}
 
