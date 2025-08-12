@@ -260,7 +260,13 @@ class BaseComputerTool:
                     int(output.split('X=')[1].split('\n')[0]),
                     int(output.split('Y=')[1].split('\n')[0]),
                 )
-                return result.replace(output=f'X={x},Y={y}')
+
+                return ToolResult(
+                    output=f'X={x},Y={y}',
+                    error=result.error,
+                    base64_image=result.base64_image,
+                    system=result.system,
+                )
             else:
                 command_parts = [self.xdotool, f'click {CLICK_BUTTONS[action]}']
                 return await self.shell(' '.join(command_parts))

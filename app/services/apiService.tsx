@@ -25,7 +25,7 @@ import {
   type HttpExchangeLog,
   hardDeleteSessionSessionsSessionIdHardDelete,
   hardDeleteTargetTargetsTargetIdHardDelete,
-  type ImportApiDefinitionRequest,
+  type ImportApiDefinitionBody,
   importApiDefinitionApiDefinitionsImportPost,
   interruptJobTargetsTargetIdJobsJobIdInterruptPost,
   type Job,
@@ -158,8 +158,8 @@ export const exportApiDefinition = async (apiName: string) => {
   return exportApiDefinitionApiDefinitionsApiNameExportGet(apiName);
 };
 
-export const importApiDefinition = async (apiDefinition: ImportApiDefinitionRequest) => {
-  return importApiDefinitionApiDefinitionsImportPost(apiDefinition);
+export const importApiDefinition = async (apiDefinition: ImportApiDefinitionBody) => {
+  return importApiDefinitionApiDefinitionsImportPost({ api_definition: apiDefinition });
 };
 
 export const getApiDefinitionDetails = async (apiName: string) => {
@@ -194,9 +194,9 @@ export const getApiDefinitionVersion = async (apiName: string, versionId: string
 
 export const updateApiDefinition = async (
   apiName: string,
-  apiDefinition: ImportApiDefinitionRequest,
+  apiDefinition: ImportApiDefinitionBody,
 ) => {
-  return updateApiDefinitionApiDefinitionsApiNamePut(apiName, apiDefinition);
+  return updateApiDefinitionApiDefinitionsApiNamePut(apiName, { api_definition: apiDefinition });
 };
 
 export const archiveApiDefinition = async (apiName: string) => {
@@ -254,8 +254,10 @@ export const getAllJobs = async (
 export const getJob = async (targetId: string, jobId: string): Promise<Job> => {
   const job = await getJobTargetsTargetIdJobsJobIdGet(targetId, jobId);
   // add Z suffix to the date so JS can parse it as UTC
-  job.created_at = `${job.created_at}Z`;
-  if (job.completed_at) {
+  if (!job.created_at?.includes('Z')) {
+    job.created_at = `${job.created_at}Z`;
+  }
+  if (job.completed_at && !job.completed_at?.includes('Z')) {
     job.completed_at = `${job.completed_at}Z`;
   }
   return job;

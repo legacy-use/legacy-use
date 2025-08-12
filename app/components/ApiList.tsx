@@ -1,11 +1,9 @@
 import {
   Add as AddIcon,
   Archive as ArchiveIcon,
-  ContentCopy as ContentCopyIcon,
   Download as DownloadIcon,
   Edit as EditIcon,
   FileCopy as FileCopyIcon,
-  MoreVert as MoreVertIcon,
   PlayArrow as PlayArrowIcon,
   Settings as SettingsIcon,
   Unarchive as UnarchiveIcon,
@@ -27,9 +25,6 @@ import {
   Grid,
   IconButton,
   InputLabel,
-  ListItemIcon,
-  ListItemText,
-  Menu,
   MenuItem,
   Paper,
   Select,
@@ -71,117 +66,7 @@ const ApiList = () => {
   const [addApiDialogOpen, setAddApiDialogOpen] = useState(false);
   const [duplicateApiDialogOpen, setDuplicateApiDialogOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [menuAnchorEl, setMenuAnchorEl] = useState(null);
-  const [menuApiName, setMenuApiName] = useState(null);
-
-  // Function to generate cURL command
-  const generateCurlCommand = apiName => {
-    if (!selectedTarget || !apiName) return '';
-
-    const apiKey = localStorage.getItem('apiKey');
-    if (!apiKey) {
-      setSnackbarMessage('API key not found. Please log in again.');
-      setSnackbarOpen(true);
-      return '';
-    }
-
-    const api = apis.find(a => a.name === apiName);
-    if (!api) return '';
-
-    const params = paramValues[apiName] || {};
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8088';
-
-    // Properly escape the JSON for curl command
-    const jsonData = JSON.stringify({
-      api_name: apiName,
-      parameters: params,
-    }).replace(/'/g, "'\\''"); // Escape single quotes for shell command
-
-    // Build cURL command
-    const curlCmd = `curl -X POST "${apiUrl}/targets/${selectedTarget}/jobs/" \\
-  -H "Content-Type: application/json" \\
-  -H "X-API-Key: ${apiKey}" \\
-  -d '${jsonData}'`;
-
-    return curlCmd;
-  };
-
-  // Function to copy cURL command to clipboard
-  const handleCopyCurlCommand = () => {
-    if (!menuApiName) {
-      handleCloseMenu();
-      return;
-    }
-
-    const curlCmd = generateCurlCommand(menuApiName);
-    if (!curlCmd) {
-      handleCloseMenu();
-      return;
-    }
-
-    // Check if clipboard API is available
-    if (navigator.clipboard && window.isSecureContext) {
-      // For HTTPS or localhost
-      navigator.clipboard
-        .writeText(curlCmd)
-        .then(() => {
-          setSnackbarMessage('cURL command copied to clipboard');
-          setSnackbarOpen(true);
-          handleCloseMenu();
-        })
-        .catch(err => {
-          console.error('Error copying to clipboard:', err);
-          setSnackbarMessage('Failed to copy to clipboard');
-          setSnackbarOpen(true);
-          handleCloseMenu();
-        });
-    } else {
-      // Fallback for non-HTTPS contexts
-      try {
-        // Create a temporary textarea element
-        const textArea = document.createElement('textarea');
-        textArea.value = curlCmd;
-
-        // Make it invisible
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-999999px';
-        textArea.style.top = '-999999px';
-
-        // Add it to the document
-        document.body.appendChild(textArea);
-
-        // Select and copy the text
-        textArea.focus();
-        textArea.select();
-        document.execCommand('copy');
-
-        // Remove the temporary element
-        textArea.remove();
-
-        setSnackbarMessage('cURL command copied to clipboard');
-        setSnackbarOpen(true);
-        handleCloseMenu();
-      } catch (err) {
-        console.error('Error copying to clipboard:', err);
-        setSnackbarMessage('Failed to copy to clipboard');
-        setSnackbarOpen(true);
-        handleCloseMenu();
-      }
-    }
-  };
-
-  // Function to open menu
-  const handleOpenMenu = (event, apiName) => {
-    event.stopPropagation();
-    setMenuApiName(apiName);
-    setMenuAnchorEl(event.currentTarget);
-  };
-
-  // Function to close menu
-  const handleCloseMenu = () => {
-    setMenuAnchorEl(null);
-    setMenuApiName(null);
-  };
+  const [duplicateApiName, setDuplicateApiName] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -566,8 +451,8 @@ const ApiList = () => {
   };
 
   // Function to handle API duplication
-  const handleDuplicateClick = () => {
-    handleCloseMenu();
+  const handleDuplicateClick = apiName => {
+    setDuplicateApiName(apiName);
     setDuplicateApiDialogOpen(true);
   };
 
@@ -708,17 +593,6 @@ const ApiList = () => {
                               <DownloadIcon />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="Duplicate API">
-                            <IconButton
-                              onClick={() => {
-                                setMenuApiName(api.name);
-                                setDuplicateApiDialogOpen(true);
-                              }}
-                              aria-label="duplicate api"
-                            >
-                              <FileCopyIcon />
-                            </IconButton>
-                          </Tooltip>
                           {api.is_archived ? (
                             <Tooltip title="Unarchive API">
                               <IconButton
@@ -740,6 +614,14 @@ const ApiList = () => {
                           )}
                         </>
                       )}
+                      <Tooltip title="Duplicate API">
+                        <IconButton
+                          onClick={() => handleDuplicateClick(api.name)}
+                          aria-label="duplicate api"
+                        >
+                          <FileCopyIcon />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Edit API Definition">
                         <IconButton
                           onClick={() => navigate(`/apis/${api.name}/edit`)}
@@ -773,18 +655,6 @@ const ApiList = () => {
                           >
                             {executingApi === api.name ? 'Executing...' : 'Execute'}
                           </Button>
-                          <Tooltip title="More options">
-                            <IconButton
-                              aria-label="more options"
-                              aria-controls={`api-menu-${api.name}`}
-                              aria-haspopup="true"
-                              onClick={event => handleOpenMenu(event, api.name)}
-                              sx={{ ml: 1 }}
-                              disabled={executingApi !== null}
-                            >
-                              <MoreVertIcon />
-                            </IconButton>
-                          </Tooltip>
                         </>
                       )}
                     </Box>
@@ -880,30 +750,8 @@ const ApiList = () => {
         open={duplicateApiDialogOpen}
         onClose={() => setDuplicateApiDialogOpen(false)}
         onApiDuplicated={handleApiDuplicated}
-        apiName={menuApiName}
+        apiName={duplicateApiName}
       />
-
-      {/* API Options Menu */}
-      <Menu
-        id={`api-menu-${menuApiName}`}
-        anchorEl={menuAnchorEl}
-        keepMounted
-        open={Boolean(menuAnchorEl)}
-        onClose={handleCloseMenu}
-      >
-        <MenuItem onClick={handleCopyCurlCommand}>
-          <ListItemIcon>
-            <ContentCopyIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText primary="Copy cURL command" />
-        </MenuItem>
-        <MenuItem onClick={handleDuplicateClick}>
-          <ListItemIcon>
-            <FileCopyIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText primary="Duplicate API" />
-        </MenuItem>
-      </Menu>
     </Box>
   );
 };

@@ -5,13 +5,14 @@ Session management routes.
 import asyncio
 import logging
 import re
+from subprocess import CalledProcessError
 from typing import Any, Dict, List
 from uuid import UUID
 
 import httpx
 import requests
 import websockets
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -22,11 +23,11 @@ from server.models.base import (
     RecordingResultResponse,
     RecordingStatusResponse,
     Session,
+    SessionContainerLogs,
     SessionCreate,
     SessionUpdate,
 )
 from server.utils.db_dependencies import get_tenant_db, get_tenant_db_websocket
-from server.utils.tenant_utils import get_tenant_from_request
 from server.utils.docker_manager import (
     get_container_status,
     launch_container,
@@ -36,6 +37,7 @@ from server.utils.telemetry import (
     capture_session_created,
     capture_session_deleted,
 )
+from server.utils.tenant_utils import get_tenant_from_request
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +60,7 @@ async def list_sessions(
     for session in sessions:
         if container_id := session.get('container_id'):
             container_status = await get_container_status(
-                container_id, state=session.get('state')
+                container_id, session_state=session.get('state')
             )
             session['container_status'] = container_status
 
@@ -121,7 +123,7 @@ async def create_session(
             # Add container status
             if container_id := session_data.get('container_id'):
                 container_status = await get_container_status(
-                    container_id, state=session_data.get('state')
+                    container_id, session_state=session_data.get('state')
                 )
                 session_data['container_status'] = container_status
 
@@ -155,6 +157,8 @@ async def create_session(
         'REMOTE_PASSWORD': target.get('password'),
         'WIDTH': str(target.get('width', 1024)),
         'HEIGHT': str(target.get('height', 768)),
+        # RDP customization
+        'RDP_PARAMS': target.get('rdp_params'),
     }
 
     # Launch Docker container for the session
@@ -182,7 +186,7 @@ async def create_session(
         # Add container status
         if container_id := db_session.get('container_id'):
             container_status = await get_container_status(
-                container_id, state=db_session.get('state')
+                container_id, session_state=db_session.get('state')
             )
             db_session['container_status'] = container_status
     else:
@@ -203,7 +207,7 @@ async def get_session(session_id: UUID, db_tenant=Depends(get_tenant_db)):
         # If the session has a container_id, get container status
         if container_id := session.get('container_id'):
             container_status = await get_container_status(
-                container_id, state=session.get('state')
+                container_id, session_state=session.get('state')
             )
             # Add container status to session data
             session['container_status'] = container_status
@@ -228,7 +232,7 @@ async def update_session(
     # Add container status if container_id exists
     if container_id := updated_session.get('container_id'):
         container_status = await get_container_status(
-            container_id, state=updated_session.get('state')
+            container_id, session_state=updated_session.get('state')
         )
         updated_session['container_status'] = container_status
 
@@ -702,10 +706,10 @@ async def get_session_recording_status(
         )
 
 
-@session_router.get('/{session_id}/container_logs')
+@session_router.get('/{session_id}/container_logs', response_model=SessionContainerLogs)
 async def get_session_container_logs(
     session_id: UUID, lines: int = 1000, db_tenant=Depends(get_tenant_db)
-):
+) -> SessionContainerLogs:
     """Get Docker logs for a session's container."""
     session = db_tenant.get_session(session_id)
     if not session:
@@ -729,23 +733,25 @@ async def get_session_container_logs(
         if not logs:
             logs = 'No logs available for this container.'
 
-        return {
-            'session_id': str(session_id),
-            'container_id': session['container_id'],
-            'logs': logs,
-            'lines_retrieved': len(logs.splitlines()),
-            'max_lines_requested': lines,
-        }
-
-    except subprocess.CalledProcessError as e:
+        return SessionContainerLogs(
+            session_id=str(session_id),
+            container_id=session['container_id'],
+            logs=logs,
+            lines_retrieved=len(logs.splitlines()),
+            max_lines_requested=lines,
+        )
+    except CalledProcessError as e:
         logger.error(f'Error getting Docker logs for session {session_id}: {e.stderr}')
         raise HTTPException(
             status_code=500, detail=f'Failed to retrieve Docker logs: {e.stderr}'
         )
     except Exception as e:
-        logger.error(
-            f'Unexpected error getting Docker logs for session {session_id}: {str(e)}'
-        )
+        # Handle CalledProcessError and other exceptions uniformly
+        try:
+            stderr = e.stderr  # type: ignore[attr-defined]
+        except Exception:
+            stderr = str(e)
+        logger.error(f'Error getting Docker logs for session {session_id}: {stderr}')
         raise HTTPException(
-            status_code=500, detail=f'Unexpected error retrieving Docker logs: {str(e)}'
+            status_code=500, detail=f'Failed to retrieve Docker logs: {stderr}'
         )

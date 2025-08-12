@@ -17,6 +17,7 @@ import traceback
 from datetime import datetime
 
 from server.models.base import Job, JobStatus
+from server.settings import settings
 from server.utils.db_dependencies import TenantAwareDatabaseService
 from server.utils.telemetry import capture_job_resolved
 from server.utils.job_logging import add_job_log
@@ -29,6 +30,10 @@ from server.utils.job_locks import get_target_lock, _check_preconditions_and_set
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+# Remove global database service - will use TenantAwareDatabaseService per tenant
+# db = DatabaseService()
+
 
 # Dictionary to store running job tasks
 running_job_tasks = {}
@@ -179,10 +184,8 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
             running_token_total = running_token_total_ref[0]
 
             # Check if cancellation was due to token limit
-            if (
-                running_token_total > 200000
-            ):  # TOKEN_LIMIT constant moved to job_callbacks.py
-                error_message = f'Job was automatically terminated: exceeded token limit of 200000 tokens (used {running_token_total} tokens)'
+            if running_token_total > settings.TOKEN_LIMIT:
+                error_message = f'Job was automatically terminated: exceeded token limit of {settings.TOKEN_LIMIT} tokens (used {running_token_total} tokens)'
                 add_job_log(job_id_str, 'system', error_message, tenant_schema)
             else:
                 add_job_log(
@@ -197,7 +200,7 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
                     {
                         'status': JobStatus.ERROR,
                         'error': 'Job was automatically terminated: exceeded token limit'
-                        if running_token_total > 200000
+                        if running_token_total > settings.TOKEN_LIMIT
                         else 'Job was interrupted by user',
                         'completed_at': datetime.now(),
                         'updated_at': datetime.now(),
@@ -236,13 +239,11 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
         running_token_total = running_token_total_ref[0]
 
         # Check if this was due to token limit
-        if (
-            running_token_total > 200000
-        ):  # TOKEN_LIMIT constant moved to job_callbacks.py
+        if running_token_total > settings.TOKEN_LIMIT:
             add_job_log(
                 job_id_str,
                 'system',
-                f'Job execution was cancelled due to token limit ({running_token_total}/200000)',
+                f'Job execution was cancelled due to token limit ({running_token_total}/{settings.TOKEN_LIMIT})',
                 tenant_schema,
             )
         else:

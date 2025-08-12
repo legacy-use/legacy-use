@@ -28,6 +28,8 @@ jobs:
         run: uv sync
       - name: Setup environment
         run: cp .env.template .env
+      - name: Run database migrations
+        run: make db-migrate
       - name: Tests
         uses: liskin/gh-problem-matcher-wrap@v3
         with:

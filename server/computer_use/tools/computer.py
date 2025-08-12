@@ -130,22 +130,45 @@ class BaseComputerTool(BaseAnthropicTool):
             if v is not None:
                 payload[k] = v
 
+        response = None
+
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(api_url, json=payload)
 
-                # Parse the response
-                result = response.json()
+                if not response.is_success:
+                    result = None
+                    try:
+                        result = response.json()
+                    except Exception:
+                        result = response.text or f'HTTP {response.status_code}'
 
-                # Convert the response to a ToolResult
-                return ToolResult(
-                    output=result.get('output'),
-                    error=result.get('error'),
-                    base64_image=result.get('base64_image'),
-                )
+                    return ToolResult(
+                        output=None,
+                        error=result,
+                        base64_image=None,
+                    )
+
+                result = response.json()
+                if isinstance(result, dict):
+                    return ToolResult(
+                        output=result.get('output'),
+                        error=result.get('error'),
+                        base64_image=result.get('base64_image'),
+                    )
+
+                return ToolResult(output=response.text)
 
         except Exception as e:
             logger.error(f'Unexpected error in _forward_request for {action}: {str(e)}')
+            if response is not None:
+                logger.error(
+                    f"API error response for action '{action}' with status: {response.status_code} and content: {response.text}"
+                )
+                return ToolResult(output=None, error=response.text)
+            logger.error(
+                f"Exception in _forward_request for action '{action}' with error: {type(e).__name__}: {e}"
+            )
             raise ToolError(f'Unexpected error: {str(e)}') from e
 
 

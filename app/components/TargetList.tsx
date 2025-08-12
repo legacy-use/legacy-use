@@ -35,7 +35,15 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { deleteTarget, getJobs, getTarget, getTargets, updateTarget, unarchiveTarget } from '../services/apiService';
+import {
+  deleteTarget,
+  getJobs,
+  getTarget,
+  getTargets,
+  unarchiveTarget,
+  updateTarget,
+} from '../services/apiService';
+
 import ResolutionRecommendation from './ResolutionRecommendation';
 import VPNConfigInputField from './VPNConfigInputField';
 
@@ -176,6 +184,7 @@ const TargetList = () => {
         vpn_config: targetDetails.vpn_config || '',
         vpn_username: targetDetails.vpn_username || '',
         vpn_password: targetDetails.vpn_password || '',
+        rdp_params: targetDetails.rdp_params || '',
       });
       setEditTargetDialogOpen(true);
     } catch (err) {
@@ -678,6 +687,24 @@ const TargetList = () => {
                 InputProps={{ inputProps: { min: 1 } }}
               />
             </Grid>
+
+            {/* RDP customization options */}
+            {(editFormData.type?.startsWith('rdp') || editFormData.type?.includes('rdp')) && (
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  label="FreeRDP parameters"
+                  name="rdp_params"
+                  value={editFormData.rdp_params || ''}
+                  onChange={handleEditChange}
+                  disabled={editInProgress}
+                  placeholder="Defaults: /f +auto-reconnect +clipboard /cert:ignore. You can add or override here. Username (/u), Password (/p) and Host (/v) are always included."
+                  margin="normal"
+                />
+              </Grid>
+            )}
 
             {/* Resolution recommendation warning */}
             <Grid item xs={12}>

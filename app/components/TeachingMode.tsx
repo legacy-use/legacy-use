@@ -3,9 +3,13 @@ import { Alert, Box, Button, Card, CardContent, CircularProgress, Typography } f
 import { useContext, useState } from 'react';
 import { useLocalStorage } from 'usehooks-ts';
 import { SessionContext } from '../App';
-import type { AnalyzeVideoAiAnalyzePostResult, RecordingResultResponse } from '../gen/endpoints';
+import {
+  type AnalyzeVideoAiAnalyzePostResult,
+  type RecordingResultResponse,
+  RecordingStatus,
+} from '../gen/endpoints';
 import { analyzeVideo } from '../services/apiService';
-import { base64ToVideoFile } from '../utils/video';
+import { base64ToVideoFile, fileToBase64 } from '../utils/video';
 import RecordingButton from './RecordingButton';
 import RecordingResultViewer from './RecordingResultViewer';
 import TeachingModeBuilder from './TeachingModeBuilder';
@@ -27,18 +31,12 @@ export default function TeachingMode() {
   const [analyzeError, setAnalyzeError] = useState<null | string>(null);
   const [analyzeProgress, setAnalyzeProgress] = useState(false);
 
-  const handleAnalyzeRecording = async (recording: RecordingResultResponse) => {
+  const handleAnalyzeRecording = async (videoFile: File) => {
     setAnalyzeProgress(true);
     setAnalyzeError(null);
 
     try {
-      const videoFile = base64ToVideoFile(
-        recording.base64_video,
-        `recording_${recording.recording_id}.mp4`,
-      );
-
       const analysisResult = await analyzeVideo(videoFile);
-
       setAnalyzeResult(analysisResult);
       setAnalyzeProgress(false);
       setAnalyzeError(null);
@@ -52,7 +50,27 @@ export default function TeachingMode() {
 
   const onRecordingStopped = (recordingResult: RecordingResultResponse) => {
     setRecordingResult(recordingResult);
-    handleAnalyzeRecording(recordingResult);
+    const videoFile = base64ToVideoFile(
+      recordingResult.base64_video,
+      `recording_${recordingResult.recording_id}.mp4`,
+    );
+    handleAnalyzeRecording(videoFile);
+  };
+
+  const onVideoFileSelected = async (file: File) => {
+    const base64Video = await fileToBase64(file);
+
+    setRecordingResult({
+      status: RecordingStatus.completed,
+      message: 'Uploaded video file',
+      recording_id: crypto.randomUUID(),
+      file_size_bytes: file.size,
+      base64_video: base64Video.replace('data:video/mp4;base64,', ''),
+      input_logs: [],
+    });
+
+    setAnalyzeResult(null);
+    handleAnalyzeRecording(file);
   };
 
   if (!currentSession || currentSession.is_archived || currentSession.state !== 'ready') {
@@ -96,7 +114,9 @@ export default function TeachingMode() {
                   onClick={() => {
                     if (recordingResult) {
                       setAnalyzeResult(null);
-                      handleAnalyzeRecording(recordingResult);
+                      handleAnalyzeRecording(
+                        base64ToVideoFile(recordingResult.base64_video, 'recording.mp4'),
+                      );
                     }
                   }}
                   color="primary"
@@ -111,7 +131,11 @@ export default function TeachingMode() {
                 <Button
                   variant="contained"
                   color="primary"
-                  onClick={() => handleAnalyzeRecording(recordingResult)}
+                  onClick={() =>
+                    handleAnalyzeRecording(
+                      base64ToVideoFile(recordingResult.base64_video, 'recording.mp4'),
+                    )
+                  }
                   disabled={analyzeProgress}
                   startIcon={analyzeProgress ? <CircularProgress size={16} /> : <Circle />}
                 >
@@ -132,6 +156,7 @@ export default function TeachingMode() {
               <RecordingButton
                 sessionId={currentSession.id}
                 onRecordingStopped={onRecordingStopped}
+                onVideoFileSelected={file => onVideoFileSelected(file)}
               />
             )}
 

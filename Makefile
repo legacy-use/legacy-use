@@ -10,6 +10,9 @@ ensure-env:
 		echo "✅ .env file already exists"; \
 	fi
 
+db-migrate:
+	uv run alembic -c server/alembic.ini upgrade head
+
 server:
 	uv run uvicorn server.server:app --host 0.0.0.0 --port 8088 --reload --reload-dir server --reload-include .env
 

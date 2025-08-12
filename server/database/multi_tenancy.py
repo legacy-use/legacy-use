@@ -9,6 +9,11 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from server.database.models import Base, Tenant
+from server.database.service import DatabaseService
+
+
+# Single default DatabaseService (engine + pool) reused across tenant sessions
+db_session = DatabaseService()
 
 
 def get_shared_metadata():
@@ -31,16 +36,13 @@ def get_tenant_specific_metadata():
 @contextmanager
 def with_db(tenant_schema: Optional[str]):
     """Context manager that returns a database session with tenant mapping."""
-    from server.database.service import DatabaseService
-
-    db_service = DatabaseService()
 
     if tenant_schema:
         schema_translate_map = dict(tenant=tenant_schema)
     else:
         schema_translate_map = None
 
-    connectable = db_service.engine.execution_options(
+    connectable = db_session.engine.execution_options(
         schema_translate_map=schema_translate_map
     )
 
@@ -91,10 +93,7 @@ def tenant_delete(schema: str) -> None:
 
 def get_tenant_by_host(host: str) -> Optional[Tenant]:
     """Get tenant by host."""
-    from server.database.service import DatabaseService
-
-    db_service = DatabaseService()
-    session = db_service.Session()
+    session = db_session.Session()
     try:
         return session.query(Tenant).filter(Tenant.host == host).first()
     finally:
@@ -103,10 +102,7 @@ def get_tenant_by_host(host: str) -> Optional[Tenant]:
 
 def get_tenant_by_schema(schema: str) -> Optional[Tenant]:
     """Get tenant by schema."""
-    from server.database.service import DatabaseService
-
-    db_service = DatabaseService()
-    session = db_service.Session()
+    session = db_session.Session()
     try:
         return session.query(Tenant).filter(Tenant.schema == schema).first()
     finally:

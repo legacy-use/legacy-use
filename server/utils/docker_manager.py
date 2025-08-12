@@ -2,18 +2,17 @@
 Docker container management utilities for session management.
 """
 
-import json
 import logging
-import subprocess
 import time
+from subprocess import CalledProcessError
 from typing import Dict, Optional, Tuple
 
+import docker as docker_sdk
 import httpx
 
-logger = logging.getLogger(__name__)
+docker = docker_sdk.from_env()
 
-# Port to use for the computer API inside the container
-CONTAINER_PORT = 8088
+logger = logging.getLogger(__name__)
 
 
 async def check_target_container_health(container_ip: str) -> dict:
@@ -69,40 +68,37 @@ def get_container_ip(container_id: str) -> Optional[str]:
     Returns:
         IP address as string or None if not found
     """
+    container = docker.containers.get(container_id)
+    networks = container.attrs['NetworkSettings']['Networks']
+    for network in networks.values():
+        ip_address = network['IPAddress']
+        if ip_address:
+            logger.info(f'Container {container_id} has IP address {ip_address}')
+            return ip_address
+    logger.error(f'Could not get IP address for container {container_id}')
+    return None
+
+
+def get_docker_network_mode() -> Optional[str]:
+    """Check if we are running in docker and get network info."""
     try:
-        result = subprocess.run(
-            [
-                'docker',
-                'inspect',
-                '-f',
-                '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}',
-                container_id,
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        container = docker.containers.get('legacy-use-backend')
+        networks = container.attrs['NetworkSettings']['Networks']
 
-        ip_address = result.stdout.strip()
-        if not ip_address:
-            logger.error(f'No IP address found for container {container_id}')
-            return None
-
-        logger.info(f'Container {container_id} has IP address {ip_address}')
-        return ip_address
-    except subprocess.CalledProcessError as e:
-        logger.error(f'Error getting container IP: {e.stderr}')
-        return None
+        # If we're on a custom network (not just 'bridge'), join the target container to it
+        for network_name in networks.keys():
+            if network_name != 'bridge':
+                logger.info(f'Connecting target container to network: {network_name}')
+                return network_name
     except Exception as e:
-        logger.error(f'Unexpected error getting container IP: {str(e)}')
-        return None
+        logger.warning(f'Could not determine network configuration, using default: {e}')
 
 
 def launch_container(
     target_type: str,
     session_id: Optional[str] = None,
     container_params: Optional[Dict[str, str]] = None,
-    tenant_schema: Optional[str] = None,
+    tenant_schema: str = 'default',
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Launch a Docker container for the specified target type.
@@ -112,116 +108,62 @@ def launch_container(
         session_id: Optional session ID to use in container name
         container_params: Optional dictionary of parameters to pass as environment variables
                           to the container (e.g., HOST_IP, VNC_PASSWORD, TAILSCALE_AUTH_KEY, WIDTH, HEIGHT).
-        tenant_schema: Optional tenant schema name to include in container name
+        tenant_schema: Optional tenant schema name to include in container name, fallback to 'default'
 
     Returns:
         Tuple of (container_id, container_ip) or (None, None) if failed
     """
+    # Construct container name
+    timestamp = int(time.time())
+    identifier = session_id.replace('-', '')[:12] if session_id else timestamp
+    container_name = f'legacy-use-session-{tenant_schema}-{identifier}'
+
+    if container_params is None:
+        container_params = {}
+
+    # Check if we're running inside a docker-compose setup
+    # by checking if we're connected to a custom network
+    # and if so, extend the docker_cmd with the network name
+    network_mode = get_docker_network_mode()
+
     try:
-        # Construct container name
-        if session_id:
-            # Docker container names must be valid DNS names, so we'll use a shorter version of the UUID
-            # and ensure it follows Docker's naming rules
-            short_id = session_id.replace('-', '')[:12]  # First 12 chars without dashes
-            if tenant_schema:
-                # Include tenant schema in container name for better identification
-                container_name = f'legacy-use-{tenant_schema}-session-{short_id}'
-            else:
-                container_name = f'legacy-use-session-{short_id}'
-        else:
-            # Use a timestamp-based name if no session ID
-            if tenant_schema:
-                container_name = (
-                    f'legacy-use-{tenant_schema}-session-{int(time.time())}'
-                )
-            else:
-                container_name = f'session-{int(time.time())}'
-
-        if container_params is None:
-            container_params = {}
-
-        # Prepare docker run command
-        docker_cmd = [
-            'docker',
-            'run',
-            '-d',  # Run in detached mode
-            '--name',
-            container_name,  # Name container based on session ID
-        ]
-
-        # Check if we're running inside a docker-compose setup
-        # by checking if we're connected to a custom network
-        # and if so, extend the docker_cmd with the network name
-        import subprocess
-
-        try:
-            # Get current container's network info
-            result = subprocess.run(
-                [
-                    'docker',
-                    'inspect',
-                    'legacy-use-api',
-                    '--format',
-                    '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}}{{end}}',
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-            current_networks = result.stdout.strip().split()
-
-            # If we're on a custom network (not just 'bridge'), join the target container to it
-            for network in current_networks:
-                if network != 'bridge':
-                    docker_cmd.extend(['--network', network])
-                    logger.info(f'Connecting target container to network: {network}')
-                    break
-        except Exception as e:
-            logger.warning(
-                f'Could not determine network configuration, using default: {e}'
-            )
-
+        devices = []
+        cap_add = []
         # add options for openvpn
         if container_params.get('REMOTE_VPN_TYPE', '').lower() == 'openvpn':
-            docker_cmd.extend(
-                [
-                    '--cap-add=NET_ADMIN',  # Required for VPN/TUN interface management
-                    '--cap-add=NET_RAW',  # Required for network interface configuration
-                    '--device=/dev/net/tun:/dev/net/tun',  # Required for VPN tunneling
-                ]
-            )
+            cap_add.append('NET_ADMIN')  # Required for VPN/TUN interface management
+            cap_add.append('NET_RAW')  # Required for network interface configuration
+            devices.append('/dev/net/tun:/dev/net/tun')  # Required for VPN tunneling
 
-        # Add environment variables from container_params
-        for key, value in container_params.items():
-            if value:  # Only add if the value is not None or empty
-                docker_cmd.extend(['-e', f'{key}={value}'])
+        logger.info(f'Launching docker container {container_name}')
 
-        # Add image name
-        docker_cmd.append('legacy-use-target:local')
-        logger.info(f'Launching docker container with command: {" ".join(docker_cmd)}')
+        container = docker.containers.run(
+            'legacy-use-target:local',
+            name=container_name,
+            detach=True,
+            network=network_mode,
+            environment=container_params,
+            devices=devices,
+            cap_add=cap_add,
+        )
 
-        # Launch container
-        result = subprocess.run(docker_cmd, capture_output=True, text=True, check=True)
-
-        container_id = result.stdout.strip()
-        logger.info(f'Launched container {container_id} for target type {target_type}')
-
-        # Get container IP address
-        container_ip = get_container_ip(container_id)
-        if not container_ip:
-            logger.error(f'Could not get IP address for container {container_id}')
-            stop_container(container_id)
+        if not container or not container.id:
+            logger.error(f'Failed to launch container {container_name}')
             return None, None
 
-        logger.info(f'Container {container_id} running with IP {container_ip}')
+        logger.info(f'Launched container {container.id} for target type {target_type}')
 
-        return container_id, container_ip
-    except subprocess.CalledProcessError as e:
+        # Get container IP address
+        container_ip = get_container_ip(container.id)
+        if not container_ip:
+            stop_container(container.id)
+            return None, None
+
+        logger.info(f'Container {container.id} running with IP {container_ip}')
+
+        return container.id, container_ip
+    except CalledProcessError as e:
         logger.error(f'Error launching container: {e.stderr}')
-        return None, None
-    except Exception as e:
-        logger.error(f'Unexpected error launching container: {str(e)}')
         return None, None
 
 
@@ -235,26 +177,14 @@ def stop_container(container_id: str) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    try:
-        # Stop container
-        subprocess.run(
-            ['docker', 'stop', container_id], capture_output=True, check=True
-        )
-
-        # Remove container
-        subprocess.run(['docker', 'rm', container_id], capture_output=True, check=True)
-
-        logger.info(f'Stopped and removed container {container_id}')
-        return True
-    except subprocess.CalledProcessError as e:
-        logger.error(f'Error stopping container {container_id}: {e.stderr}')
-        return False
-    except Exception as e:
-        logger.error(f'Unexpected error stopping container {container_id}: {str(e)}')
-        return False
+    logger.info(f'Stopping and removing container {container_id}')
+    docker.containers.get(container_id).stop(timeout=1)
+    docker.containers.get(container_id).remove()
+    logger.info(f'Stopped and removed container {container_id}')
+    return True
 
 
-async def get_container_status(container_id: str, state: str) -> Dict:
+async def get_container_status(container_id: str, session_state: str) -> Dict:
     """
     Get status information about a container.
 
@@ -269,73 +199,56 @@ async def get_container_status(container_id: str, state: str) -> Dict:
         Dictionary with container status information. If there is an error,
         the dictionary will contain an 'error' field with the error message.
     """
-    try:
-        log_msg = f'Getting status for container {container_id}'
-        if state:
-            log_msg += f' (session state: {state})'
 
-        # Use debug level for ready containers, info level for initializing
-        if state in ['destroying', 'destroyed']:
-            return {'id': container_id, 'state': {'Status': 'unavailable'}}
-        else:
-            logger.info(log_msg)
+    if session_state in ['destroying', 'destroyed']:
+        return {'id': container_id, 'state': {'Status': 'unavailable'}}
 
-        result = subprocess.run(
-            ['docker', 'inspect', container_id],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+    logger.info(
+        f'Getting status for container {container_id} (session state: {session_state})'
+    )
 
-        container_info = json.loads(result.stdout)[0]
-
-        # Get basic container status
-        status_data = {
-            'id': container_id,
-            'image': container_info.get('Config', {}).get('Image', 'unknown'),
-            'state': container_info.get('State', {}),
-            'network_settings': container_info.get('NetworkSettings', {}),
-        }
-
-        # Get container IP
-        container_ip = get_container_ip(container_id)
-
-        # Check health endpoint if container is running and we have an IP
-        if container_ip and True:
-            status_data['health'] = await check_target_container_health(container_ip)
-            status_data['health']['timestamp'] = time.strftime('%Y-%m-%dT%H:%M:%S%z')
-
-        # Get load average using docker exec
-        try:
-            # Execute cat /proc/loadavg in the container to get load average
-            load_avg_result = subprocess.run(
-                ['docker', 'exec', container_id, 'cat', '/proc/loadavg'],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-            # Parse the load average values (first three values are 1min, 5min, 15min)
-            load_avg_values = load_avg_result.stdout.strip().split()
-            if len(load_avg_values) >= 3:
-                status_data['load_average'] = {
-                    'load_1': load_avg_values[0],
-                    'load_5': load_avg_values[1],
-                    'load_15': load_avg_values[2],
-                    'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
-                }
-
-        except Exception as e:
-            logger.warning(
-                f'Could not get load average for container {container_id}: {str(e)}'
-            )
-            # Add empty load average data if there's an error
-            status_data['load_average'] = {'error': str(e)}
-
-        return status_data
-    except subprocess.CalledProcessError as e:
-        logger.error(f'Error getting container status: {e.stderr}')
+    container = docker.containers.get(container_id)
+    if not container:
+        logger.error(f'Container {container_id} not found')
         return {'id': container_id, 'state': {'Status': 'not_found'}}
+
+    # Status information
+    status_data = {
+        'id': container_id,
+        'image': container.attrs.get('Config', {}).get('Image', 'unknown'),
+        'state': container.attrs.get('State', {}),
+        'network_settings': container.attrs.get('NetworkSettings', {}),
+    }
+
+    # Check health endpoint if container is running and we have an IP
+    container_ip = get_container_ip(container_id)
+    if container_ip:
+        status_data['health'] = await check_target_container_health(container_ip)
+        status_data['health']['timestamp'] = time.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+    # Get load average using docker exec
+    # Execute cat /proc/loadavg in the container to get load average
+    loadavg = container.exec_run(['cat', '/proc/loadavg'])
+    if loadavg.exit_code != 0:
+        logger.warning(
+            f'Failed to get load average for {container_id}: {loadavg.output}'
+        )
+        status_data['load_average'] = {'error': str(loadavg.output)}
+        return status_data
+
+    try:
+        loadavg_values = loadavg.output.strip().split()
+        if len(loadavg_values) >= 3:
+            status_data['load_average'] = {
+                'load_1': loadavg_values[0],
+                'load_5': loadavg_values[1],
+                'load_15': loadavg_values[2],
+                'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+            }
     except Exception as e:
-        logger.error(f'Error getting container status: {str(e)}')
-        return {'id': container_id, 'state': {'Status': 'error', 'Error': str(e)}}
+        logger.warning(
+            f'Could not get load average for container {container_id}: {str(e)}'
+        )
+        status_data['load_average'] = {'error': str(e)}
+
+    return status_data
