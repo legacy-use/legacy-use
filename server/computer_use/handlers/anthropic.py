@@ -192,6 +192,23 @@ class AnthropicHandler(BaseProviderHandler):
         logger.info(f'Input summary: {summarize_beta_messages(messages)}')
         logger.debug('System being sent to Anthropic (text only)')
 
+        # iterate recursively and shorten any message longer than 10000 characters to 10
+        def shorten_message(message):
+            if isinstance(message, list):
+                return [shorten_message(m) for m in message]
+            elif isinstance(message, dict):
+                return {
+                    shorten_message(k): shorten_message(v) for k, v in message.items()
+                }
+            elif isinstance(message, str):
+                if len(message) > 10000:
+                    return message[:7] + '...'
+                else:
+                    return message
+            return message
+
+        logger.info(f'Shortened messages: {shorten_message(messages)}')
+
         try:
             # Some client variants expect `system` as str; extract from BetaTextBlockParam
             system_text = (
