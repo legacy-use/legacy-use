@@ -21,6 +21,9 @@ from server.computer_use.handlers.base import BaseProviderHandler
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolCollection, ToolResult
 from server.computer_use.utils import _make_api_tool_result
+from server.computer_use.converters import (
+    internal_specs_to_openai_chat_functions,
+)
 
 from openai import AsyncOpenAI
 from openai.types.chat import (
@@ -318,9 +321,12 @@ class OpenAIHandler(BaseProviderHandler):
     def prepare_tools(
         self, tool_collection: ToolCollection
     ) -> list[ChatCompletionToolParam]:
-        tools: list[ChatCompletionToolParam] = tool_collection.to_openai_tools()  # type: ignore[assignment]
+        # Build OpenAI tool definitions from each tool's internal_spec().
+        tools: list[ChatCompletionToolParam] = internal_specs_to_openai_chat_functions(
+            list(tool_collection.tools)
+        )
         logger.debug(
-            f'OpenAI tools after conversion: {[t["function"]["name"] for t in tools]}'
+            f'OpenAI tools after conversion: {[t.get("function", {}).get("name") for t in tools]}'
         )
         return tools
 
@@ -352,10 +358,26 @@ class OpenAIHandler(BaseProviderHandler):
             full_messages.append(sys_msg)
         full_messages.extend(messages)
 
-        logger.info(f'Messages: {len(full_messages)} total')
+        # iterate recursively and shorten any message longer than 10000 characters to 10
+        def shorten_message(message):
+            if isinstance(message, list):
+                return [shorten_message(m) for m in message]
+            elif isinstance(message, dict):
+                return {
+                    shorten_message(k): shorten_message(v) for k, v in message.items()
+                }
+            elif isinstance(message, str):
+                if len(message) > 10000:
+                    return message[:7] + '...'
+                else:
+                    return message
+            return message
+
+        logger.info(f'Messages: {shorten_message(full_messages)}')
         logger.info(
-            f'Tools: {[t["function"]["name"] for t in tools] if tools else "None"}'
+            f'Tools: {[t.get("function", {}).get("name") for t in tools] if tools else "None"}'
         )
+
         logger.info(f'Tools: {tools}')
 
         response = await client.chat.completions.with_raw_response.create(
@@ -437,12 +459,15 @@ class OpenAIHandler(BaseProviderHandler):
 
             def normalize_part(p: str) -> str:
                 low = p.lower()
-                if low in {'ctrl', 'control'}:
+                # Collapse left/right variants to base modifiers
+                if low in {'ctrl', 'control', 'ctrl_l', 'ctrl_r'}:
                     return 'ctrl'
-                if low in {'shift'}:
+                if low in {'shift', 'shift_l', 'shift_r'}:
                     return 'shift'
-                if low in {'alt'}:
+                if low in {'alt', 'alt_l', 'alt_r', 'option'}:
                     return 'alt'
+                if low in {'super_l', 'super_r'}:
+                    return 'Super_L'
                 if low in alias_map:
                     return alias_map[low]
                 # Function keys
@@ -462,6 +487,25 @@ class OpenAIHandler(BaseProviderHandler):
             logger.info(
                 f'Converting {len(message.tool_calls)} tool calls from OpenAI response'
             )
+            # Computer tool action names exposed as individual functions
+            computer_actions = {
+                'screenshot',
+                'left_click',
+                'mouse_move',
+                'type',
+                'key',
+                'scroll',
+                'left_click_drag',
+                'right_click',
+                'middle_click',
+                'double_click',
+                'triple_click',
+                'left_mouse_down',
+                'left_mouse_up',
+                'hold_key',
+                'wait',
+            }
+
             for tool_call in message.tool_calls:
                 try:
                     # Parse the function arguments
@@ -473,20 +517,26 @@ class OpenAIHandler(BaseProviderHandler):
                     )
                     logger.debug(f'Raw arguments: {tool_call.function.arguments}')
 
-                    # Special handling for computer tool
-                    if tool_call.function.name == 'computer':
+                    tool_name = tool_call.function.name
+
+                    # Special handling for computer tool or any of its action functions
+                    if tool_name == 'computer' or tool_name in computer_actions:
+                        # If called as an action function, embed action name
+                        if tool_name in computer_actions:
+                            tool_input = tool_input or {}
+                            tool_input['action'] = tool_name
+
                         # Convert coordinate list to tuple if present
                         if 'coordinate' in tool_input and isinstance(
                             tool_input['coordinate'], list
                         ):
                             tool_input['coordinate'] = tuple(tool_input['coordinate'])
 
-                        # Map 'click' action to 'left_click' for compatibility
+                        # Map legacy 'click' action to 'left_click' for compatibility
                         if tool_input.get('action') == 'click':
                             tool_input['action'] = 'left_click'
 
-                        # OpenAI schema uses 'key' for key-like inputs. Our tool expects 'text'
-                        # for actions 'key' and 'hold_key' (and optionally for 'scroll' modifier).
+                        # Normalize key combos and key/text field for key-like actions
                         action = tool_input.get('action')
                         if action in {'key', 'hold_key', 'scroll'}:
                             if 'text' not in tool_input and 'key' in tool_input:
@@ -500,8 +550,23 @@ class OpenAIHandler(BaseProviderHandler):
                                     tool_input['text']
                                 )
 
+                        # Always emit a single Anthropic tool_use for 'computer'
+                        tool_use_block = BetaToolUseBlockParam(
+                            type='tool_use',
+                            id=tool_call.id,
+                            name='computer',
+                            input=tool_input,
+                        )
+                        content_blocks.append(tool_use_block)
+                        logger.info(
+                            f'Added computer tool_use from action {tool_name} - id: {tool_call.id}'
+                        )
+
+                        # Done with this tool call
+                        continue
+
                     # Special handling for extraction tool
-                    elif tool_call.function.name == 'extraction':
+                    elif tool_name == 'extraction':
                         logger.info(
                             f'Processing extraction tool - original input: {tool_input}'
                         )
@@ -547,7 +612,7 @@ class OpenAIHandler(BaseProviderHandler):
                     tool_use_block = BetaToolUseBlockParam(
                         type='tool_use',
                         id=tool_call.id,
-                        name=tool_call.function.name,
+                        name=tool_name,
                         input=tool_input,
                     )
                     content_blocks.append(tool_use_block)
@@ -590,16 +655,6 @@ class OpenAIHandler(BaseProviderHandler):
         logger.info('==========================================')
 
         return content_blocks, stop_reason
-
-    def parse_tool_use(self, content_block: BetaContentBlockParam) -> Optional[dict]:
-        """Parse tool use from content block."""
-        if content_block.get('type') == 'tool_use':
-            return {
-                'name': content_block.get('name'),
-                'id': content_block.get('id'),
-                'input': content_block.get('input'),
-            }
-        return None
 
     def make_tool_result(
         self, result: ToolResult, tool_use_id: str

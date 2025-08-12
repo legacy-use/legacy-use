@@ -12,6 +12,7 @@ import httpx
 from anthropic.types.beta import (
     BetaContentBlockParam,
     BetaMessageParam,
+    BetaToolResultBlockParam,
 )
 
 from server.computer_use.tools import ToolCollection, ToolResult
@@ -127,22 +128,9 @@ class ProviderHandler(Protocol):
         ...
 
     @abstractmethod
-    def parse_tool_use(self, content_block: BetaContentBlockParam) -> Optional[dict]:
-        """
-        Parse tool use information from a content block.
-
-        Args:
-            content_block: A content block that may contain tool use
-
-        Returns:
-            Tool use information if found, None otherwise
-        """
-        ...
-
-    @abstractmethod
     def make_tool_result(
         self, result: ToolResult, tool_use_id: str
-    ) -> BetaContentBlockParam:
+    ) -> BetaToolResultBlockParam:
         """
         Create a tool result block in Anthropic format.
 

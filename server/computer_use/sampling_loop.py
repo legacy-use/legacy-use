@@ -105,8 +105,8 @@ async def sampling_loop(
 
     tool_collection = ToolCollection(*tools)
     print(f'provider: {provider}')
-    provider = APIProvider.UITARS
-    model = 'ByteDance-Seed/UI-TARS-2B-SFT'
+    provider = APIProvider.ANTHROPIC
+    model = 'claude-sonnet-4-20250514'
 
     # Use the provider and model passed into the function; do not override here
 

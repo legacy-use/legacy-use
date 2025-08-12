@@ -101,11 +101,13 @@ class BaseComputerTool(BaseAnthropicTool):
                     'name': 'type',
                     'params': {'text': {'type': 'string'}},
                     'required': ['text'],
+                    'description': 'Type the given text',
                 },
                 {
                     'name': 'key',
                     'params': {'text': {'type': 'string'}},
                     'required': ['text'],
+                    'description': 'Press the given key. This can be a single key or a combination of keys. For example, "ctrl+c" or "ctrl+shift+c".',
                 },
                 # Enhanced actions
                 {
@@ -115,6 +117,7 @@ class BaseComputerTool(BaseAnthropicTool):
                         'scroll_amount': {'type': 'integer', 'minimum': 0},
                     },
                     'required': ['scroll_direction', 'scroll_amount'],
+                    'description': 'Scroll the screen in the given direction',
                 },
                 {
                     'name': 'left_click_drag',
@@ -133,6 +136,7 @@ class BaseComputerTool(BaseAnthropicTool):
                         },
                     },
                     'required': ['coordinate', 'to'],
+                    'description': 'Drag the mouse from the given coordinate to the given coordinate with the mouse button held down',
                 },
                 {
                     'name': 'right_click',
@@ -145,6 +149,7 @@ class BaseComputerTool(BaseAnthropicTool):
                         }
                     },
                     'required': ['coordinate'],
+                    'description': 'Click the right mouse button at the given coordinate',
                 },
                 {
                     'name': 'middle_click',
@@ -157,6 +162,7 @@ class BaseComputerTool(BaseAnthropicTool):
                         }
                     },
                     'required': ['coordinate'],
+                    'description': 'Click the middle mouse button at the given coordinate',
                 },
                 {
                     'name': 'double_click',
@@ -218,6 +224,7 @@ class BaseComputerTool(BaseAnthropicTool):
                     'name': 'wait',
                     'params': {'duration': {'type': 'number'}},
                     'required': ['duration'],
+                    'description': 'Wait for the given duration in seconds',
                 },
             ],
             'options': self.options,

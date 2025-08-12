@@ -24,11 +24,11 @@ from server.computer_use.utils import (
     summarize_beta_blocks,
 )
 from server.computer_use.converters import (
-    anthropic_tools_to_openai_functions,
     extract_display_from_computer_tool,
     build_openai_preview_tool,
     beta_messages_to_openai_responses_input,
     responses_output_to_blocks,
+    internal_specs_to_openai_responses_functions,
 )
 
 from openai import AsyncOpenAI
@@ -95,7 +95,7 @@ class OpenAICUAHandler(BaseProviderHandler):
         - Extract display settings from the Anthropic `computer` tool if present
         - Exclude the `computer` tool from the OpenAI tools list
         - Include `computer_use_preview` tool definition for the Responses API
-        - Map all other tools via their `to_openai_tool()` adapters
+        - Map all other tools from each tool's internal_spec()
         """
         display_width = 1024
         display_height = 768
@@ -106,8 +106,9 @@ class OpenAICUAHandler(BaseProviderHandler):
         preview_tool: ComputerToolParam = build_openai_preview_tool(
             (display_width, display_height), environment
         )
-        flattened_tools: list[FunctionToolParam] = anthropic_tools_to_openai_functions(
-            params
+        # Build functions for non-computer tools from internal specs
+        flattened_tools: list[FunctionToolParam] = (
+            internal_specs_to_openai_responses_functions(list(tool_collection.tools))
         )
         tools_result: list[ToolParam] = [preview_tool, *flattened_tools]
         logger.debug(
@@ -159,15 +160,6 @@ class OpenAICUAHandler(BaseProviderHandler):
             f'OpenAI Responses output items: {len(getattr(response, "output", []) or [])} (CUA preview mode)'
         )
         return responses_output_to_blocks(response)
-
-    def parse_tool_use(self, content_block: BetaContentBlockParam) -> Optional[dict]:
-        if content_block.get('type') == 'tool_use':
-            return {
-                'name': content_block.get('name'),
-                'id': content_block.get('id'),
-                'input': content_block.get('input'),
-            }
-        return None
 
     def make_tool_result(
         self, result: ToolResult, tool_use_id: str

@@ -308,15 +308,6 @@ class UITARSHandler(BaseProviderHandler):
         raw_text = message.content or ''
         return chat_completion_text_to_blocks(raw_text)
 
-    def parse_tool_use(self, content_block: BetaContentBlockParam) -> Optional[dict]:
-        if content_block.get('type') == 'tool_use':
-            return {
-                'name': content_block.get('name'),
-                'id': content_block.get('id'),
-                'input': content_block.get('input'),
-            }
-        return None
-
     def make_tool_result(
         self, result: ToolResult, tool_use_id: str
     ) -> BetaToolResultBlockParam:

@@ -234,16 +234,6 @@ class AnthropicHandler(BaseProviderHandler):
         stop_reason = response.stop_reason or 'end_turn'
         return content_blocks, stop_reason
 
-    def parse_tool_use(self, content_block: BetaContentBlockParam) -> Optional[dict]:
-        """Parse tool use from content block."""
-        if content_block.get('type') == 'tool_use':
-            return {
-                'name': content_block.get('name'),
-                'id': content_block.get('id'),
-                'input': content_block.get('input'),
-            }
-        return None
-
     def make_tool_result(
         self, result: ToolResult, tool_use_id: str
     ) -> BetaToolResultBlockParam:
