@@ -149,7 +149,7 @@ def build_openai_preview_tool(
     return cast(
         ComputerToolParam,
         {
-            'type': 'computer',
+            'type': 'computer_use_preview',
             'display_width': width,
             'display_height': height,
             'environment': environment,
