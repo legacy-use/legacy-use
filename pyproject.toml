@@ -45,3 +45,6 @@ quote-style = "single"
 
 [tool.ruff]
 # Add include/exclude settings here if needed in the future
+
+[tool.ruff.lint]
+extend-select = ["I"]
