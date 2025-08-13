@@ -11,20 +11,20 @@ import {
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getApiDefinitionDetails, importApiDefinition } from '../services/apiService';
+import type { ImportApiDefinitionBody } from '../gen/endpoints';
 
-const DuplicateApiDialog = ({ open, onClose, onApiDuplicated, apiName }) => {
+const DuplicateApiDialog = ({ open, onClose, onApiDuplicated, apiName }: { open: boolean; onClose: () => void; onApiDuplicated: (name: string) => void; apiName: string }) => {
   const navigate = useNavigate();
-  const [newName, setNewName] = useState('');
+  const [newApiName, setNewApiName] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleChange = e => {
-    setNewName(e.target.value);
+    setNewApiName(e.target.value);
   };
 
-  const handleSubmit = async () => {
-    // Validate form
-    if (!newName.trim()) {
+  const handleDuplicate = async () => {
+    if (!newApiName.trim()) {
       setError('New API name is required');
       return;
     }
@@ -32,29 +32,18 @@ const DuplicateApiDialog = ({ open, onClose, onApiDuplicated, apiName }) => {
     try {
       setLoading(true);
       setError(null);
-
-      // Get the original API definition
-      const originalApiDefinition = await getApiDefinitionDetails(apiName);
-
-      // Create duplicated API definition with the new name
-      const duplicatedApiDefinition = {
-        ...originalApiDefinition,
-        name: newName.trim(),
-      };
-
-      // Import the API definition (creates a new one)
-      await importApiDefinition(duplicatedApiDefinition);
-
-      // Notify parent component
-      if (onApiDuplicated) {
-        onApiDuplicated();
-      }
-
-      // Close dialog
+      const body = {
+        name: newApiName,
+        description: '',
+        parameters: [],
+        prompt: '',
+        prompt_cleanup: '',
+        response_example: {},
+      } as ImportApiDefinitionBody;
+      await importApiDefinition(body);
+      onApiDuplicated(newApiName);
       onClose();
-
-      // Redirect to edit page for the new API
-      navigate(`/apis/${newName.trim()}/edit`);
+      navigate(`/apis/${newApiName.trim()}/edit`);
     } catch (err) {
       console.error('Error duplicating API:', err);
       setError(err.response?.data?.detail || 'Failed to duplicate API');
@@ -80,7 +69,7 @@ const DuplicateApiDialog = ({ open, onClose, onApiDuplicated, apiName }) => {
         <TextField
           name="newName"
           label="New API Name"
-          value={newName}
+          value={newApiName}
           onChange={handleChange}
           fullWidth
           required
@@ -94,7 +83,7 @@ const DuplicateApiDialog = ({ open, onClose, onApiDuplicated, apiName }) => {
           Cancel
         </Button>
         <Button
-          onClick={handleSubmit}
+          onClick={handleDuplicate}
           variant="contained"
           color="primary"
           disabled={loading}

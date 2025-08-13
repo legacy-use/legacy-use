@@ -4,7 +4,7 @@ import { useContext, useState } from 'react';
 import { useLocalStorage } from 'usehooks-ts';
 import { SessionContext } from '../App';
 import {
-  type AnalyzeVideoAiAnalyzePostResult,
+  type AnalyzeVideoTeachingModeAnalyzeVideoPostResult,
   type RecordingResultResponse,
   RecordingStatus,
 } from '../gen/endpoints';
@@ -24,7 +24,7 @@ export default function TeachingMode() {
   );
 
   // Analyze state
-  const [analyzeResult, setAnalyzeResult] = useLocalStorage<null | AnalyzeVideoAiAnalyzePostResult>(
+  const [analyzeResult, setAnalyzeResult] = useLocalStorage<null | AnalyzeVideoTeachingModeAnalyzeVideoPostResult>(
     `analyze-result-${currentSession?.id}`,
     null,
   );

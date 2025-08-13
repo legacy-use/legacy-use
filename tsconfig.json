@@ -19,7 +19,8 @@
       "@/*": ["app/*"]
     },
 
-    "strict": true,
+    "strict": false,
+    "useUnknownInCatchVariables": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,

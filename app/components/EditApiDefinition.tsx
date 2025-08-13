@@ -22,11 +22,13 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { type AlertColor } from '@mui/material';
 import {
   getApiDefinitionDetails,
   getApiDefinitionVersions,
   updateApiDefinition,
 } from '../services/apiService';
+import type { ImportApiDefinitionBody, Parameter } from '../gen/endpoints';
 
 const EditApiDefinition = () => {
   const { apiName } = useParams();
@@ -35,40 +37,43 @@ const EditApiDefinition = () => {
   const queryParams = new URLSearchParams(location.search);
   const versionId = queryParams.get('version');
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [apiDefinition, setApiDefinition] = useState({
-    name: '',
-    description: '',
-    parameters: [],
-    prompt: '',
-    prompt_cleanup: '',
-    response_example: {},
-    is_archived: false,
-  });
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [apiDefinition, setApiDefinition] = useState<ImportApiDefinitionBody & { is_archived?: boolean }>(
+    {
+      name: '',
+      description: '',
+      parameters: [] as Parameter[],
+      prompt: '',
+      prompt_cleanup: '',
+      response_example: {},
+      is_archived: false,
+    },
+  );
 
-  const [versions, setVersions] = useState([]);
-  const [loadingVersions, setLoadingVersions] = useState(false);
-  const [selectedVersionId, setSelectedVersionId] = useState('');
-  const [originalApiDefinition, setOriginalApiDefinition] = useState(null);
-  const [isVersionModified, setIsVersionModified] = useState(false);
+  const [versions, setVersions] = useState<any[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState<boolean>(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<string>('');
+  const [originalApiDefinition, setOriginalApiDefinition] = useState<(ImportApiDefinitionBody & { is_archived?: boolean }) | null>(null);
+  const [isVersionModified, setIsVersionModified] = useState<boolean>(false);
 
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [snackbarSeverity, setSnackbarSeverity] = useState('success');
+  const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
+  const [snackbarMessage, setSnackbarMessage] = useState<string>('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<AlertColor>('success');
 
   // Load API definition details
   useEffect(() => {
     const fetchApiDefinition = async () => {
       try {
         setLoading(true);
-        const data = await getApiDefinitionDetails(apiName);
-        setApiDefinition(data);
-        setOriginalApiDefinition(data);
+        const data = await getApiDefinitionDetails(apiName as string);
+        setApiDefinition(data as any);
+        setOriginalApiDefinition(data as any);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching API definition:', err);
-        setError(`Failed to load API definition: ${err.message}`);
+        const message = err instanceof Error ? err.message : String(err);
+        setError(`Failed to load API definition: ${message}`);
         setLoading(false);
       }
     };
@@ -81,35 +86,36 @@ const EditApiDefinition = () => {
     const fetchVersions = async () => {
       try {
         setLoadingVersions(true);
-        const versionsData = await getApiDefinitionVersions(apiName);
-        setVersions(versionsData);
+        const versionsData = await getApiDefinitionVersions(apiName as string);
+        setVersions(versionsData as any[]);
 
         // If a version ID is specified in the URL, select that version
         if (versionId) {
           setSelectedVersionId(versionId);
-          const selectedVersion = versionsData.find(v => v.id === versionId);
+          const selectedVersion = (versionsData as any[]).find(v => v.id === versionId);
           if (selectedVersion) {
             setApiDefinition(prevState => ({
-              ...prevState,
-              parameters: selectedVersion.parameters,
-              prompt: selectedVersion.prompt,
-              prompt_cleanup: selectedVersion.prompt_cleanup,
-              response_example: selectedVersion.response_example,
-            }));
+              ...(prevState as any),
+              parameters: selectedVersion.parameters as any,
+              prompt: selectedVersion.prompt as string,
+              prompt_cleanup: selectedVersion.prompt_cleanup as string,
+              response_example: selectedVersion.response_example as any,
+            }) as any);
             setOriginalApiDefinition(prevState => ({
-              ...prevState,
-              parameters: selectedVersion.parameters,
-              prompt: selectedVersion.prompt,
-              prompt_cleanup: selectedVersion.prompt_cleanup,
-              response_example: selectedVersion.response_example,
-            }));
+              ...(prevState as any),
+              parameters: selectedVersion.parameters as any,
+              prompt: selectedVersion.prompt as string,
+              prompt_cleanup: selectedVersion.prompt_cleanup as string,
+              response_example: selectedVersion.response_example as any,
+            }) as any);
           }
         }
 
         setLoadingVersions(false);
       } catch (err) {
         console.error('Error fetching API definition versions:', err);
-        setError(`Failed to load API definition versions: ${err.message}`);
+        const message = err instanceof Error ? err.message : String(err);
+        setError(`Failed to load API definition versions: ${message}`);
         setLoadingVersions(false);
       }
     };
@@ -135,25 +141,25 @@ const EditApiDefinition = () => {
   }, [apiDefinition, originalApiDefinition]);
 
   // Handle form field changes
-  const handleChange = field => event => {
+  const handleChange = (field: keyof (ImportApiDefinitionBody & { is_archived?: boolean })) => event => {
     setApiDefinition({
       ...apiDefinition,
-      [field]: event.target.value,
-    });
+      [field]: (event.target as HTMLInputElement).value,
+    } as any);
   };
 
   // Handle parameter changes
-  const handleParameterChange = (index, field) => event => {
-    const updatedParameters = [...apiDefinition.parameters];
-    updatedParameters[index] = {
-      ...updatedParameters[index],
-      [field]: event.target.value,
+  const handleParameterChange = (index: number, field: keyof Parameter) => event => {
+    const updatedParameters = [...(apiDefinition.parameters as Parameter[])];
+    (updatedParameters[index] as any) = {
+      ...(updatedParameters[index] as any),
+      [field]: (event.target as HTMLInputElement).value,
     };
 
     setApiDefinition({
       ...apiDefinition,
-      parameters: updatedParameters,
-    });
+      parameters: updatedParameters as any,
+    } as any);
   };
 
   // Add a new parameter
@@ -161,49 +167,48 @@ const EditApiDefinition = () => {
     setApiDefinition({
       ...apiDefinition,
       parameters: [
-        ...apiDefinition.parameters,
+        ...((apiDefinition.parameters as Parameter[]) || []),
         {
           name: '',
           description: '',
           type: 'string',
-          required: false,
           default: '',
-        },
+        } as any,
       ],
-    });
+    } as any);
   };
 
   // Remove a parameter
-  const handleRemoveParameter = index => {
-    const updatedParameters = [...apiDefinition.parameters];
+  const handleRemoveParameter = (index: number) => {
+    const updatedParameters = [...(apiDefinition.parameters as Parameter[])];
     updatedParameters.splice(index, 1);
 
     setApiDefinition({
       ...apiDefinition,
-      parameters: updatedParameters,
-    });
+      parameters: updatedParameters as any,
+    } as any);
   };
 
   // Handle response example changes
-  const handleResponseExampleChange = event => {
+  const handleResponseExampleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       const responseExample = JSON.parse(event.target.value);
       setApiDefinition({
         ...apiDefinition,
         response_example: responseExample,
-      });
+      } as any);
     } catch {
       // If JSON is invalid, just store the string value for now
       setApiDefinition({
         ...apiDefinition,
-        response_example: event.target.value,
-      });
+        response_example: event.target.value as any,
+      } as any);
     }
   };
 
   // Handle version selection change
-  const handleVersionChange = event => {
-    const newVersionId = event.target.value;
+  const handleVersionChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newVersionId = (event.target as HTMLInputElement).value as string;
 
     // If there are unsaved changes, confirm before switching
     if (isVersionModified) {
@@ -220,22 +225,22 @@ const EditApiDefinition = () => {
 
     // Load the selected version
     if (newVersionId) {
-      const selectedVersion = versions.find(v => v.id === newVersionId);
+      const selectedVersion = (versions as any[]).find(v => v.id === newVersionId);
       if (selectedVersion) {
         setApiDefinition(prevState => ({
-          ...prevState,
-          parameters: selectedVersion.parameters,
-          prompt: selectedVersion.prompt,
-          prompt_cleanup: selectedVersion.prompt_cleanup,
-          response_example: selectedVersion.response_example,
-        }));
+          ...(prevState as any),
+          parameters: selectedVersion.parameters as any,
+          prompt: selectedVersion.prompt as string,
+          prompt_cleanup: selectedVersion.prompt_cleanup as string,
+          response_example: selectedVersion.response_example as any,
+        }) as any);
         setOriginalApiDefinition(prevState => ({
-          ...prevState,
-          parameters: selectedVersion.parameters,
-          prompt: selectedVersion.prompt,
-          prompt_cleanup: selectedVersion.prompt_cleanup,
-          response_example: selectedVersion.response_example,
-        }));
+          ...(prevState as any),
+          parameters: selectedVersion.parameters as any,
+          prompt: selectedVersion.prompt as string,
+          prompt_cleanup: selectedVersion.prompt_cleanup as string,
+          response_example: selectedVersion.response_example as any,
+        }) as any);
 
         setSnackbarMessage(`Loaded version ${selectedVersion.version_number}`);
         setSnackbarSeverity('info');
@@ -243,22 +248,22 @@ const EditApiDefinition = () => {
       }
     } else {
       // If no version is selected, load the current active version
-      const activeVersion = versions.find(v => v.is_active);
+      const activeVersion = (versions as any[]).find(v => v.is_active);
       if (activeVersion) {
         setApiDefinition(prevState => ({
-          ...prevState,
-          parameters: activeVersion.parameters,
-          prompt: activeVersion.prompt,
-          prompt_cleanup: activeVersion.prompt_cleanup,
-          response_example: activeVersion.response_example,
-        }));
+          ...(prevState as any),
+          parameters: activeVersion.parameters as any,
+          prompt: activeVersion.prompt as string,
+          prompt_cleanup: activeVersion.prompt_cleanup as string,
+          response_example: activeVersion.response_example as any,
+        }) as any);
         setOriginalApiDefinition(prevState => ({
-          ...prevState,
-          parameters: activeVersion.parameters,
-          prompt: activeVersion.prompt,
-          prompt_cleanup: activeVersion.prompt_cleanup,
-          response_example: activeVersion.response_example,
-        }));
+          ...(prevState as any),
+          parameters: activeVersion.parameters as any,
+          prompt: activeVersion.prompt as string,
+          prompt_cleanup: activeVersion.prompt_cleanup as string,
+          response_example: activeVersion.response_example as any,
+        }) as any);
       }
     }
   };
@@ -297,26 +302,27 @@ const EditApiDefinition = () => {
 
       // Process parameters before saving
       const processedParameters = apiDefinition.parameters.map(param => {
+        const p = param as Parameter;
         if (
-          param.type === 'list' &&
-          typeof param.default === 'string' &&
-          param.default.trim() !== ''
+          p.type === 'list' &&
+          typeof p.default === 'string' &&
+          p.default.trim() !== ''
         ) {
           try {
-            const parsedDefault = JSON.parse(param.default);
+            const parsedDefault = JSON.parse(p.default);
             if (!Array.isArray(parsedDefault)) {
               throw new Error('Default value for list must be a valid JSON array.');
             }
-            return { ...param, default: parsedDefault };
+            return { ...p, default: parsedDefault } as Parameter;
           } catch {
             // Throw an error to be caught below, preventing save
             throw new Error(
-              `Invalid JSON array in default value for list parameter '${param.name}'.`,
+              `Invalid JSON array in default value for list parameter '${p.name}'.`,
             );
           }
         }
         // Return parameter as is if not type list or default is not a string to parse
-        return param;
+        return p;
       });
 
       // Prepare API definition for update
@@ -353,8 +359,9 @@ const EditApiDefinition = () => {
       }, 1500);
     } catch (err) {
       console.error('Error saving API definition:', err);
-      setError(`Failed to save API definition: ${err.message}`);
-      setSnackbarMessage(`Failed to update API definition: ${err.message || 'Unknown error'}`);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`Failed to save API definition: ${message}`);
+      setSnackbarMessage(`Failed to update API definition: ${message || 'Unknown error'}`);
       setSnackbarSeverity('error');
       setSnackbarOpen(true);
     }

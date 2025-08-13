@@ -18,6 +18,26 @@ import {
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getApiDefinitionVersion } from '../services/apiService';
+import type { Job } from '../gen/endpoints';
+
+interface JobStatusCardProps {
+  job: Job | null;
+  formatDate: (dateString: any) => string;
+  formatDuration: (startDate: any, endDate: any) => string;
+  getStatusColor: (status: any) => any;
+  tokenUsage: { input: any; output: any } | null;
+  onRerun: () => void;
+  onStop: () => void;
+  onCancel: () => void;
+  onResolve: () => void;
+  onResume: () => void;
+  rerunning: boolean;
+  interrupting: boolean;
+  resolving: boolean;
+  canceling: boolean;
+  resuming: boolean;
+  normalizedJobStatus: any;
+}
 
 const JobStatusCard = ({
   job,
@@ -36,9 +56,9 @@ const JobStatusCard = ({
   canceling,
   resuming,
   normalizedJobStatus,
-}) => {
-  const [versionInfo, setVersionInfo] = useState(null);
-  const [loadingVersion, setLoadingVersion] = useState(false);
+}: JobStatusCardProps) => {
+  const [versionInfo, setVersionInfo] = useState<any>(null);
+  const [loadingVersion, setLoadingVersion] = useState<boolean>(false);
 
   // Fetch version information if available
   useEffect(() => {

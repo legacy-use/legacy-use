@@ -17,9 +17,10 @@ import { useNavigate } from 'react-router-dom';
 import { createTarget } from '../services/apiService';
 import ResolutionRecommendation from './ResolutionRecommendation';
 import VPNConfigInputField from './VPNConfigInputField';
+import type { TargetCreate } from '../gen/endpoints';
 
 // Default ports for different target types
-const DEFAULT_PORTS = {
+const DEFAULT_PORTS: Record<string, number> = {
   vnc: 5900,
   'vnc+tailscale': 5900,
   rdp: 3389,
@@ -31,9 +32,9 @@ const DEFAULT_PORTS = {
 
 const CreateTarget = () => {
   const navigate = useNavigate();
-  const [targetData, setTargetData] = useState({
+  const [targetData, setTargetData] = useState<TargetCreate>({
     name: '',
-    type: 'vnc',
+    type: 'vnc' as any,
     host: '',
     username: '',
     password: '',
@@ -45,15 +46,15 @@ const CreateTarget = () => {
     height: 768,
     rdp_params: '',
   });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
-  const [validationErrors, setValidationErrors] = useState({});
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<boolean>(false);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   // Check if OpenVPN is allowed based on environment variable
   const isOpenVPNAllowed = import.meta.env.VITE_ALLOW_OPENVPN === 'true';
 
-  const handleChange = e => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setTargetData(prev => ({
       ...prev,
@@ -61,52 +62,52 @@ const CreateTarget = () => {
     }));
   };
 
-  const handlePortChange = e => {
+  const handlePortChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value === '') {
       setTargetData(prev => ({
         ...prev,
-        port: null,
+        port: null as any,
       }));
     } else {
       const portValue = parseInt(value, 10);
       if (!Number.isNaN(portValue)) {
         setTargetData(prev => ({
           ...prev,
-          port: portValue,
+          port: portValue as any,
         }));
       }
     }
   };
 
-  const handleResolutionChange = e => {
+  const handleResolutionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     const numValue = parseInt(value, 10);
     if (!Number.isNaN(numValue)) {
       setTargetData(prev => ({
         ...prev,
-        [name]: numValue,
+        [name]: numValue as any,
       }));
     }
   };
 
-  const handleTypeChange = e => {
-    const newType = e.target.value;
+  const handleTypeChange = (e: React.ChangeEvent<{ value: unknown }>) => {
+    const newType = e.target.value as string;
     setTargetData(prev => ({
       ...prev,
-      type: newType,
-      port: DEFAULT_PORTS[newType] || null,
+      type: newType as any,
+      port: (DEFAULT_PORTS[newType] as any) ?? null,
     }));
   };
 
-  const handleRecommendedResolutionClick = ({ width, height }) => {
-    setTargetData(prev => ({ ...prev, width, height }));
+  const handleRecommendedResolutionClick = ({ width, height }: { width: number; height: number }) => {
+    setTargetData(prev => ({ ...prev, width: width as any, height: height as any }));
   };
 
   const validateForm = () => {
-    const errors = {};
+    const errors: Record<string, string> = {};
 
-    if (!targetData.name.trim()) {
+    if (!String(targetData.name).trim()) {
       errors.name = 'Name is required';
     }
 
@@ -114,38 +115,38 @@ const CreateTarget = () => {
       errors.type = 'Type is required';
     }
 
-    if (!targetData.host.trim()) {
+    if (!String(targetData.host).trim()) {
       errors.host = 'Host is required';
     }
 
-    if (!targetData.password.trim()) {
+    if (!String(targetData.password).trim()) {
       errors.password = 'Password is required';
     }
 
-    if (
-      targetData.port !== null &&
-      (Number.isNaN(targetData.port) || targetData.port < 1 || targetData.port > 65535)
-    ) {
+    const portVal = targetData.port as any;
+    if (portVal !== null && (Number.isNaN(portVal) || portVal < 1 || portVal > 65535)) {
       errors.port = 'Port must be a valid number between 1 and 65535';
     }
 
-    if (!targetData.width || Number.isNaN(targetData.width) || targetData.width < 1) {
+    const widthVal = targetData.width as any;
+    if (!widthVal || Number.isNaN(widthVal) || widthVal < 1) {
       errors.width = 'Width must be a positive number';
     }
 
-    if (!targetData.height || Number.isNaN(targetData.height) || targetData.height < 1) {
+    const heightVal = targetData.height as any;
+    if (!heightVal || Number.isNaN(heightVal) || heightVal < 1) {
       errors.height = 'Height must be a positive number';
     }
 
     // Validate OpenVPN fields when target type is rdp+openvpn
-    if (targetData.type === 'rdp+openvpn') {
-      if (!targetData.vpn_username.trim()) {
+    if ((targetData.type as any) === 'rdp+openvpn') {
+      if (!String(targetData.vpn_username || '').trim()) {
         errors.vpn_username = 'OpenVPN username is required';
       }
-      if (!targetData.vpn_password.trim()) {
+      if (!String(targetData.vpn_password || '').trim()) {
         errors.vpn_password = 'OpenVPN password is required';
       }
-      if (!targetData.vpn_config.trim()) {
+      if (!String(targetData.vpn_config || '').trim()) {
         errors.vpn_config = 'OpenVPN config is required';
       }
     }
@@ -154,7 +155,7 @@ const CreateTarget = () => {
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) {
@@ -166,22 +167,19 @@ const CreateTarget = () => {
       setError(null);
 
       // Prepare data for submission
-      const submissionData = { ...targetData };
-
-      // No need to concatenate VPN fields anymore - they are sent as separate fields
+      const submissionData = { ...targetData } as TargetCreate;
 
       await createTarget(submissionData);
 
       setSuccess(true);
       setLoading(false);
 
-      // Navigate to targets list after a short delay
       setTimeout(() => {
         navigate('/targets');
       }, 1500);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating target:', err);
-      setError(err.response?.data?.detail || 'Failed to create target. Please try again.');
+      setError(err?.response?.data?.detail || 'Failed to create target. Please try again.');
       setLoading(false);
     }
   };

@@ -33,41 +33,43 @@ import {
 } from '../services/apiService';
 import JobStatusCard from './JobStatusCard';
 import JobTabs from './JobTabs';
+import type { Job, JobLogEntry, HttpExchangeLog, Session, Target } from '../gen/endpoints';
 
 const JobDetails = () => {
   const { targetId, jobId } = useParams();
   const navigate = useNavigate();
   const { setSelectedSessionId, setCurrentSession } = useContext(SessionContext);
-  const [job, setJob] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [logs, setLogs] = useState([]);
-  const [httpExchanges, setHttpExchanges] = useState([]);
-  const [logsLoading, setLogsLoading] = useState(true);
-  const [httpExchangesLoading, setHttpExchangesLoading] = useState(false);
-  const [httpExchangesLoaded, setHttpExchangesLoaded] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
-  const [interrupting, setInterrupting] = useState(false);
-  const lastRefreshTimeRef = useRef(0);
-  const pollingActiveRef = useRef(false);
-  const logsLoadedRef = useRef(false);
-  const [showTargetDialog, setShowTargetDialog] = useState(false);
-  const [availableTargets, setAvailableTargets] = useState([]);
-  const [rerunning, setRerunning] = useState(false);
-  const [selectedTargetForRerun, setSelectedTargetForRerun] = useState('');
+  const [job, setJob] = useState<Job | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<JobLogEntry[]>([]);
+  const [httpExchanges, setHttpExchanges] = useState<HttpExchangeLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState<boolean>(true);
+  const [httpExchangesLoading, setHttpExchangesLoading] = useState<boolean>(false);
+  const [httpExchangesLoaded, setHttpExchangesLoaded] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<number>(0);
+  const [interrupting, setInterrupting] = useState<boolean>(false);
+  const lastRefreshTimeRef = useRef<number>(0);
+  const pollingActiveRef = useRef<boolean>(false);
+  const logsLoadedRef = useRef<boolean>(false);
+  const [showTargetDialog, setShowTargetDialog] = useState<boolean>(false);
+  const [availableTargets, setAvailableTargets] = useState<Target[]>([]);
+  const [rerunning, setRerunning] = useState<boolean>(false);
+  const [selectedTargetForRerun, setSelectedTargetForRerun] = useState<string>('');
 
   // State for resolving a job
-  const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
-  const [resolving, setResolving] = useState(false);
-  const [resolveResult, setResolveResult] = useState({});
-  const [canceling, setCanceling] = useState(false);
-  const [resuming, setResuming] = useState(false);
+  const [resolveDialogOpen, setResolveDialogOpen] = useState<boolean>(false);
+  const [resolving, setResolving] = useState<boolean>(false);
+  const [resolveResult, setResolveResult] = useState<Record<string, unknown>>({});
+  const [canceling, setCanceling] = useState<boolean>(false);
+  const [resuming, setResuming] = useState<boolean>(false);
 
   // Normalize job status for consistent comparison
   const normalizedJobStatus = job?.status?.toLowerCase() || '';
 
   // Function to refresh job status
   const refreshJobStatus = useCallback(async () => {
+    if (!targetId || !jobId) return null;
     console.log(`[${new Date().toISOString()}] Refreshing job status`);
     try {
       const jobData = await getJob(targetId, jobId);
@@ -82,6 +84,7 @@ const JobDetails = () => {
 
   // Function to fetch HTTP exchanges
   const fetchJobHttpExchanges = useCallback(async () => {
+    if (!targetId || !jobId) return;
     // Check if this is an initial load or a polling update
     const isInitialLoad = !httpExchanges.length || !httpExchangesLoaded;
 
@@ -112,6 +115,7 @@ const JobDetails = () => {
 
   // Function to fetch job logs
   const fetchJobLogs = useCallback(async () => {
+    if (!targetId || !jobId) return;
     // Check if this is an initial load or a polling update
     const isInitialLoad = !logs.length || !logsLoadedRef.current;
 
@@ -172,8 +176,8 @@ const JobDetails = () => {
       // Preserve the API definition version which doesn't change
       if (jobData) {
         setJob(prevJob => ({
-          ...jobData,
-          api_definition_version: prevJob?.api_definition_version,
+          ...(jobData as Job),
+          api_definition_version: (prevJob as any)?.api_definition_version,
         }));
       }
 
@@ -192,7 +196,8 @@ const JobDetails = () => {
       }
     } catch (err) {
       console.error('Error refreshing job details:', err);
-      setError(`Failed to refresh job details: ${err.message || 'Unknown error'}`);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`Failed to refresh job details: ${message || 'Unknown error'}`);
     } finally {
       if (!hasExistingJobData) {
         setLoading(false);
@@ -206,10 +211,10 @@ const JobDetails = () => {
     if (job?.session_id) {
       const fetchSessionDetails = async () => {
         try {
-          const sessionData = await getSession(job.session_id);
+          const sessionData = await getSession(job.session_id as string);
           if (sessionData) {
-            setSelectedSessionId(job.session_id);
-            setCurrentSession(sessionData);
+            setSelectedSessionId(job.session_id as string);
+            setCurrentSession(sessionData as Session);
           }
         } catch (err) {
           console.error('Error fetching session details for VNC viewer:', err);
@@ -235,6 +240,7 @@ const JobDetails = () => {
         setLoading(true);
 
         // First, get job details
+        if (!targetId || !jobId) throw new Error('Missing job or target id');
         const jobData = await getJob(targetId, jobId);
 
         if (isMounted) {
@@ -246,7 +252,8 @@ const JobDetails = () => {
         }
       } catch (err) {
         if (isMounted) {
-          setError(`Failed to load job details: ${err.message || 'Unknown error'}`);
+          const message = err instanceof Error ? err.message : String(err);
+          setError(`Failed to load job details: ${message || 'Unknown error'}`);
         }
       } finally {
         if (isMounted) {
@@ -268,13 +275,13 @@ const JobDetails = () => {
     // Only set up polling if we have job data and it's in RUNNING or QUEUED state
     // Stop polling if job is COMPLETED, FAILED, CANCELED, INTERRUPTED, or PAUSED
     const activePollingStates = ['running', 'queued'];
-    if (!job || !activePollingStates.includes(job.status?.toLowerCase())) {
+    if (!job || !activePollingStates.includes(job.status?.toLowerCase() as string)) {
       // console.log(`[${new Date().toISOString()}] Job status is ${job?.status}, not setting up polling`);
       return; // Stop polling if not running or queued
     }
 
     console.log(`[${new Date().toISOString()}] Job is ${job.status}, setting up polling for logs`);
-    let pollingInterval = null;
+    let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
     // Poll every 2 seconds
     pollingInterval = setInterval(async () => {
@@ -291,6 +298,7 @@ const JobDetails = () => {
 
       try {
         // Check if the job is still running or queued
+        if (!targetId || !jobId) return;
         const jobData = await getJob(targetId, jobId);
 
         if (!jobData) {
@@ -302,12 +310,12 @@ const JobDetails = () => {
 
         // Update job state but preserve the prompt version which doesn't change
         setJob(prevJob => ({
-          ...jobData,
-          api_definition_version: prevJob?.api_definition_version, // Preserve the version info
+          ...(jobData as Job),
+          api_definition_version: (prevJob as any)?.api_definition_version, // Preserve the version info
         }));
 
         // If job is no longer running or queued (e.g., becomes PAUSED), clear the interval
-        if (!activePollingStates.includes(jobData.status?.toLowerCase())) {
+        if (!activePollingStates.includes(jobData.status?.toLowerCase() as string)) {
           // console.log(`[${new Date().toISOString()}] Job is no longer running or queued (${jobData.status}), stopping polling`);
 
           // Reset the logs loaded flag to force a reload of the final logs
@@ -334,7 +342,7 @@ const JobDetails = () => {
           }
 
           // Clear the interval
-          clearInterval(pollingInterval);
+          if (pollingInterval) clearInterval(pollingInterval);
           pollingActiveRef.current = false;
           return;
         }
@@ -359,31 +367,16 @@ const JobDetails = () => {
           console.error(`[${new Date().toISOString()}] Error fetching data during polling:`, err);
         }
       } catch (err) {
-        console.error(
-          `[${new Date().toISOString()}] Error checking job status during polling:`,
-          err,
-        );
+        console.error(`[${new Date().toISOString()}] Error in polling loop:`, err);
       } finally {
         pollingActiveRef.current = false;
       }
-    }, 2000); // Poll every 2 seconds
+    }, 2000);
 
-    // Cleanup function to clear the interval when component unmounts or job status changes
     return () => {
-      if (pollingInterval) {
-        console.log(`[${new Date().toISOString()}] Clearing polling interval`);
-        clearInterval(pollingInterval);
-      }
+      if (pollingInterval) clearInterval(pollingInterval);
     };
-  }, [
-    targetId,
-    jobId,
-    job?.status,
-    activeTab,
-    httpExchangesLoaded,
-    fetchJobLogs,
-    fetchJobHttpExchanges,
-  ]);
+  }, [job, activeTab, fetchJobLogs, fetchJobHttpExchanges, targetId, jobId]);
 
   // Watch for job status changes (separate from polling)
   useEffect(() => {
@@ -598,7 +591,7 @@ const JobDetails = () => {
           >
             {availableTargets.map(target => (
               <MenuItem key={target.id} value={target.id}>
-                {target.name || target.id} - {target.target_type}
+                {target.name || target.id} - {target.type}
               </MenuItem>
             ))}
           </Select>
@@ -748,6 +741,28 @@ const JobDetails = () => {
     );
   }
 
+  const tokenUsage = {
+    input: (job!.total_input_tokens ?? 0) as number,
+    output: (job!.total_output_tokens ?? 0) as number,
+  };
+
+  const renderDurationAndTokens = () => {
+    const duration = formatDuration(job!.created_at, job!.completed_at);
+    const input = (job!.total_input_tokens ?? 0) as number;
+    const output = (job!.total_output_tokens ?? 0) as number;
+    const tokens = tokenUsage
+      ? `${tokenUsage.input.toLocaleString()} in / ${tokenUsage.output.toLocaleString()} out`
+      : input || output
+        ? `${(input + output).toLocaleString()}`
+        : 'N/A';
+    return (
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        <Typography variant="body2">Duration: {duration}</Typography>
+        <Typography variant="body2">Tokens: {tokens}</Typography>
+      </Box>
+    );
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Sticky JobStatusCard at the top */}
@@ -764,18 +779,13 @@ const JobDetails = () => {
           job={job}
           formatDate={formatDate}
           formatDuration={formatDuration}
-          tokenUsage={{
-            input: job?.total_input_tokens || 0,
-            output: job?.total_output_tokens || 0,
-          }}
           getStatusColor={getStatusColor}
-          onRefresh={handleRefresh}
+          tokenUsage={tokenUsage}
           onRerun={handleRerun}
           onStop={handleInterruptJob}
           onCancel={handleCancelJob}
           onResolve={handleResolveJob}
           onResume={handleResumeJob}
-          loading={loading}
           rerunning={rerunning}
           interrupting={interrupting}
           resolving={resolving}
@@ -800,22 +810,8 @@ const JobDetails = () => {
           job={job || {}}
           regularLogs={logs}
           httpExchanges={httpExchanges}
-          logsLoading={logsLoading}
           httpExchangesLoading={httpExchangesLoading}
           hasHttpExchanges={true}
-          onRefresh={handleRefresh}
-          onRerun={handleRerun}
-          onStop={handleInterruptJob}
-          onCancel={handleCancelJob}
-          onResolve={handleResolveJob}
-          onResume={handleResumeJob}
-          loading={loading}
-          rerunning={rerunning}
-          interrupting={interrupting}
-          resolving={resolving}
-          canceling={canceling}
-          resuming={resuming}
-          normalizedJobStatus={normalizedJobStatus}
         />
       </Box>
 

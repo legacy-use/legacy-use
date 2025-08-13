@@ -40,9 +40,11 @@
   "devDependencies": {
     "@biomejs/biome": "^2.1.4",
     "@swc/plugin-emotion": "^11.0.2",
+    "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react-swc": "^4.0.0",
     "ajv": "^8.17.1",
     "orval": "^7.11.2",
+    "typescript": "^5.9.2",
     "vite": "^7.1.2"
   }
 }

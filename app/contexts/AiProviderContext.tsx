@@ -1,22 +1,24 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { getProviders } from '../services/apiService';
+import type { ProvidersResponse, ProviderConfiguration } from '../gen/endpoints';
 
 // Create the context
 export const AiProviderContext = createContext({
-  providers: [],
-  currentProvider: null,
+  providers: [] as ProviderConfiguration[],
+  currentProvider: null as string | null,
   hasConfiguredProvider: false,
   isProviderValid: false,
   refreshProviders: async () => {},
+  loading: true as boolean,
 });
 
 // Create a provider component
-export const AiProvider = ({ children }) => {
-  const [providers, setProviders] = useState([]);
-  const [currentProvider, setCurrentProvider] = useState(null);
-  const [hasConfiguredProvider, setHasConfiguredProvider] = useState(false);
-  const [isProviderValid, setIsProviderValid] = useState(false);
-  const [loading, setLoading] = useState(true);
+export const AiProvider = ({ children }: { children: React.ReactNode }) => {
+  const [providers, setProviders] = useState<ProviderConfiguration[]>([]);
+  const [currentProvider, setCurrentProvider] = useState<string | null>(null);
+  const [hasConfiguredProvider, setHasConfiguredProvider] = useState<boolean>(false);
+  const [isProviderValid, setIsProviderValid] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
   // Function to refresh provider data
   const refreshProviders = async () => {
@@ -34,7 +36,7 @@ export const AiProvider = ({ children }) => {
       const activeProviderConfigured = configuredProviders.find(
         provider => provider.provider === providersData.current_provider,
       );
-      setIsProviderValid(hasConfigured && activeProviderConfigured);
+      setIsProviderValid(Boolean(hasConfigured && activeProviderConfigured));
     } catch (error) {
       console.error('Error refreshing providers:', error);
       setProviders([]);

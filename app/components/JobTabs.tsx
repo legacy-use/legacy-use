@@ -8,6 +8,16 @@ import Typography from '@mui/material/Typography';
 import HttpExchangeViewer from './HttpExchangeViewer';
 import LogViewer from './LogViewer';
 
+interface JobTabsProps {
+  activeTab: number;
+  handleTabChange: (_: any, newValue: any) => void;
+  job: any;
+  regularLogs: any;
+  httpExchanges: any;
+  httpExchangesLoading: any;
+  hasHttpExchanges: any;
+}
+
 const JobTabs = ({
   activeTab,
   handleTabChange,
@@ -16,7 +26,7 @@ const JobTabs = ({
   httpExchanges,
   httpExchangesLoading,
   hasHttpExchanges,
-}) => {
+}: JobTabsProps) => {
   return (
     <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>

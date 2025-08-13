@@ -7,9 +7,10 @@ import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import { useState } from 'react';
+import type { HttpExchangeLog } from '../gen/endpoints';
 
 // Custom component for displaying HTTP exchanges
-const HttpExchangeViewer = ({ exchanges }) => {
+const HttpExchangeViewer = ({ exchanges }: { exchanges: HttpExchangeLog[] }) => {
   if (!exchanges || exchanges.length === 0) {
     return <Typography variant="body2">No HTTP exchanges available</Typography>;
   }
@@ -24,37 +25,37 @@ const HttpExchangeViewer = ({ exchanges }) => {
 };
 
 // Component for a single HTTP exchange item
-const HttpExchangeItem = ({ exchange }) => {
+const HttpExchangeItem = ({ exchange }: { exchange: HttpExchangeLog }) => {
   const [expanded, setExpanded] = useState(false);
 
   // Handle different possible structures
-  let exchangeData = exchange;
+  let exchangeData: any = exchange as any;
 
   // If the exchange has a content property, use that
-  if (exchange.content && typeof exchange.content === 'object') {
-    exchangeData = exchange.content;
+  if ((exchangeData as any).content && typeof (exchangeData as any).content === 'object') {
+    exchangeData = (exchangeData as any).content;
   }
 
   // Extract request and response based on the structure
-  const request = exchangeData.request || {};
-  const response = exchangeData.response || {};
+  const request = (exchangeData as any).request || {};
+  const response = (exchangeData as any).response || {};
 
   // Extract data with fallbacks
-  const url = request.url || exchangeData.url || 'Unknown URL';
-  const method = request.method || exchangeData.method || 'Unknown Method';
+  const url = request.url || (exchangeData as any).url || 'Unknown URL';
+  const method = request.method || (exchangeData as any).method || 'Unknown Method';
 
   // Handle different status code locations
   let status: number | undefined;
   if (response.status_code) status = response.status_code;
   else if (response.status) status = response.status;
-  else if (exchangeData.status_code) status = exchangeData.status_code;
-  else if (exchangeData.status) status = exchangeData.status;
+  else if ((exchangeData as any).status_code) status = (exchangeData as any).status_code;
+  else if ((exchangeData as any).status) status = (exchangeData as any).status;
 
-  const request_headers = request.headers || exchangeData.request_headers || {};
-  const response_headers = response.headers || exchangeData.response_headers || {};
+  const request_headers = request.headers || (exchangeData as any).request_headers || {};
+  const response_headers = response.headers || (exchangeData as any).response_headers || {};
 
   // Handle request body which might be a string or object
-  let request_body = request.body || exchangeData.request_body;
+  let request_body = request.body || (exchangeData as any).request_body;
   if (typeof request_body === 'string') {
     try {
       // Try to parse JSON string
@@ -66,7 +67,7 @@ const HttpExchangeItem = ({ exchange }) => {
   }
 
   // Handle response body which might be a string or object
-  let response_body = response.body || exchangeData.response_body;
+  let response_body = response.body || (exchangeData as any).response_body;
   if (typeof response_body === 'string') {
     try {
       // Try to parse JSON string
@@ -77,7 +78,7 @@ const HttpExchangeItem = ({ exchange }) => {
     }
   }
 
-  const error = exchangeData.error;
+  const error = (exchangeData as any).error;
 
   // Safe URL parsing
   let pathname = 'Unknown Path';
@@ -118,7 +119,7 @@ const HttpExchangeItem = ({ exchange }) => {
               variant="subtitle1"
               sx={{
                 fontWeight: 'bold',
-                color: error ? '#ff6b6b' : status >= 400 ? '#ffa94d' : '#4dabf5',
+                color: error ? '#ff6b6b' : typeof status === 'number' && status >= 400 ? '#ffa94d' : '#4dabf5',
               }}
             >
               {method} {pathname}
@@ -126,13 +127,13 @@ const HttpExchangeItem = ({ exchange }) => {
           </Box>
           <Chip
             label={status ? `${status}` : error ? 'Error' : 'Pending'}
-            color={error ? 'error' : status >= 400 ? 'warning' : 'success'}
+            color={error ? 'error' : typeof status === 'number' && status >= 400 ? 'warning' : 'success'}
             size="small"
           />
         </Box>
 
         <Typography variant="caption" color="textSecondary">
-          {exchange.timestamp && new Date(exchange.timestamp).toLocaleString()}
+          {(exchange as any).timestamp && new Date((exchange as any).timestamp as any).toLocaleString()}
         </Typography>
 
         {expanded && (
@@ -155,7 +156,7 @@ const HttpExchangeItem = ({ exchange }) => {
                       overflowX: 'auto',
                     }}
                   >
-                    <pre style={{ margin: 0 }}>{url}</pre>
+                    <pre style={{ margin: 0 }}>{url as any}</pre>
                   </Box>
                 </Box>
               )}

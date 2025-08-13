@@ -47,26 +47,28 @@ import {
 } from '../services/apiService';
 import AddApiDialog from './AddApiDialog';
 import DuplicateApiDialog from './DuplicateApiDialog';
+import type { APIDefinition, Target, ImportApiDefinitionBody } from '../gen/endpoints';
+import type { SelectChangeEvent } from '@mui/material/Select';
 
 const ApiList = () => {
   const navigate = useNavigate();
   const { selectedSessionId, setSelectedSessionId } = useContext(SessionContext);
-  const [apis, setApis] = useState([]);
-  const [targets, setTargets] = useState([]);
-  const [selectedTarget, setSelectedTarget] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [paramValues, setParamValues] = useState({});
-  const [executingApi, setExecutingApi] = useState(null);
-  const [executionResult, setExecutionResult] = useState({});
-  const [expandedApis, setExpandedApis] = useState({});
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
-  const fileInputRef = useRef(null);
-  const [addApiDialogOpen, setAddApiDialogOpen] = useState(false);
-  const [duplicateApiDialogOpen, setDuplicateApiDialogOpen] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
-  const [duplicateApiName, setDuplicateApiName] = useState(null);
+  const [apis, setApis] = useState<APIDefinition[]>([]);
+  const [targets, setTargets] = useState<Target[]>([]);
+  const [selectedTarget, setSelectedTarget] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [paramValues, setParamValues] = useState<Record<string, Record<string, any>>>({});
+  const [executingApi, setExecutingApi] = useState<string | null>(null);
+  const [executionResult, setExecutionResult] = useState<Record<string, any>>({});
+  const [expandedApis, setExpandedApis] = useState<Record<string, boolean>>({});
+  const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
+  const [snackbarMessage, setSnackbarMessage] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [addApiDialogOpen, setAddApiDialogOpen] = useState<boolean>(false);
+  const [duplicateApiDialogOpen, setDuplicateApiDialogOpen] = useState<boolean>(false);
+  const [showArchived, setShowArchived] = useState<boolean>(false);
+  const [duplicateApiName, setDuplicateApiName] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -76,8 +78,8 @@ const ApiList = () => {
         getTargets(),
       ]);
 
-      setApis(apisData);
-      setTargets(targetsData);
+      setApis(apisData as APIDefinition[]);
+      setTargets(targetsData as Target[]);
 
       // Check for target and session parameters in URL
       const params = new URLSearchParams(window.location.search);
@@ -129,8 +131,8 @@ const ApiList = () => {
   }, [fetchData]);
 
   // Handle target change
-  const handleTargetChange = event => {
-    const newTargetId = event.target.value;
+  const handleTargetChange = (event: SelectChangeEvent<string>) => {
+    const newTargetId = event.target.value as string;
     setSelectedTarget(newTargetId);
     setSelectedSessionId(newTargetId); // Keep for compatibility with session context
 
@@ -144,24 +146,24 @@ const ApiList = () => {
     window.history.replaceState({}, '', url);
   };
 
-  const handleParamChange = (apiName, paramName, value) => {
+  const handleParamChange = (apiName: string, paramName: string, value: any) => {
     setParamValues(prev => ({
       ...prev,
       [apiName]: {
-        ...prev[apiName],
+        ...(prev[apiName] || {}),
         [paramName]: value,
       },
     }));
   };
 
-  const toggleApiExpand = apiName => {
+  const toggleApiExpand = (apiName: string) => {
     setExpandedApis(prev => ({
       ...prev,
       [apiName]: !prev[apiName],
     }));
   };
 
-  const handleExecuteApi = async api => {
+  const handleExecuteApi = async (api: APIDefinition) => {
     if (!selectedTarget) {
       setExecutionResult({
         ...executionResult,
@@ -262,7 +264,7 @@ const ApiList = () => {
     }
   };
 
-  const handleExportDefinition = async apiName => {
+  const handleExportDefinition = async (apiName: string) => {
     try {
       const data = await exportApiDefinition(apiName);
       const jsonString = JSON.stringify(data, null, 2);
@@ -282,31 +284,41 @@ const ApiList = () => {
   };
 
   const handleImportClick = () => {
-    fileInputRef.current.click();
+    fileInputRef.current?.click();
   };
 
-  const handleFileUpload = async event => {
-    const file = event.target.files[0];
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       const reader = new FileReader();
       reader.onload = async e => {
         try {
-          const content = JSON.parse(e.target.result);
+          const result = (e.target as FileReader).result as string;
+          const content = JSON.parse(result);
 
-          // Check if the file has the expected structure
-          if (!content.api_definition) {
+          // Validate minimal expected shape matching ImportApiDefinitionBody
+          const body: ImportApiDefinitionBody = {
+            name: content?.name,
+            description: content?.description,
+            parameters: content?.parameters || [],
+            prompt: content?.prompt,
+            prompt_cleanup: content?.prompt_cleanup,
+            response_example: content?.response_example || {},
+          } as ImportApiDefinitionBody;
+
+          if (!body.name || !body.description || !body.prompt || !body.prompt_cleanup) {
             setSnackbarMessage('Invalid API definition file format');
             setSnackbarOpen(true);
             return;
           }
 
           // Import the API definition
-          const result = await importApiDefinition({ api_definition: content.api_definition });
+          const resultImport = await importApiDefinition(body);
 
           // Show success message
-          setSnackbarMessage(result.message);
+          setSnackbarMessage((resultImport as any).message || 'Imported');
           setSnackbarOpen(true);
 
           // Refresh the API list
@@ -349,7 +361,7 @@ const ApiList = () => {
     fetchData();
   };
 
-  const handleArchiveApi = async (apiName, event) => {
+  const handleArchiveApi = async (apiName: string, event: React.MouseEvent) => {
     // Stop event propagation to prevent card expansion
     event.stopPropagation();
 
@@ -369,7 +381,7 @@ const ApiList = () => {
     }
   };
 
-  const handleUnarchiveApi = async (apiName, event) => {
+  const handleUnarchiveApi = async (apiName: string, event: React.MouseEvent) => {
     // Stop event propagation to prevent card expansion
     event.stopPropagation();
 
@@ -386,7 +398,7 @@ const ApiList = () => {
       // Refresh the API list with showArchived=false
       getApiDefinitions(false)
         .then(apisData => {
-          setApis(apisData);
+          setApis(apisData as APIDefinition[]);
 
           // Initialize parameter values
           const initialParamValues = {};
@@ -422,7 +434,7 @@ const ApiList = () => {
       setLoading(true);
       getApiDefinitions(newValue)
         .then(apisData => {
-          setApis(apisData);
+          setApis(apisData as APIDefinition[]);
 
           // Initialize parameter values
           const initialParamValues = {};
@@ -451,7 +463,7 @@ const ApiList = () => {
   };
 
   // Function to handle API duplication
-  const handleDuplicateClick = apiName => {
+  const handleDuplicateClick = (apiName: string) => {
     setDuplicateApiName(apiName);
     setDuplicateApiDialogOpen(true);
   };
