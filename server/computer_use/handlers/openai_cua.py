@@ -37,7 +37,6 @@ from openai.types.responses import (
     ResponseInputParam,
     Response,
 )
-import instructor
 
 
 class OpenAICUAHandler(BaseProviderHandler):
@@ -71,12 +70,10 @@ class OpenAICUAHandler(BaseProviderHandler):
             **kwargs,
         )
         self.model = model
+        self._previous_response_id: Optional[str] = None
 
-    async def initialize_client(
-        self, api_key: str, **kwargs
-    ) -> instructor.AsyncInstructor:
-        """Initialize and return the OpenAI client."""
-        # Check for tenant-specific API key first
+    async def initialize_client(self, api_key: str, **kwargs) -> AsyncOpenAI:
+        """Initialize and return the OpenAI Async client for Responses API."""
         tenant_key = self.tenant_setting('OPENAI_API_KEY')
         final_api_key = tenant_key or api_key
 
@@ -86,8 +83,7 @@ class OpenAICUAHandler(BaseProviderHandler):
                 'OPENAI_API_KEY tenant setting or api_key parameter.'
             )
 
-        openai_client = AsyncOpenAI(api_key=final_api_key)
-        return instructor.from_openai(openai_client, max_retries=self.max_retries)
+        return AsyncOpenAI(api_key=final_api_key)
 
     def prepare_system(self, system_prompt: str) -> str:
         """Prepare system prompt for OpenAI Responses API."""
@@ -115,13 +111,25 @@ Feel free to include additional information in your summary. There is no need to
             messages, image_truncation_threshold=1
         )
 
-        # Consolidate messages for better context preservation
-        consolidated_messages = self._consolidate_messages(processed_messages)
+        # IMPORTANT: Do NOT consolidate tool_result blocks for Responses API.
+        # The next request must include explicit tool_result items matching prior call_ids.
+        provider_messages = beta_messages_to_openai_responses_input(processed_messages)
 
-        # Convert to Responses API format
-        provider_messages = beta_messages_to_openai_responses_input(
-            consolidated_messages
-        )
+        # OpenAI computer-use preview constraint:
+        # If there is no previous_response_id, the input must be only an image
+        # (no extra input_text). When we do have previous_response_id, mixed content is allowed.
+        # For CUA, always prefer image-only inputs to satisfy strict models
+        if isinstance(provider_messages, list) and provider_messages:
+            first = provider_messages[0]
+            content = first.get('content') if isinstance(first, dict) else None
+            if isinstance(content, list):
+                image_parts = [
+                    p
+                    for p in content
+                    if isinstance(p, dict) and p.get('type') == 'input_image'
+                ]
+                if image_parts:
+                    first['content'] = list(image_parts)  # type: ignore[index]
 
         logger.info(
             f'Converted {len(messages)} messages to {len(provider_messages)} OpenAI Responses input messages (CUA)'
@@ -276,7 +284,7 @@ Feel free to include additional information in your summary. There is no need to
 
     async def call_api(
         self,
-        client: instructor.AsyncInstructor,
+        client: AsyncOpenAI,
         messages: ResponseInputParam,
         system: str,
         tools: list[ToolParam],
@@ -302,18 +310,27 @@ Feel free to include additional information in your summary. There is no need to
             Tuple of (parsed response, request, raw response)
         """
 
-        response = await client.responses.with_raw_response.create(
-            model=model,
-            input=messages,
-            tools=tools,
-            reasoning={'summary': 'concise'},  # The only setting allowed by the API
-            truncation='auto',
-            instructions=system if system else None,
-            max_output_tokens=max_tokens,
-            temperature=temperature,
-        )
+        request_args = {
+            'model': model,
+            'input': messages,
+            'tools': tools,
+            'reasoning': {'summary': 'concise'},
+            'truncation': 'auto',
+            'instructions': system if system else None,
+            'max_output_tokens': max_tokens,
+            'temperature': temperature,
+        }
+        if self._previous_response_id:
+            request_args['previous_response_id'] = self._previous_response_id
+
+        response = await client.responses.with_raw_response.create(**request_args)
 
         parsed_response = response.parse()
+        # Track continuity id for next call
+        try:
+            self._previous_response_id = getattr(parsed_response, 'id', None)
+        except Exception:
+            self._previous_response_id = None
 
         return parsed_response, response.http_response.request, response.http_response
 
