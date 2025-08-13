@@ -301,19 +301,12 @@ Feel free to include additional information in your summary. There is no need to
         Returns:
             Tuple of (parsed response, request, raw response)
         """
-        # Ensure we have the right client type
-        if not isinstance(client, AsyncOpenAI):
-            if hasattr(self, '_client') and self._client:
-                client = self._client
-            else:
-                raise ValueError('OpenAI client not properly initialized')
 
-        # Make the API call
         response = await client.responses.with_raw_response.create(
             model=model,
             input=messages,
             tools=tools,
-            reasoning={'summary': 'concise'},
+            reasoning={'summary': 'concise'},  # The only setting allowed by the API
             truncation='auto',
             instructions=system if system else None,
             max_output_tokens=max_tokens,
@@ -353,20 +346,21 @@ Feel free to include additional information in your summary. There is no need to
         Returns:
             Tuple of (content_blocks, stop_reason, request, raw_response)
         """
-        # Ensure we have an OpenAI client
-        if not self._client:
-            # Try to extract API key from client if it's an instructor client
-            api_key = kwargs.get('api_key', '')
-            self._client = await self.initialize_client(api_key)
+
+        logger.info(f'Messages before: {self._truncate_for_debug(messages)}')
+        logger.info(f'Tools before: {self._truncate_for_debug(tools)}')
 
         # Convert inputs to provider format
         provider_messages = self.convert_to_provider_messages(messages)
         system_str = self.prepare_system(system)
         provider_tools = self.prepare_tools(tools)
 
+        logger.info(f'Messages after: {self._truncate_for_debug(provider_messages)}')
+        logger.info(f'Tools after: {self._truncate_for_debug(provider_tools)}')
+
         # Make the API call
         parsed_response, request, raw_response = await self.call_api(
-            client=self._client,
+            client=client,
             messages=provider_messages,
             system=system_str,
             tools=provider_tools,
@@ -376,10 +370,15 @@ Feel free to include additional information in your summary. There is no need to
             **kwargs,
         )
 
+        logger.info(f'Parsed response: {self._truncate_for_debug(parsed_response)}')
+
         # Convert response to standardized format
         content_blocks, stop_reason = self.convert_from_provider_response(
             parsed_response
         )
+
+        logger.info(f'Content blocks: {self._truncate_for_debug(content_blocks)}')
+        logger.info(f'Stop reason: {stop_reason}')
 
         return content_blocks, stop_reason, request, raw_response
 
