@@ -5,19 +5,19 @@ Usage: python tenant_manager.py create <name> <schema> <host>
 """
 
 import argparse
+import re
 import secrets
 import string
 import sys
-import re
 from pathlib import Path
 
 # Add the parent directory to the Python path so we can import from server package
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from server.database.multi_tenancy import (
-    tenant_create,
-    get_tenant_by_schema,
     get_tenant_by_host,
+    get_tenant_by_schema,
+    tenant_create,
 )
 from server.database.service import DatabaseService
 from server.settings_tenant import set_tenant_setting

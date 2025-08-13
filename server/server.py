@@ -24,17 +24,17 @@ from server.routes import (
 from server.routes.diagnostics import diagnostics_router
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
+from server.settings_tenant import get_tenant_setting
 from server.utils.api_prefix import api_prefix
 from server.utils.auth import get_api_key
-from server.utils.tenant_utils import get_tenant_from_request
+from server.utils.exceptions import TenantInactiveError, TenantNotFoundError
 from server.utils.job_execution import job_queue_initializer
 from server.utils.log_pruning import scheduled_log_pruning
 from server.utils.session_monitor import start_session_monitor
 from server.utils.telemetry import posthog_middleware
-from server.utils.exceptions import TenantNotFoundError, TenantInactiveError
+from server.utils.tenant_utils import get_tenant_from_request
 
 from .settings import settings
-from server.settings_tenant import get_tenant_setting
 
 # Set up logging
 logging.basicConfig(

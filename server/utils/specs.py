@@ -1,6 +1,5 @@
 from typing import Any, Dict
 
-
 # Initialize OpenAPI spec structure
 openapi_spec = {
     'openapi': '3.0.3',

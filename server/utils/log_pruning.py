@@ -7,8 +7,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from server.database.multi_tenancy import with_db
 from server.database.models import JobLog
+from server.database.multi_tenancy import with_db
 from server.settings import settings
 from server.utils.tenant_utils import get_active_tenants
 

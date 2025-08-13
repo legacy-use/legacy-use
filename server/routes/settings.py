@@ -4,7 +4,7 @@ Settings management routes.
 
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from server.computer_use.config import (

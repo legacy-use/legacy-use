@@ -6,13 +6,13 @@ import logging
 import traceback
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from server.core import APIGatewayCore
-from server.utils.db_dependencies import get_tenant_db
 from server.models.base import APIDefinition, Parameter
 from server.settings import settings
+from server.utils.db_dependencies import get_tenant_db
 from server.utils.telemetry import (
     capture_api_created,
     capture_api_deleted,

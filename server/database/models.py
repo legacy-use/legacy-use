@@ -5,18 +5,19 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Enum,
     ForeignKey,
     Index,
     Integer,
-    String,
     MetaData,
-    Enum,
+    String,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PostgresUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import declarative_base, relationship
 
 # Import enum types from base models
-from server.models.base import TargetType, JobStatus
+from server.models.base import JobStatus, TargetType
 
 # Create metadata with default tenant schema
 metadata = MetaData(schema='tenant')

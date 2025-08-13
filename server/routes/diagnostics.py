@@ -12,16 +12,16 @@ import traceback
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from server.utils.db_dependencies import get_tenant_db
-from server.utils.tenant_utils import get_tenant_from_request
 from server.utils.job_execution import (
     running_job_tasks,
     tenant_job_queues,
     tenant_processor_tasks,
     tenant_resources_lock,
 )
+from server.utils.tenant_utils import get_tenant_from_request
 
 # Set up logging
 logger = logging.getLogger(__name__)
