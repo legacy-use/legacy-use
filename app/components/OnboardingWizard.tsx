@@ -65,9 +65,6 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
     projectId: '',
     region: 'us-central1',
   });
-  const [openaiCredentials, setOpenaiCredentials] = useState({
-    apiKey: '',
-  });
 
   const steps = ['Welcome', 'Get Started', 'Configure Provider'];
 
@@ -261,12 +258,19 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
         }
         credentials.proxy_api_key = apiKeyInput;
       } else if (selectedProvider === 'openai') {
-        if (!openaiCredentials.apiKey.trim()) {
+        if (!apiKeyInput.trim()) {
           setLoading(false);
           setError('Please enter your OpenAI API key');
           return;
         }
-        credentials.api_key = openaiCredentials.apiKey.trim();
+        credentials.api_key = apiKeyInput.trim();
+      } else if (selectedProvider === 'openai_cua') {
+        if (!apiKeyInput.trim()) {
+          setLoading(false);
+          setError('Please enter your OpenAI CUA API key');
+          return;
+        }
+        credentials.api_key = apiKeyInput.trim();
       }
 
       // Use the new backend logic to configure the provider
@@ -631,10 +635,28 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
             fullWidth
             label="API Key"
             type="password"
-            value={openaiCredentials.apiKey}
-            onChange={e => setOpenaiCredentials(prev => ({ ...prev, apiKey: e.target.value }))}
+            value={apiKeyInput}
+            onChange={e => setApiKeyInput(e.target.value)}
             variant="outlined"
             placeholder="Enter your OpenAI API key"
+            helperText="You can get your API key from the OpenAI Console"
+          />
+        </Paper>
+      )}
+
+      {selectedProvider === 'openai_cua' && (
+        <Paper elevation={1} sx={{ p: 3, mb: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            OpenAI CUA Configuration
+          </Typography>
+          <TextField
+            fullWidth
+            label="API Key"
+            type="password"
+            value={apiKeyInput}
+            onChange={e => setApiKeyInput(e.target.value)}
+            variant="outlined"
+            placeholder="Enter your OpenAI CUA API key"
             helperText="You can get your API key from the OpenAI Console"
           />
         </Paper>

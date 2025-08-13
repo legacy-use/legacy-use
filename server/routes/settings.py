@@ -139,6 +139,16 @@ async def get_providers(request: Request, db_tenant=Depends(get_tenant_db)):
                 ),
             },
         },
+        APIProvider.OPENAI_CUA: {
+            'name': 'OpenAI CUA',
+            'description': 'OpenAI GPT-4 models via CUA',
+            'available': bool(get_tenant_setting(tenant_schema, 'OPENAI_API_KEY')),
+            'credentials': {
+                'api_key': obscure_api_key(
+                    get_tenant_setting(tenant_schema, 'OPENAI_API_KEY')
+                ),
+            },
+        },
     }
 
     # Build provider list
