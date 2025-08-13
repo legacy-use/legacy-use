@@ -55,6 +55,7 @@ def get_handler(
     # Lazy import to avoid circular dependency
     from server.computer_use.handlers.anthropic import AnthropicHandler
     from server.computer_use.handlers.openai import OpenAIHandler
+    from server.computer_use.handlers.uitars import UITARSHandler
 
     # Register handlers if not already done
     if not HANDLER_REGISTRY:
@@ -64,6 +65,7 @@ def get_handler(
         register_handler(APIProvider.VERTEX, AnthropicHandler)
         register_handler(APIProvider.LEGACYUSE_PROXY, AnthropicHandler)
         register_handler(APIProvider.OPENAI, OpenAIHandler)
+        register_handler(APIProvider.UITARS, UITARSHandler)
 
     handler_class = HANDLER_REGISTRY.get(provider)
 
@@ -84,7 +86,8 @@ def get_handler(
     }
 
     # Remove provider from kwargs if the handler doesn't expect it
-    if handler_class != AnthropicHandler:
+    # Both AnthropicHandler and UITARSHandler expect provider parameter
+    if handler_class.__name__ not in ('AnthropicHandler', 'UITARSHandler'):
         handler_kwargs.pop('provider', None)
 
     # Note: We return the protocol type for better static typing on handler methods

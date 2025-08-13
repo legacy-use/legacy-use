@@ -239,8 +239,76 @@ def normalize_key_combo(combo: str) -> str:
     """Normalize a key combination string.
 
     Converts "ctrl+c" to "ctrl c" and "shift+ctrl+c" to "shift ctrl c".
+    Also normalizes key names for xdotool compatibility.
     """
-    raise NotImplementedError('Not implemented')
+    if not isinstance(combo, str):
+        return combo
+
+    # Key aliases for common key names
+    KEY_ALIASES = {
+        'esc': 'Escape',
+        'escape': 'Escape',
+        'enter': 'Return',
+        'return': 'Return',
+        'win': 'Super_L',
+        'windows': 'Super_L',
+        'super': 'Super_L',
+        'meta': 'Super_L',
+        'cmd': 'Super_L',
+        'backspace': 'BackSpace',
+        'del': 'Delete',
+        'delete': 'Delete',
+        'tab': 'Tab',
+        'space': 'space',
+        'pageup': 'Page_Up',
+        'pagedown': 'Page_Down',
+        'home': 'Home',
+        'end': 'End',
+        'up': 'Up',
+        'down': 'Down',
+        'left': 'Left',
+        'right': 'Right',
+        'printscreen': 'Print',
+        'prtsc': 'Print',
+    }
+
+    # Modifier key normalization
+    MODIFIER_KEYS = {
+        'ctrl': {'ctrl', 'control', 'ctrl_l', 'ctrl_r'},
+        'shift': {'shift', 'shift_l', 'shift_r'},
+        'alt': {'alt', 'alt_l', 'alt_r', 'option'},
+        'Super_L': {'super_l', 'super_r'},
+    }
+
+    def normalize_key_part(part: str) -> str:
+        """Normalize a single key part."""
+        low = part.lower()
+
+        # Check modifier keys
+        for normalized, variants in MODIFIER_KEYS.items():
+            if low in variants:
+                return normalized
+
+        # Check key aliases
+        if low in KEY_ALIASES:
+            return KEY_ALIASES[low]
+
+        # Function keys
+        if low.startswith('f') and low[1:].isdigit():
+            return f'F{int(low[1:])}'
+
+        # Single letters or digits: keep as-is
+        if len(part) == 1:
+            return part
+
+        return part
+
+    # Split by both '+' and spaces, then normalize each part
+    parts = [p.strip() for p in combo.replace(' ', '+').split('+') if p.strip()]
+    normalized = [normalize_key_part(p) for p in parts]
+
+    # Join with '+' for xdotool compatibility
+    return '+'.join(normalized)
 
 
 def chat_completion_text_to_blocks(

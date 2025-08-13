@@ -36,6 +36,7 @@ from server.computer_use.handlers.converter_utils import (
     chat_completion_text_to_blocks,
 )
 from server.settings import settings
+from server.computer_use.config import APIProvider
 
 
 # Prompt template adapted for Doubao/UITARS style agents
@@ -99,11 +100,13 @@ class UITARSHandler(BaseProviderHandler):
 
     def __init__(
         self,
+        provider: APIProvider = APIProvider.UITARS,
         model: str = 'tgi',
         token_efficient_tools_beta: bool = False,
         only_n_most_recent_images: Optional[int] = None,
         tenant_schema: Optional[str] = None,
         image_truncation_threshold: int = 1,
+        max_retries: int = 2,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -111,8 +114,10 @@ class UITARSHandler(BaseProviderHandler):
             only_n_most_recent_images=only_n_most_recent_images,
             enable_prompt_caching=False,
             tenant_schema=tenant_schema,
+            max_retries=max_retries,
             **kwargs,
         )
+        self.provider = provider
         self.model = model
         self.image_truncation_threshold = image_truncation_threshold
 
@@ -127,18 +132,21 @@ class UITARSHandler(BaseProviderHandler):
         # Reload settings to pick up latest env
         settings.__init__()
 
-        base_url = 'http://147.189.202.17:8000/v1/'
-        key = 'sk-1234567890'
+        # Try to get tenant-specific settings first
+        base_url = self.tenant_setting('UITARS_BASE_URL') or getattr(
+            settings, 'UITARS_BASE_URL', 'http://147.189.202.17:8000/v1/'
+        )
+        tenant_key = self.tenant_setting('UITARS_API_KEY') or getattr(
+            settings, 'UITARS_API_KEY', None
+        )
+        final_api_key = tenant_key or api_key or 'sk-1234567890'
 
-        if base_url:
-            logger.info(f'UITARS using custom base_url: {base_url}')
-            return AsyncOpenAI(api_key=key, base_url=base_url)
-        return AsyncOpenAI(api_key=key)
+        logger.info(f'UITARS using base_url: {base_url}')
+        return AsyncOpenAI(api_key=final_api_key, base_url=base_url)
 
     def prepare_system(self, system_prompt: str) -> str:
         """Append UITARS-specific instructions to the base system prompt."""
-        # parts = [p for p in [system_prompt.strip(), COMPUTER_USE_DOUBAO] if p]
-        parts = [p for p in [COMPUTER_USE_DOUBAO] if p]
+        parts = [p for p in [system_prompt.strip(), COMPUTER_USE_DOUBAO] if p]
         return '\n\n'.join(parts)
 
     def convert_to_provider_messages(
@@ -235,53 +243,34 @@ class UITARSHandler(BaseProviderHandler):
         temperature: float = 0.0,
         **kwargs: Any,
     ) -> tuple[ChatCompletion, httpx.Request, httpx.Response]:
-        # Prepend system prompt
+        # Build action space section if tools are available
         if tools:
-            pass
-            # system = f"{system}\n\n## Action Space\n\n" + "\n".join(tools)
+            system = f'{system}\n\n## Action Space\n\n' + '\n'.join(tools)
 
         full_messages: list[ChatCompletionMessageParam] = []
         if system:
             sys_msg: ChatCompletionSystemMessageParam = {
                 'role': 'system',
-                # 'content': system,
-                'content': COMPUTER_USE_DOUBAO_MOCK,
+                'content': system,
             }
             full_messages.append(sys_msg)
 
-        # iterate recursively and shorten any message longer than 10000 characters to 10
-        def shorten_message(message: Any) -> Any:
-            if isinstance(message, list):
-                return [shorten_message(m) for m in message]
-            elif isinstance(message, dict):
-                return {
-                    shorten_message(k): shorten_message(v) for k, v in message.items()
-                }
-            elif isinstance(message, str):
-                if len(message) > 10000:
-                    return message[:7] + '...'
-                else:
-                    return message
-            return message
+        full_messages.extend(messages)
 
-        full_messages.extend(messages[1:])
+        # Log truncated messages for debugging
+        logger.debug(f'Sending {len(full_messages)} messages to UITARS')
 
-        logger.info(f'Shortened messages: {shorten_message(full_messages)}')
-
-        # TODO: use instructor
         response = await client.chat.completions.with_raw_response.create(
             model=model,
             messages=full_messages,
             max_tokens=max_tokens,
-            temperature=1.0,
+            temperature=temperature,
         )
 
         parsed = response.parse()
-        logger.info(f'Parsed: {parsed}')
-        blocks, _ = chat_completion_text_to_blocks(
-            parsed.choices[0].message.content or ''
+        logger.debug(
+            f'UITARS response: {parsed.choices[0].message.content[:200] if parsed.choices and parsed.choices[0].message.content else "(empty)"}'
         )
-        logger.info(f'Blocks: {blocks}')
         return parsed, response.http_response.request, response.http_response
 
     def convert_from_provider_response(
@@ -294,6 +283,46 @@ class UITARSHandler(BaseProviderHandler):
         message = response.choices[0].message
         raw_text = message.content or ''
         return chat_completion_text_to_blocks(raw_text)
+
+    async def execute(
+        self,
+        client: AsyncOpenAI,
+        messages: list[BetaMessageParam],
+        system: str,
+        tools: ToolCollection,
+        model: str,
+        max_tokens: int,
+        temperature: float = 0.0,
+        **kwargs,
+    ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
+        """
+        Make API call to UITARS and return standardized response format.
+
+        This is the public interface that calls the raw API and converts the response.
+        """
+        # Convert inputs to provider format
+        provider_messages = self.convert_to_provider_messages(messages)
+        system_str = self.prepare_system(system)
+        tool_actions = self.prepare_tools(tools)
+
+        # Call the raw API
+        parsed_response, request, raw_response = await self.call_api(
+            client=client,
+            messages=provider_messages,
+            system=system_str,
+            tools=tool_actions,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            **kwargs,
+        )
+
+        # Convert response to standardized format
+        content_blocks, stop_reason = self.convert_from_provider_response(
+            parsed_response
+        )
+
+        return content_blocks, stop_reason, request, raw_response
 
     def make_tool_result(
         self, result: ToolResult, tool_use_id: str
