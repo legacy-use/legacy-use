@@ -55,6 +55,7 @@ def get_handler(
     # Lazy import to avoid circular dependency
     from server.computer_use.handlers.anthropic import AnthropicHandler
     from server.computer_use.handlers.openai import OpenAIHandler
+    from server.computer_use.handlers.openai_cua import OpenAICUAHandler
 
     # Register handlers if not already done
     if not HANDLER_REGISTRY:
@@ -64,6 +65,7 @@ def get_handler(
         register_handler(APIProvider.VERTEX, AnthropicHandler)
         register_handler(APIProvider.LEGACYUSE_PROXY, AnthropicHandler)
         register_handler(APIProvider.OPENAI, OpenAIHandler)
+        register_handler(APIProvider.OPENAI_CUA, OpenAICUAHandler)
 
     handler_class = HANDLER_REGISTRY.get(provider)
 
