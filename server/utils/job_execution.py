@@ -589,7 +589,7 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
 
                 # Wrap the execute_api call in its own try-except block to better handle cancellation
                 api_response = await core.execute_api(
-                    job_id=job_id_str,
+                    job_id=job.id,
                     api_response_callback=api_response_callback,
                     tool_callback=tool_callback,
                     output_callback=output_callback,

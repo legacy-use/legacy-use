@@ -5,6 +5,7 @@ Core functionality for AI chat processing, shared between FastAPI and Streamlit 
 import logging
 from datetime import datetime
 from typing import Any, Callable, Optional
+from uuid import UUID
 
 import httpx
 from anthropic.types.beta import BetaMessageParam
@@ -78,7 +79,7 @@ class APIGatewayCore:
 
     async def execute_api(
         self,
-        job_id: str,
+        job_id: UUID,
         tool_callback: Optional[Callable[[ToolResult, str], None]] = None,
         api_response_callback: Optional[
             Callable[
