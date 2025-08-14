@@ -18,6 +18,7 @@ import traceback
 from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List
+from uuid import UUID
 
 import httpx
 
@@ -255,9 +256,12 @@ def trim_http_body(body):
 
 
 # Function to add logs to the database
-def add_job_log(job_id: str, log_type: str, content: Any, tenant_schema: str):
+def add_job_log(job_id: str | UUID, log_type: str, content: Any, tenant_schema: str):
     """Add a log entry for a job with tenant context."""
     from server.database.multi_tenancy import with_db
+
+    if isinstance(job_id, UUID):
+        job_id = str(job_id)
 
     with with_db(tenant_schema) as db_session:
         db_service = TenantAwareDatabaseService(db_session)
