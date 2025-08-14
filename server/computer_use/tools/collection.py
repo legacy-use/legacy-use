@@ -2,8 +2,10 @@
 
 import inspect
 from typing import Any, Dict
-from server.computer_use.logging import logger
+
 from anthropic.types.beta import BetaToolUnionParam
+
+from server.computer_use.logging import logger
 
 from .base import (
     BaseAnthropicTool,

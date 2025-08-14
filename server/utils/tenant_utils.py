@@ -3,11 +3,12 @@ Tenant utilities for multi-tenancy support.
 """
 
 from typing import Dict, List
+
 from fastapi import Request
 
-from server.database.shared import db_shared
 from server.database.multi_tenancy import get_tenant_by_host
-from server.utils.exceptions import TenantNotFoundError, TenantInactiveError
+from server.database.shared import db_shared
+from server.utils.exceptions import TenantInactiveError, TenantNotFoundError
 
 
 def get_tenant_from_request(request: Request) -> Dict[str, str]:

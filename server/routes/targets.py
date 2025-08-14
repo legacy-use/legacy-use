@@ -5,7 +5,7 @@ Target management routes.
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.models.base import Target, TargetCreate, TargetUpdate
 from server.settings import settings

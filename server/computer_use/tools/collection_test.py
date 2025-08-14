@@ -1,7 +1,7 @@
 from anthropic.types.beta import BetaToolUnionParam
 
-from server.computer_use.tools.collection import validate_tool_input
 from server.computer_use.tools.base import BaseAnthropicTool, ToolResult
+from server.computer_use.tools.collection import validate_tool_input
 
 
 class MockTool(BaseAnthropicTool):

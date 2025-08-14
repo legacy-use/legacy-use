@@ -6,7 +6,6 @@ from uuid import UUID
 from sqlalchemy import Integer, cast, func
 from sqlalchemy.orm import joinedload
 
-
 from .models import (
     APIDefinition,
     APIDefinitionVersion,
@@ -27,8 +26,10 @@ class DatabaseService:
         `server.database.engine` to avoid multiple connection pools.
         """
         from server.database.engine import (
-            engine as shared_engine,
             SessionLocal as shared_session_factory,
+        )
+        from server.database.engine import (
+            engine as shared_engine,
         )
 
         self.engine = shared_engine

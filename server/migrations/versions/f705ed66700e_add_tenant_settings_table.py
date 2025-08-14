@@ -10,9 +10,8 @@ import secrets
 import string
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 from server.migrations.tenant import for_each_tenant_schema
 

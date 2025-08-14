@@ -1,21 +1,21 @@
+import logging
 import os
-from fastapi import FastAPI, HTTPException, Path as FastAPIPath
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from typing import Literal, Optional, Tuple, Union, get_args
 
 from computer import (
     Action_20241022,
     Action_20250124,
-    ScrollDirection,
     ComputerTool20241022,
     ComputerTool20250124,
+    ScrollDirection,
     ToolError,
     run,
 )
+from fastapi import FastAPI, HTTPException
+from fastapi import Path as FastAPIPath
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from recording import router as recording_router
-
-import logging
 
 logger = logging.getLogger('computer_api')
 

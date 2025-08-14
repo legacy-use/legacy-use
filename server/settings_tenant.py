@@ -7,8 +7,8 @@ that were previously stored in global environment variables.
 
 from typing import Optional
 
-from server.database.multi_tenancy import with_db
 from server.database.models import TenantSettings
+from server.database.multi_tenancy import with_db
 
 # Define the tenant-specific settings that were previously global
 TENANT_SETTINGS_DEFAULTS = {

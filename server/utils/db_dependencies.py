@@ -65,7 +65,7 @@ def get_tenant_from_websocket(websocket: WebSocket) -> dict:
 
     # Import here to avoid circular imports
     from server.database.multi_tenancy import get_tenant_by_host
-    from server.utils.exceptions import TenantNotFoundError, TenantInactiveError
+    from server.utils.exceptions import TenantInactiveError, TenantNotFoundError
 
     # Look up tenant by host
     tenant = get_tenant_by_host(host)

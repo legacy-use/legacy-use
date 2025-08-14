@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from server.database.models import Base, Tenant
 from server.database.service import DatabaseService
 
-
 # Single default DatabaseService (engine + pool) reused across tenant sessions
 db_session = DatabaseService()
 

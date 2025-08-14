@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-import socket
-import threading
+import logging
 import select
+import socket
 import struct
 import sys
-import logging
+import threading
 
 logging.basicConfig(
     level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s'

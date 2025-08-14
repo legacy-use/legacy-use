@@ -10,7 +10,6 @@ from sqlalchemy.orm import sessionmaker
 
 from server.settings import settings
 
-
 # Create a single shared engine using application settings
 engine = create_engine(
     settings.DATABASE_URL,

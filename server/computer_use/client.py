@@ -1,9 +1,11 @@
 from typing import Any
-from anthropic.types.beta import BetaMessageParam
-from anthropic import APIStatusError
+
 import httpx
-from server.settings import settings
+from anthropic import APIStatusError
+from anthropic.types.beta import BetaMessageParam
+
 from server.computer_use.logging import logger
+from server.settings import settings
 
 
 class ContentBlockWrapper:
