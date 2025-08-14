@@ -38,6 +38,7 @@ from server.utils.telemetry import (
     capture_session_deleted,
 )
 from server.utils.tenant_utils import get_tenant_from_request
+from server.utils.session_management import safely_stop_container
 
 logger = logging.getLogger(__name__)
 
@@ -260,11 +261,7 @@ async def delete_session(
     )
 
     # Stop the container if it exists
-    if container_id := session.get('container_id'):
-        try:
-            stop_container(container_id)
-        except Exception as e:
-            logger.error(f'Error stopping container: {str(e)}')
+    safely_stop_container(session.get('container_id'), str(session_id))
 
     capture_session_deleted(request, session_id, False)
 

@@ -14,6 +14,7 @@ from server.utils.docker_manager import (
     get_container_status,
 )
 from server.utils.tenant_utils import get_active_tenants
+from server.utils.session_management import safely_stop_container
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,7 @@ async def monitor_sessions_for_tenant(tenant_schema: str):
                             'archive_reason': 'container-not-running',
                         },
                     )
+                    safely_stop_container(container_id, session_id)
                     continue
 
                 # If session is initializing and container is running, check health

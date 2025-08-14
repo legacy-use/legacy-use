@@ -5,6 +5,7 @@ from uuid import UUID
 
 # Imports copied from job_execution.py for these functions
 from server.models.base import SessionCreate
+from server.utils.docker_manager import stop_container
 
 # Remove the direct import that causes circular dependency
 # from server.routes.sessions import (
@@ -13,6 +14,30 @@ from server.models.base import SessionCreate
 
 # Initialize logger and db (copied from job_execution.py - potential issue)
 logger = logging.getLogger(__name__)
+
+
+def safely_stop_container(
+    container_id: Optional[str], session_id: Optional[str] = None
+) -> bool:
+    """Safely stop a container with proper error handling and logging."""
+    if not container_id:
+        return True
+
+    try:
+        stop_container(container_id)
+        logger.info(
+            f'Successfully stopped container {container_id}'
+            + (f' for session {session_id}' if session_id else '')
+        )
+        return True
+    except Exception as e:
+        error_msg = f'Error stopping container {container_id}'
+        if session_id:
+            error_msg += f' for session {session_id}'
+        error_msg += f': {str(e)}'
+        logger.error(error_msg)
+        return False
+
 
 # Global state copied from job_execution.py (potential issue)
 targets_with_pending_sessions: Set[str] = set()
