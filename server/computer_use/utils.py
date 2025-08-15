@@ -4,7 +4,7 @@ Utility functions for Computer Use API Gateway.
 
 import json
 from datetime import datetime
-from typing import Any, Dict, cast
+from typing import Any, Dict, Optional, cast
 
 from anthropic.types.beta import (
     BetaCacheControlEphemeralParam,
@@ -20,7 +20,6 @@ from anthropic.types.beta import (
 
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolResult
-from server.database.models import JobMessage
 
 
 def _load_system_prompt(system_prompt_suffix: str = '') -> str:
@@ -96,11 +95,15 @@ def _inject_prompt_caching(
         ):
             if breakpoints_remaining:
                 breakpoints_remaining -= 1
-                content[-1]['cache_control'] = BetaCacheControlEphemeralParam(
-                    {'type': 'ephemeral'}
+                from typing import cast as _cast
+
+                _cast(Dict[str, Any], content[-1])['cache_control'] = (
+                    BetaCacheControlEphemeralParam({'type': 'ephemeral'})
                 )
             else:
-                content[-1].pop('cache_control', None)
+                from typing import cast as _cast
+
+                _cast(Dict[str, Any], content[-1]).pop('cache_control', None)
                 # we'll only every have one extra turn per loop
                 break
 
@@ -163,12 +166,17 @@ def _make_api_tool_result(
 
     if result.error:
         # For error case, return the error in the expected format
-        return {
-            'type': 'tool_result',
-            'tool_use_id': tool_use_id,
-            'content': [],
-            'error': _maybe_prepend_system_tool_result(result, result.error),
-        }
+        from typing import cast as _cast
+
+        return _cast(
+            BetaToolResultBlockParam,
+            {
+                'type': 'tool_result',
+                'tool_use_id': tool_use_id,
+                'content': [],
+                'error': _maybe_prepend_system_tool_result(result, result.error),
+            },
+        )
 
     # For success case, prepare the content
     content: list[BetaTextBlockParam | BetaImageBlockParam] = []
@@ -214,12 +222,17 @@ def _make_api_tool_result(
             except json.JSONDecodeError as e:
                 logger.error(f'Invalid JSON in extraction tool output: {e}')
                 # Return error message when JSON is invalid
-                return {
-                    'type': 'tool_result',
-                    'tool_use_id': tool_use_id,
-                    'content': [],
-                    'error': f'Error: Invalid JSON in extraction tool output: {e}',
-                }
+                from typing import cast as _cast
+
+                return _cast(
+                    BetaToolResultBlockParam,
+                    {
+                        'type': 'tool_result',
+                        'tool_use_id': tool_use_id,
+                        'content': [],
+                        'error': f'Error: Invalid JSON in extraction tool output: {e}',
+                    },
+                )
         else:
             # Standard handling for non-extraction tools
             content.append(
@@ -255,7 +268,7 @@ def _maybe_prepend_system_tool_result(result: ToolResult, result_text: str):
     return result_text
 
 
-def _job_message_to_beta_message_param(job_message: JobMessage) -> BetaMessageParam:
+def _job_message_to_beta_message_param(job_message: Dict[str, Any]) -> BetaMessageParam:
     """Converts a JobMessage dictionary (or model instance) to a BetaMessageParam TypedDict."""
     # Deserialize from JSON to plain dict
     restored = {
@@ -270,9 +283,265 @@ def _job_message_to_beta_message_param(job_message: JobMessage) -> BetaMessagePa
 
 def _beta_message_param_to_job_message_content(
     beta_param: BetaMessageParam,
-) -> Dict[str, Any]:
+) -> list[Dict[str, Any]]:
     """
     Converts a BetaMessageParam TypedDict into components needed for a JobMessage
     (role and serialized message_content). Does not create a JobMessage DB model instance.
     """
-    return beta_param.get('content')
+    content = beta_param.get('content')
+    if isinstance(content, list):
+        return cast(list[Dict[str, Any]], content)
+    if isinstance(content, str):
+        return cast(list[Dict[str, Any]], [{'type': 'text', 'text': content}])
+    return []
+
+
+# Shared helpers for handlers
+def normalize_key_combo(combo: str) -> str:
+    """Normalize key-combination strings into a canonical form joined by '+'.
+
+    Examples:
+    - "ctrl c" -> "ctrl+c"
+    - "Ctrl+Shift+del" -> "ctrl+shift+Delete"
+    - "win+e" -> "Super_L+e"
+    """
+    if not isinstance(combo, str):
+        return combo  # type: ignore[return-value]
+
+    # Accept both separators; collapse to spaces first
+    compact = combo.replace('\n', ' ').replace('\t', ' ').strip()
+    compact = compact.replace('+', ' ')
+    parts = [p for p in compact.split(' ') if p]
+
+    # Order modifiers before non-modifiers
+    modifier_names = {'ctrl', 'control', 'shift', 'alt', 'cmd', 'win', 'meta', 'super'}
+    modifiers: list[str] = []
+    keys: list[str] = []
+    for p in parts:
+        lp = p.lower()
+        if lp in modifier_names:
+            modifiers.append('ctrl' if lp in {'ctrl', 'control'} else lp)
+        else:
+            keys.append(p)
+
+    ordered = modifiers + keys
+
+    alias_map = {
+        'esc': 'Escape',
+        'escape': 'Escape',
+        'enter': 'Return',
+        'return': 'Return',
+        'win': 'Super_L',
+        'windows': 'Super_L',
+        'super': 'Super_L',
+        'meta': 'Super_L',
+        'cmd': 'Super_L',
+        'backspace': 'BackSpace',
+        'del': 'Delete',
+        'delete': 'Delete',
+        'tab': 'Tab',
+        'space': 'space',
+        'pageup': 'Page_Up',
+        'pagedown': 'Page_Down',
+        'home': 'Home',
+        'end': 'End',
+        'up': 'Up',
+        'down': 'Down',
+        'left': 'Left',
+        'right': 'Right',
+        'printscreen': 'Print',
+        'prtsc': 'Print',
+    }
+
+    def normalize_part(p: str) -> str:
+        low = p.lower()
+        if low in {'ctrl', 'control'}:
+            return 'ctrl'
+        if low in {'shift', 'alt'}:
+            return low
+        if low in alias_map:
+            return alias_map[low]
+        if low.startswith('f') and low[1:].isdigit():
+            return f'F{int(low[1:])}'
+        if len(p) == 1:
+            return p
+        return p
+
+    normalized = [normalize_part(p) for p in ordered]
+    return '+'.join(normalized)
+
+
+def convert_point_resolution(
+    point: tuple[int, int],
+    *,
+    from_resolution: tuple[int, int],
+    to_resolution: tuple[int, int],
+) -> tuple[int, int]:
+    """Convert a coordinate from one resolution to another using independent x/y scales.
+
+    Rounds to nearest integer to produce pixel coordinates.
+    """
+    print(f'Converting point {point} from {from_resolution} to {to_resolution}')
+    from_w, from_h = from_resolution
+    to_w, to_h = to_resolution
+    if from_w <= 0 or from_h <= 0:
+        return point
+    scale_x = to_w / float(from_w)
+    scale_y = to_h / float(from_h)
+    x, y = point
+    result_x, result_y = int(round(x * scale_x)), int(round(y * scale_y))
+    print(f'Result: {result_x}, {result_y}')
+    return result_x, result_y
+
+
+def derive_center_coordinate(
+    val: Any,
+    *,
+    scale_from: Optional[tuple[int, int]] = None,
+    scale_to: Optional[tuple[int, int]] = None,
+) -> Optional[tuple[int, int]]:
+    """Derive a center coordinate from a point or bounding box-like value.
+
+    Accepts strings like "x y" or "x1 y1 x2 y2", lists/tuples, or any
+    value containing digits. Returns (x, y) if derivable, else None.
+    """
+    if val is None:
+        return None
+    s = str(val)
+    nums = [int(n) for n in __import__('re').findall(r'\d+', s)]
+    if not nums:
+        return None
+    if len(nums) >= 4:
+        x1, y1, x2, y2 = nums[:4]
+        cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
+    elif len(nums) >= 2:
+        x1, y1 = nums[:2]
+        cx, cy = int(x1), int(y1)
+    else:
+        return None
+
+    # mock for now
+    scale_from = (1920, 1080)
+    scale_to = (1920, 1080)
+
+    # Optional scaling support. For now, used to convert 1920x1080 → 1024x768.
+    if scale_from and scale_to:
+        cx, cy = convert_point_resolution(
+            (cx, cy), from_resolution=scale_from, to_resolution=scale_to
+        )
+
+    return cx, cy
+
+
+# ----------------------- Logging/Summary Helpers -----------------------
+
+
+def summarize_beta_messages(messages: list[BetaMessageParam]) -> Dict[str, Any]:
+    roles: Dict[str, int] = {}
+    total_text = 0
+    total_tool_result = 0
+    total_images = 0
+    total_thinking = 0
+    for m in messages:
+        r = m.get('role') or 'unknown'
+        roles[r] = roles.get(r, 0) + 1
+        content = m.get('content')
+        if isinstance(content, list):
+            for b in content:
+                if not isinstance(b, dict):
+                    continue
+                t = b.get('type')
+                if t == 'text':
+                    total_text += 1
+                elif t == 'tool_result':
+                    total_tool_result += 1
+                    # count images in tool_result content without printing
+                    for ci in b.get('content', []) or []:
+                        if isinstance(ci, dict) and ci.get('type') == 'image':
+                            total_images += 1
+                elif t == 'image':
+                    total_images += 1
+                elif t == 'thinking':
+                    total_thinking += 1
+    return {
+        'num_messages': len(messages),
+        'roles': roles,
+        'text_blocks': total_text,
+        'tool_result_blocks': total_tool_result,
+        'images': total_images,
+        'thinking_blocks': total_thinking,
+    }
+
+
+def summarize_openai_responses_input(messages: Any) -> Dict[str, Any]:
+    # messages: ResponseInputParam (list of dicts)
+    num_msgs = 0
+    text_parts = 0
+    image_parts = 0
+    for item in messages or []:
+        num_msgs += 1
+        if isinstance(item, dict):
+            content = item.get('content')
+            if isinstance(content, list):
+                for p in content:
+                    if isinstance(p, dict):
+                        t = p.get('type')
+                        if t in ('input_text', 'text'):
+                            text_parts += 1
+                        elif t in ('input_image', 'image_url'):
+                            image_parts += 1
+    return {
+        'num_messages': num_msgs,
+        'text_parts': text_parts,
+        'image_parts': image_parts,
+    }
+
+
+def summarize_openai_chat(messages: Any) -> Dict[str, Any]:
+    # messages: list[ChatCompletionMessageParam]
+    try:
+        num_msgs = 0
+        text_parts = 0
+        image_parts = 0
+        for m in messages or []:
+            num_msgs += 1
+            if isinstance(m, dict):
+                content = m.get('content')
+                if isinstance(content, list):
+                    for p in content:
+                        if isinstance(p, dict):
+                            t = p.get('type')
+                            if t == 'text':
+                                text_parts += 1
+                            elif t == 'image_url':
+                                image_parts += 1
+                elif isinstance(content, str):
+                    text_parts += 1
+        return {
+            'num_messages': num_msgs,
+            'text_parts': text_parts,
+            'image_parts': image_parts,
+        }
+    except Exception:
+        return {'num_messages': len(messages or []), 'text_parts': 0, 'image_parts': 0}
+
+
+def summarize_beta_blocks(blocks: list[BetaContentBlockParam]) -> Dict[str, Any]:
+    text_blocks = 0
+    tool_use_blocks = 0
+    images = 0
+    for b in blocks:
+        if not isinstance(b, dict):
+            continue
+        t = b.get('type')
+        if t == 'text':
+            text_blocks += 1
+        elif t == 'tool_use':
+            tool_use_blocks += 1
+        elif t == 'image':
+            images += 1
+    return {
+        'text_blocks': text_blocks,
+        'tool_use_blocks': tool_use_blocks,
+        'images': images,
+    }

@@ -19,6 +19,28 @@ class BaseAnthropicTool(metaclass=ABCMeta):
     ) -> BetaToolUnionParam:
         raise NotImplementedError
 
+    # Removed: OpenAI-specific conversion now handled by central converters using internal_spec()
+
+    # --- Single-source-of-truth spec for provider compilers ---
+    def internal_spec(self) -> dict:
+        """Provider-agnostic spec for this tool (actions, params, docs).
+
+        Default implementation derives a minimal spec from to_params().
+        Rich tools (e.g., computer) should override this to include
+        actions, per-action params, normalization rules, and options.
+        """
+        params = self.to_params()
+        return {
+            'name': params.get('name'),
+            'description': params.get('description'),
+            'input_schema': params.get('input_schema')
+            or {
+                'type': 'object',
+                'properties': {},
+            },
+            'options': {},
+        }
+
 
 @dataclass(kw_only=True, frozen=True)
 class ToolResult:

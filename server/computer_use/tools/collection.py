@@ -37,11 +37,11 @@ def validate_tool_input(
 
     if missing_params:
         logger.error(
-            f'Tool {tool.name} input is missing required parameters: {missing_params}'
+            f'Tool {tool.to_params().get("name")} input is missing required parameters: {missing_params}'
         )
         return (
             False,
-            f'Tool {tool.name} input is missing required parameters: {missing_params}',
+            f'Tool {tool.to_params().get("name")} input is missing required parameters: {missing_params}',
         )
 
     return True, None
@@ -59,6 +59,8 @@ class ToolCollection:
     ) -> list[BetaToolUnionParam]:
         return [tool.to_params() for tool in self.tools]
 
+    # Removed: OpenAI-specific conversion is handled by central converters
+
     async def run(
         self,
         *,
@@ -67,6 +69,7 @@ class ToolCollection:
         session_id: str,
         session: Dict[str, Any] | None = None,
     ) -> ToolResult:
+        logger.info(f'ToolCollection.run: {name} {tool_input} {session_id} {session}')
         tool = self.tool_map.get(name)
         if not tool:
             return ToolFailure(error=f'Tool {name} is invalid')

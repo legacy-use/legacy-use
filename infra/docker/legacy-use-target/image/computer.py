@@ -148,7 +148,7 @@ class BaseComputerTool:
     display_num: int | None
 
     _screenshot_delay = 2.0
-    _scaling_enabled = True
+    _scaling_enabled = False
 
     @property
     def options(self) -> ComputerToolOptions:

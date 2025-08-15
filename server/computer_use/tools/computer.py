@@ -3,7 +3,7 @@ import logging
 from typing import Literal, cast, Dict, Any
 
 import httpx
-from anthropic.types.beta import BetaToolComputerUse20241022Param, BetaToolUnionParam
+from anthropic.types.beta import BetaToolUnionParam
 
 from .base import BaseAnthropicTool, ToolError, ToolResult
 
@@ -45,6 +45,7 @@ class BaseComputerTool(BaseAnthropicTool):
     width: int = 1024  # Default width
     height: int = 768  # Default height
     display_num: int = 1  # Default display number
+    api_type: Literal['computer_20241022', 'computer_20250124'] = 'computer_20241022'
 
     @property
     def options(self):
@@ -54,8 +55,184 @@ class BaseComputerTool(BaseAnthropicTool):
             'display_number': self.display_num,
         }
 
-    def to_params(self) -> BetaToolComputerUse20241022Param:
-        return {'name': self.name, 'type': self.api_type, **self.options}
+    def to_params(self) -> BetaToolUnionParam:
+        # Base reports the concrete api_type as union-compatible
+        return cast(
+            BetaToolUnionParam,
+            {'name': self.name, 'type': self.api_type, **self.options},
+        )
+
+    # Deprecated OpenAI-specific adapter removed in favor of internal_spec() + central converters
+
+    # --- SSOT hooks ---
+    def internal_spec(self) -> dict:
+        return {
+            'name': 'computer',
+            'version': self.api_type,
+            'description': 'Remote computer control tool',
+            'actions': [
+                # Base actions
+                {'name': 'screenshot', 'params': {}},
+                {
+                    'name': 'left_click',
+                    'params': {
+                        'coordinate': {
+                            'type': 'array',
+                            'items': {'type': 'integer'},
+                            'minItems': 2,
+                            'maxItems': 2,
+                        }
+                    },
+                    'required': ['coordinate'],
+                },
+                {
+                    'name': 'mouse_move',
+                    'params': {
+                        'coordinate': {
+                            'type': 'array',
+                            'items': {'type': 'integer'},
+                            'minItems': 2,
+                            'maxItems': 2,
+                        }
+                    },
+                    'required': ['coordinate'],
+                },
+                {
+                    'name': 'type',
+                    'params': {'text': {'type': 'string'}},
+                    'required': ['text'],
+                    'description': 'Type the given text',
+                },
+                {
+                    'name': 'key',
+                    'params': {'text': {'type': 'string'}},
+                    'required': ['text'],
+                    'description': 'Press the given key. This can be a single key or a combination of keys. For example, "ctrl+c" or "ctrl+shift+c".',
+                },
+                # Enhanced actions
+                {
+                    'name': 'scroll',
+                    'params': {
+                        'scroll_direction': {'enum': ['up', 'down', 'left', 'right']},
+                        'scroll_amount': {'type': 'integer', 'minimum': 0},
+                    },
+                    'required': ['scroll_direction', 'scroll_amount'],
+                    'description': 'Scroll the screen in the given direction',
+                },
+                {
+                    'name': 'left_click_drag',
+                    'params': {
+                        'coordinate': {
+                            'type': 'array',
+                            'items': {'type': 'integer'},
+                            'minItems': 2,
+                            'maxItems': 2,
+                        },
+                        'to': {
+                            'type': 'array',
+                            'items': {'type': 'integer'},
+                            'minItems': 2,
+                            'maxItems': 2,
+                        },
+                    },
+                    'required': ['coordinate', 'to'],
+                    'description': 'Drag the mouse from the given coordinate to the given coordinate with the mouse button held down',
+                },
+                {
+                    'name': 'right_click',
+                    'params': {
+                        'coordinate': {
+                            'type': 'array',
+                            'items': {'type': 'integer'},
+                            'minItems': 2,
+                            'maxItems': 2,
+                        }
+                    },
+                    'required': ['coordinate'],
+                    'description': 'Click the right mouse button at the given coordinate',
+                },
+                {
+                    'name': 'middle_click',
+                    'params': {
+                        'coordinate': {
+                            'type': 'array',
+                            'items': {'type': 'integer'},
+                            'minItems': 2,
+                            'maxItems': 2,
+                        }
+                    },
+                    'required': ['coordinate'],
+                    'description': 'Click the middle mouse button at the given coordinate',
+                },
+                {
+                    'name': 'double_click',
+                    'params': {
+                        'coordinate': {
+                            'type': 'array',
+                            'items': {'type': 'integer'},
+                            'minItems': 2,
+                            'maxItems': 2,
+                        }
+                    },
+                    'required': ['coordinate'],
+                },
+                {
+                    'name': 'triple_click',
+                    'params': {
+                        'coordinate': {
+                            'type': 'array',
+                            'items': {'type': 'integer'},
+                            'minItems': 2,
+                            'maxItems': 2,
+                        }
+                    },
+                    'required': ['coordinate'],
+                },
+                {
+                    'name': 'left_mouse_down',
+                    'params': {
+                        'coordinate': {
+                            'type': 'array',
+                            'items': {'type': 'integer'},
+                            'minItems': 2,
+                            'maxItems': 2,
+                        }
+                    },
+                    'required': ['coordinate'],
+                },
+                {
+                    'name': 'left_mouse_up',
+                    'params': {
+                        'coordinate': {
+                            'type': 'array',
+                            'items': {'type': 'integer'},
+                            'minItems': 2,
+                            'maxItems': 2,
+                        }
+                    },
+                    'required': ['coordinate'],
+                },
+                {
+                    'name': 'hold_key',
+                    'params': {
+                        'text': {'type': 'string'},
+                        'duration': {'type': 'number'},
+                    },
+                    'required': ['text', 'duration'],
+                },
+                {
+                    'name': 'wait',
+                    'params': {'duration': {'type': 'number'}},
+                    'required': ['duration'],
+                    'description': 'Wait for the given duration in seconds',
+                },
+            ],
+            'options': self.options,
+            'normalization': {
+                'key_aliases': True,
+                'scroll_units': 'wheel_notches',
+            },
+        }
 
     async def __call__(
         self,
@@ -111,7 +288,7 @@ class BaseComputerTool(BaseAnthropicTool):
         timeout = httpx.Timeout(60.0, connect=10.0)
 
         # Construct the payload with only non-None parameters
-        payload = {'api_type': self.api_type}
+        payload: Dict[str, Any] = {'api_type': self.api_type}
         if text is not None:
             payload['text'] = text
         if coordinate is not None:
@@ -173,19 +350,22 @@ class BaseComputerTool(BaseAnthropicTool):
 
 
 class ComputerTool20241022(BaseComputerTool, BaseAnthropicTool):
-    api_type: Literal['computer_20241022'] = 'computer_20241022'
+    api_type = 'computer_20241022'
 
-    def to_params(self) -> BetaToolComputerUse20241022Param:
-        return {'name': self.name, 'type': self.api_type, **self.options}
+    def to_params(self) -> BetaToolUnionParam:
+        return cast(
+            BetaToolUnionParam,
+            {'name': self.name, 'type': 'computer_20241022', **self.options},
+        )
 
 
 class ComputerTool20250124(BaseComputerTool, BaseAnthropicTool):
-    api_type: Literal['computer_20250124'] = 'computer_20250124'
+    api_type = 'computer_20250124'
 
-    def to_params(self):
+    def to_params(self) -> BetaToolUnionParam:
         return cast(
             BetaToolUnionParam,
-            {'name': self.name, 'type': self.api_type, **self.options},
+            {'name': self.name, 'type': 'computer_20250124', **self.options},
         )
 
     async def __call__(
