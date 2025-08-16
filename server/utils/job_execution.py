@@ -361,6 +361,8 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
             # Update job with result and API exchanges using tenant-aware database service
             with with_db(tenant_schema) as db_session:
                 db_service = TenantAwareDatabaseService(db_session)
+
+                # Use the session-aware update method for all job updates
                 updated_job = db_service.update_job(
                     job.id,
                     {
@@ -369,6 +371,7 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
                         'completed_at': datetime.now(),
                         'updated_at': datetime.now(),
                     },
+                    update_session=True,
                 )
 
             # Check if the job status is paused or error, which will implicitly pause the target's queue
@@ -446,6 +449,8 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
                     if user_interrupted
                     else 'Job was automatically terminated: exceeded token limit'
                 )
+
+                # Use the session-aware update method for all job updates
                 db_service.update_job(
                     job.id,
                     {
@@ -459,6 +464,7 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
                         'total_output_tokens': running_token_total
                         // 2,  # Rough estimate
                     },
+                    update_session=True,
                 )
 
             # Re-raise to be caught by the outer try-except
@@ -501,6 +507,7 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
         # Update job with error using tenant-aware database service
         with with_db(tenant_schema) as db_session:
             db_service = TenantAwareDatabaseService(db_session)
+            # Use the session-aware update method
             db_service.update_job(
                 job.id,
                 {
@@ -509,6 +516,7 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
                     'completed_at': datetime.now(),
                     'updated_at': datetime.now(),
                 },
+                update_session=True,
             )
 
         # Log that the target queue will be paused

@@ -477,16 +477,28 @@ class DatabaseService:
         finally:
             session.close()
 
-    def list_session_jobs(self, session_id, limit: int = 10, offset: int = 0):
+    def list_session_jobs(
+        self, session_id, limit: int = 10, offset: int = 0, status: str = None
+    ):
+        """
+        List jobs for a session with optional status filtering.
+
+        Args:
+            session_id: The session ID to list jobs for
+            limit: Maximum number of jobs to return
+            offset: Number of jobs to skip
+            status: Optional status filter (e.g., 'running', 'success', 'error')
+        """
         session = self.Session()
         try:
+            query = session.query(Job).filter(Job.session_id == session_id)
+
+            # Apply status filter if provided
+            if status:
+                query = query.filter(Job.status == status)
+
             jobs = (
-                session.query(Job)
-                .filter(Job.session_id == session_id)
-                .order_by(Job.created_at.desc())
-                .offset(offset)
-                .limit(limit)
-                .all()
+                query.order_by(Job.created_at.desc()).offset(offset).limit(limit).all()
             )
             job_dicts = []
             for job in jobs:
@@ -584,7 +596,17 @@ class DatabaseService:
         finally:
             session.close()
 
-    def update_job(self, job_id, job_data):
+    def update_job(self, job_id, job_data, update_session=True):
+        """
+        Update job and optionally update session's last_job_time for terminal states.
+
+        Args:
+            job_id: The job ID to update
+            job_data: Dictionary of job fields to update
+            update_session: Whether to update session's last_job_time for terminal states (default: True)
+        """
+        from server.models.base import JobStatus
+
         session = self.Session()
         try:
             job = session.query(Job).filter(Job.id == job_id).first()
@@ -596,12 +618,30 @@ class DatabaseService:
             job.updated_at = datetime.now()
 
             session.commit()
-            return self._to_dict(job)
+            job_dict = self._to_dict(job)
+
+            # If update_session is True and this is a terminal state, update session's last_job_time
+            if update_session and job_dict and job_dict.get('session_id'):
+                status = job_data.get('status')
+                if status:
+                    terminal_states = [
+                        JobStatus.SUCCESS,
+                        JobStatus.ERROR,
+                        JobStatus.CANCELED,
+                    ]
+                    if status in terminal_states:
+                        self.update_session(
+                            job_dict['session_id'],
+                            {'last_job_time': datetime.now()},
+                        )
+
+            return job_dict
         finally:
             session.close()
 
     def update_job_status(self, job_id, status):
-        return self.update_job(job_id, {'status': status})
+        """Update job status (convenience method that uses update_job)."""
+        return self.update_job(job_id, {'status': status}, update_session=True)
 
     def request_job_cancel(self, job_id: UUID) -> bool:
         """Set cancel_requested=true for a job regardless of which worker owns it."""

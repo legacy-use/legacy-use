@@ -249,6 +249,13 @@ async def delete_session(
     if not session:
         raise HTTPException(status_code=404, detail='Session not found')
 
+    # Check if there are running jobs on this session and log a warning
+    running_jobs = db_tenant.list_session_jobs(session_id, status='running')
+    if running_jobs:
+        logger.warning(
+            f'User is archiving session {session_id} which has {len(running_jobs)} running job(s)'
+        )
+
     # Update session state to destroying and set archive reason
     db_tenant.update_session(
         session_id,
@@ -281,6 +288,13 @@ async def hard_delete_session(
     session = db_tenant.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail='Session not found')
+
+    # Check if there are running jobs on this session and log a warning
+    running_jobs = db_tenant.list_session_jobs(session_id, status='running')
+    if running_jobs:
+        logger.warning(
+            f'User is hard deleting session {session_id} which has {len(running_jobs)} running job(s)'
+        )
 
     # Stop container if it exists
     if session.get('container_id'):

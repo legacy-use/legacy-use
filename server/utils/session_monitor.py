@@ -49,24 +49,53 @@ async def monitor_sessions_for_tenant(tenant_schema: str):
                 last_job_time = session.get('last_job_time')
 
                 # Check for inactive sessions (no job in the last 60 minutes)
-                if current_state == 'ready' and last_job_time:
-                    # Convert last_job_time to datetime if it's a string
-                    if isinstance(last_job_time, str):
-                        try:
-                            last_job_time = datetime.fromisoformat(
-                                last_job_time.replace('Z', '+00:00')
-                            )
-                        except ValueError:
-                            # If we can't parse the datetime, skip this check
-                            logger.warning(
-                                f'Could not parse last_job_time for session {session_id}'
-                            )
+                if current_state == 'ready':
+                    # Handle sessions that have never had a job run on them
+                    if last_job_time is None:
+                        # Use the session's created_at time as the last activity time
+                        created_at = session.get('created_at')
+                        if isinstance(created_at, str):
+                            try:
+                                last_job_time = datetime.fromisoformat(
+                                    created_at.replace('Z', '+00:00')
+                                )
+                            except ValueError:
+                                logger.warning(
+                                    f'Could not parse created_at for session {session_id}'
+                                )
+                                last_job_time = None
+                        elif isinstance(created_at, datetime):
+                            last_job_time = created_at
+                        else:
                             last_job_time = None
+                    else:
+                        # Convert last_job_time to datetime if it's a string
+                        if isinstance(last_job_time, str):
+                            try:
+                                last_job_time = datetime.fromisoformat(
+                                    last_job_time.replace('Z', '+00:00')
+                                )
+                            except ValueError:
+                                # If we can't parse the datetime, skip this check
+                                logger.warning(
+                                    f'Could not parse last_job_time for session {session_id}'
+                                )
+                                last_job_time = None
 
                     # Check if the session has been inactive for too long
                     if last_job_time and (current_datetime - last_job_time) > timedelta(
                         seconds=INACTIVE_SESSION_THRESHOLD
                     ):
+                        # Check if there are any running jobs on this session
+                        running_jobs = db_service.list_session_jobs(
+                            session_id, status='running'
+                        )
+
+                        if running_jobs:
+                            logger.info(
+                                f'Session {session_id} has been inactive but has {len(running_jobs)} running job(s), skipping termination'
+                            )
+                            continue
                         logger.info(
                             f'Session {session_id} has been inactive for more than {INACTIVE_SESSION_THRESHOLD / 60} minutes, archiving'
                         )
@@ -107,8 +136,19 @@ async def monitor_sessions_for_tenant(tenant_schema: str):
                 is_running = container_status.get('state', {}).get('Running', False)
 
                 # If container is not running but session is not in a terminal state,
-                # update to 'destroyed'
+                # check for running jobs before destroying
                 if not is_running and current_state not in ['destroying', 'destroyed']:
+                    # Check if there are any running jobs on this session
+                    running_jobs = db_service.list_session_jobs(
+                        session_id, status='running'
+                    )
+
+                    if running_jobs:
+                        logger.info(
+                            f'Container for session {session_id} is not running but has {len(running_jobs)} running job(s), skipping destruction'
+                        )
+                        continue
+
                     logger.info(
                         f"Container for session {session_id} is not running, updating state to 'destroyed'"
                     )
@@ -166,7 +206,7 @@ async def monitor_session_states():
             logger.error(f'Error in session state monitor: {str(e)}')
 
         # Wait before next iteration
-        await asyncio.sleep(INIT_CHECK_INTERVAL)
+        await asyncio.sleep(READY_CHECK_INTERVAL)
 
 
 def start_session_monitor():
