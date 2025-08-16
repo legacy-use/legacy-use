@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Any, Dict, cast
 
 from anthropic.types.beta import (
-    BetaCacheControlEphemeralParam,
     BetaContentBlockParam,
     BetaImageBlockParam,
     BetaMessage,
@@ -20,7 +19,6 @@ from anthropic.types.beta import (
 
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolResult
-from server.database.models import JobMessage
 
 
 def _load_system_prompt(system_prompt_suffix: str = '') -> str:
@@ -81,30 +79,6 @@ def _response_to_params(
     return res
 
 
-def _inject_prompt_caching(
-    messages: list[BetaMessageParam],
-):
-    """
-    Set cache breakpoints for the 3 most recent turns
-    one cache breakpoint is left for tools/system prompt, to be shared across sessions
-    """
-
-    breakpoints_remaining = 3
-    for message in reversed(messages):
-        if message['role'] == 'user' and isinstance(
-            content := message['content'], list
-        ):
-            if breakpoints_remaining:
-                breakpoints_remaining -= 1
-                content[-1]['cache_control'] = BetaCacheControlEphemeralParam(
-                    {'type': 'ephemeral'}
-                )
-            else:
-                content[-1].pop('cache_control', None)
-                # we'll only every have one extra turn per loop
-                break
-
-
 def _maybe_filter_to_n_most_recent_images(
     messages: list[BetaMessageParam],
     images_to_keep: int,
@@ -163,12 +137,16 @@ def _make_api_tool_result(
 
     if result.error:
         # For error case, return the error in the expected format
-        return {
-            'type': 'tool_result',
-            'tool_use_id': tool_use_id,
-            'content': [],
-            'error': _maybe_prepend_system_tool_result(result, result.error),
-        }
+
+        return cast(
+            BetaToolResultBlockParam,
+            {
+                'type': 'tool_result',
+                'tool_use_id': tool_use_id,
+                'content': [],
+                'error': _maybe_prepend_system_tool_result(result, result.error),
+            },
+        )
 
     # For success case, prepare the content
     content: list[BetaTextBlockParam | BetaImageBlockParam] = []
@@ -214,12 +192,16 @@ def _make_api_tool_result(
             except json.JSONDecodeError as e:
                 logger.error(f'Invalid JSON in extraction tool output: {e}')
                 # Return error message when JSON is invalid
-                return {
-                    'type': 'tool_result',
-                    'tool_use_id': tool_use_id,
-                    'content': [],
-                    'error': f'Error: Invalid JSON in extraction tool output: {e}',
-                }
+
+                return cast(
+                    BetaToolResultBlockParam,
+                    {
+                        'type': 'tool_result',
+                        'tool_use_id': tool_use_id,
+                        'content': [],
+                        'error': f'Error: Invalid JSON in extraction tool output: {e}',
+                    },
+                )
         else:
             # Standard handling for non-extraction tools
             content.append(
@@ -255,7 +237,7 @@ def _maybe_prepend_system_tool_result(result: ToolResult, result_text: str):
     return result_text
 
 
-def _job_message_to_beta_message_param(job_message: JobMessage) -> BetaMessageParam:
+def _job_message_to_beta_message_param(job_message: Dict[str, Any]) -> BetaMessageParam:
     """Converts a JobMessage dictionary (or model instance) to a BetaMessageParam TypedDict."""
     # Deserialize from JSON to plain dict
     restored = {
@@ -270,9 +252,14 @@ def _job_message_to_beta_message_param(job_message: JobMessage) -> BetaMessagePa
 
 def _beta_message_param_to_job_message_content(
     beta_param: BetaMessageParam,
-) -> Dict[str, Any]:
+) -> list[Dict[str, Any]]:
     """
     Converts a BetaMessageParam TypedDict into components needed for a JobMessage
     (role and serialized message_content). Does not create a JobMessage DB model instance.
     """
-    return beta_param.get('content')
+    content = beta_param.get('content')
+    if isinstance(content, list):
+        return cast(list[Dict[str, Any]], content)
+    if isinstance(content, str):
+        return cast(list[Dict[str, Any]], [{'type': 'text', 'text': content}])
+    return []

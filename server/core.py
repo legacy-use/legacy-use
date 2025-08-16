@@ -6,13 +6,13 @@ import logging
 from datetime import datetime
 from typing import Any, Callable, Optional
 
-import httpx
 from anthropic.types.beta import BetaMessageParam
 
 from server.computer_use import (
     get_default_model_name,
     get_tool_version,
     sampling_loop,
+    ApiResponseCallback,
 )
 from server.computer_use.tools import ToolResult
 from server.models.base import (
@@ -80,11 +80,7 @@ class APIGatewayCore:
         self,
         job_id: str,
         tool_callback: Optional[Callable[[ToolResult, str], None]] = None,
-        api_response_callback: Optional[
-            Callable[
-                [httpx.Request, httpx.Response | object | None, Exception | None], None
-            ]
-        ] = None,
+        api_response_callback: Optional[ApiResponseCallback] = None,
         output_callback: Optional[Callable[[Any], None]] = None,
         session_id: str = None,
     ) -> APIResponse:

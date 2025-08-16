@@ -8,9 +8,10 @@ from server.computer_use.config import (
     get_tool_version,
     validate_provider,
 )
-from server.computer_use.sampling_loop import sampling_loop
+from server.computer_use.sampling_loop import ApiResponseCallback, sampling_loop
 
 __all__ = [
+    'ApiResponseCallback',
     'sampling_loop',
     'APIProvider',
     'validate_provider',

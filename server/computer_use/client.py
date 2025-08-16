@@ -1,5 +1,5 @@
-from typing import Any
-from anthropic.types.beta import BetaMessageParam
+from typing import Any, Iterable
+from anthropic.types.beta import BetaMessageParam, BetaTextBlockParam
 from anthropic import APIStatusError
 import httpx
 from server.settings import settings
@@ -111,7 +111,7 @@ class WithRawResponse:
         max_tokens: int,
         messages: list[BetaMessageParam],
         model: str,
-        system: str,
+        system: str | Iterable[BetaTextBlockParam],
         tools: list,
         betas: list[str],
         **kwargs,
