@@ -129,6 +129,16 @@ async def get_providers(request: Request, db_tenant=Depends(get_tenant_db)):
                 ),
             },
         },
+        APIProvider.OPENAI: {
+            'name': 'OpenAI',
+            'description': 'OpenAI GPT-4 models via direct API',
+            'available': bool(get_tenant_setting(tenant_schema, 'OPENAI_API_KEY')),
+            'credentials': {
+                'api_key': obscure_api_key(
+                    get_tenant_setting(tenant_schema, 'OPENAI_API_KEY')
+                ),
+            },
+        },
     }
 
     # Build provider list
@@ -223,6 +233,14 @@ async def update_provider_settings(
             'LEGACYUSE_PROXY_API_KEY',
             request.credentials['proxy_api_key'],
         )
+
+    elif provider_enum == APIProvider.OPENAI:
+        api_key = request.credentials.get('api_key', '')
+        if not isinstance(api_key, str) or not api_key.strip():
+            raise HTTPException(
+                status_code=400, detail='API key is required for OpenAI provider'
+            )
+        set_tenant_setting(tenant_schema, 'OPENAI_API_KEY', api_key.strip())
 
     # Set as active provider
     set_tenant_setting(tenant_schema, 'API_PROVIDER', provider_enum.value)

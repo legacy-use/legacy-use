@@ -16,6 +16,7 @@ class APIProvider(StrEnum):
     BEDROCK = 'bedrock'
     VERTEX = 'vertex'
     LEGACYUSE_PROXY = 'legacyuse'
+    OPENAI = 'openai'
 
 
 PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
@@ -23,6 +24,7 @@ PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.BEDROCK: 'eu.anthropic.claude-sonnet-4-20250514-v1:0',
     APIProvider.VERTEX: 'claude-sonnet-4@20250514',
     APIProvider.LEGACYUSE_PROXY: 'legacy-use-sonnet-4',  # model selection is handled server side
+    APIProvider.OPENAI: 'gpt-4o',
 }
 
 

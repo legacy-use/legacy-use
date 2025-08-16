@@ -221,6 +221,8 @@ class AnthropicHandler(BaseProviderHandler):
         """Make raw API call to Anthropic and return provider-specific response."""
         betas = self.get_betas()
 
+        logger.info(f'Messages: {self._truncate_for_debug(messages)}')
+
         raw_response = await client.beta.messages.with_raw_response.create(
             max_tokens=max_tokens,
             messages=messages,
@@ -276,13 +278,13 @@ class AnthropicHandler(BaseProviderHandler):
         )
 
         # Convert response to standardized format
-        content_blocks, stop_reason = self._convert_from_provider_response(
+        content_blocks, stop_reason = self.convert_from_provider_response(
             parsed_response
         )
 
         return content_blocks, stop_reason, request, raw_response
 
-    def _convert_from_provider_response(
+    def convert_from_provider_response(
         self, response: BetaMessage
     ) -> tuple[list[BetaContentBlockParam], str]:
         """
