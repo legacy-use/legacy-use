@@ -84,15 +84,42 @@ export const setApiKeyHeader = (apiKey: string | null) => {
 // Add a request interceptor to ensure API key is set for every request
 apiClient.interceptors.request.use(
   config => {
-    // Check if API key is in localStorage but not in headers
-    const apiKey = localStorage.getItem('apiKey');
-    if (apiKey && !config.headers['X-API-Key']) {
+    // Always set an API key header - use stored key or fallback to 'no-api-key'
+    const apiKey = localStorage.getItem('apiKey') || 'no-api-key';
+    if (!config.headers['X-API-Key']) {
       config.headers['X-API-Key'] = apiKey;
     }
 
     return config;
   },
   error => {
+    return Promise.reject(error);
+  },
+);
+
+// Add a response interceptor to handle tenant not found errors
+apiClient.interceptors.response.use(
+  response => {
+    return response;
+  },
+  error => {
+    // Check if the error is a tenant not found error
+    if (error.response?.status === 403 && error.response?.data?.error_type === 'tenant_not_found') {
+      // Don't redirect if we're already on the signup subdomain to avoid loops
+      const currentHost = window.location.hostname;
+      const currentSubdomain = currentHost.split('.')[0];
+      if (currentSubdomain !== 'signup') {
+        // Redirect to signup subdomain on the same domain, preserving protocol and port
+        const domain = currentHost.split('.').slice(1).join('.');
+        const protocol = window.location.protocol;
+        const port = window.location.port ? `:${window.location.port}` : '';
+        
+        const signupUrl = `${protocol}//signup.${domain}${port}`;
+        window.location.href = signupUrl;
+      }
+      return Promise.reject(error);
+    }
+    
     return Promise.reject(error);
   },
 );

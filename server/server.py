@@ -174,10 +174,23 @@ async def auth_middleware(request: Request, call_next):
             status_code=e.status_code,
             content={'detail': e.detail},
         )
-    except (TenantNotFoundError, TenantInactiveError) as e:
+    except TenantNotFoundError as e:
         return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={'detail': str(e)},
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={
+                'detail': 'Tenant not found',
+                'error_type': 'tenant_not_found',
+                'message': str(e),
+            },
+        )
+    except TenantInactiveError as e:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={
+                'detail': 'Tenant is inactive',
+                'error_type': 'tenant_inactive',
+                'message': str(e),
+            },
         )
 
 
