@@ -106,6 +106,8 @@ async def sampling_loop(
 
     tool_collection = ToolCollection(*tools)
 
+    provider = APIProvider.OPENCUA
+    print('provider', provider)
     # Initialize handler for the provider
     handler = get_handler(
         provider=provider,

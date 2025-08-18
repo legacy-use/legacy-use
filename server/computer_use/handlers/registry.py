@@ -11,6 +11,7 @@ from server.computer_use.config import APIProvider
 from server.computer_use.handlers.anthropic import AnthropicHandler
 from server.computer_use.handlers.base import BaseProviderHandler, ProviderHandler
 from server.computer_use.handlers.openai import OpenAIHandler
+from server.computer_use.handlers.opencua import OpenCuaHandler
 
 # Registry mapping providers to handler classes
 HANDLER_REGISTRY: Dict[APIProvider, Type[BaseProviderHandler]] = {
@@ -19,6 +20,7 @@ HANDLER_REGISTRY: Dict[APIProvider, Type[BaseProviderHandler]] = {
     APIProvider.VERTEX: AnthropicHandler,
     APIProvider.LEGACYUSE_PROXY: AnthropicHandler,
     APIProvider.OPENAI: OpenAIHandler,
+    APIProvider.OPENCUA: OpenCuaHandler,
 }
 
 
