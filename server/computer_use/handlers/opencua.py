@@ -1,6 +1,7 @@
 import json
 import logging
-from typing import Any, Iterable, cast
+import re
+from typing import Any, Dict, Iterable, Optional, cast
 
 import boto3
 import httpx
@@ -57,7 +58,7 @@ Provide clear, concise, and actionable instructions:
 - If the action involves keyboard actions like `press`, `write`, `hotkey`:
   - Consolidate repetitive keypresses with count
   - Specify expected text outcome for typing actions
-- If at any point you notice a deviation from the expected GUI, call the `computer.terminate` tool with the status `failure` and the data `{"reason": "<TEXT_REASONING_FOR_TERMINATION>"}`
+- If at any point you notice a deviation from the expected GUI, call the `computer.terminate` tool with the status `failure` and the data `{"reasoning": "<TEXT_REASONING_FOR_TERMINATION>"}`
 
 Finally, output the action as PyAutoGUI code or the following functions:
 
@@ -257,15 +258,16 @@ Finally, output the action as PyAutoGUI code or the following functions:
     ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
         """Make raw API call to OpenCua and return provider-specific response."""
 
-        logger.debug(
-            f'Messages before conversion: {self._truncate_for_debug(messages)}'
-        )
+        # logger.debug(
+        #     f'Messages before conversion: {str(self._truncate_for_debug(messages))}'
+        # )
 
         system_formatted = self.prepare_system(system)
         messages_formatted = self.convert_to_provider_messages(messages)
 
         logger.debug(
-            'Messages after conversion', self._truncate_for_debug(messages_formatted)
+            'Messages after conversion: %s',
+            self._truncate_for_debug(messages_formatted),
         )
 
         # if the last user messages does not include a screenshot (image), add one
@@ -273,7 +275,6 @@ Finally, output the action as PyAutoGUI code or the following functions:
         last_user_message = [
             msg for msg in messages_formatted if msg['role'] == 'user'
         ][-1]
-        logger.debug('last_user_message', self._truncate_for_debug(last_user_message))
         if not any(block['type'] == 'image' for block in last_user_message['content']):
             logger.info(
                 'No screenshot found in last user message, adding mock screenshot tool use'
@@ -294,43 +295,42 @@ Finally, output the action as PyAutoGUI code or the following functions:
 
         return content_blocks, stop_reason, request, response
 
-    def _extract_assistant_sections(self, response: str) -> tuple[str, str, str, str]:
-        """Extract sections from assistant response, supporting multi-line content and flexible section headers."""
-        import re
+    def _parse_task(self, text: str) -> Dict[str, Optional[str]]:
+        # Normalize newlines
+        text = text.strip()
 
-        # Patterns for section headers
-        section_patterns = {
-            'Step': re.compile(r'^# Step(?:\s*\d*)?:\s*$'),
-            'Thought': re.compile(r'^## Thought:\s*$'),
-            'Action': re.compile(r'^## Action:\s*$'),
-            'Code': re.compile(r'^## Code:\s*$'),
-        }
+        # Step (optional, e.g. '# Step 1:')
+        step_match = re.search(r'#\s*Step\s*([^\n:]+):?', text, re.IGNORECASE)
+        step = f'Step {step_match.group(1).strip()}' if step_match else None
 
-        sections = {'Step': [], 'Thought': [], 'Action': [], 'Code': []}
-        current_section = None
+        # Thought
+        thought_match = re.search(
+            r'##\s*Thought:\s*(.*?)(?=##\s*Action:|##\s*Code:|$)',
+            text,
+            re.DOTALL | re.IGNORECASE,
+        )
+        thought = thought_match.group(1).strip() if thought_match else None
 
-        lines = response.splitlines()
-        for line in lines:
-            matched = False
-            for section, pattern in section_patterns.items():
-                if pattern.match(line):
-                    current_section = section
-                    matched = True
-                    break
-            if not matched and current_section:
-                # For code, stop at triple backticks or end of section
-                if current_section == 'Code':
-                    if line.strip().startswith('```'):
-                        continue  # skip the code block marker
-                sections[current_section].append(line)
+        # Action
+        action_match = re.search(
+            r'##\s*Action:\s*(.*?)(?=##\s*Code:|$)', text, re.DOTALL | re.IGNORECASE
+        )
+        action = action_match.group(1).strip() if action_match else None
 
-        # Join lines, strip leading/trailing whitespace
-        step = '\n'.join(sections['Step']).strip()
-        thought = '\n'.join(sections['Thought']).strip()
-        action = '\n'.join(sections['Action']).strip()
-        code = '\n'.join(sections['Code']).strip()
+        # Code (inside fenced block or after "## Code:")
+        code_match = re.search(
+            r'##\s*Code:\s*```(?:python|code)?\n?(.*?)```',
+            text,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if not code_match:
+            # fallback if no fenced block
+            code_match = re.search(
+                r'##\s*Code:\s*(.*)', text, re.DOTALL | re.IGNORECASE
+            )
+        code = code_match.group(1).strip() if code_match else None
 
-        return step, thought, action, code
+        return {'step': step, 'thought': thought, 'action': action, 'code': code}
 
     def _convert_pyautogui_code_to_tool_use(self, code: str) -> BetaToolUseBlockParam:
         """Convert PyAutoGUI code to tool use."""
@@ -424,13 +424,42 @@ Finally, output the action as PyAutoGUI code or the following functions:
             seconds = command.split('seconds=')[1].split(')')[0]
             return _construct_tool_use('wait', duration=float(seconds))
         elif command.startswith('terminate'):
-            # terminate(status='success'); TODO: handle data and error cases
-            return {
-                'id': 'toolu_opencua_terminate',
-                'type': 'tool_use',
-                'name': 'extraction',
-                'input': {'data': {'name': 'terminate', 'status': 'success'}},
-            }
+            # terminate(status='success', data='{...}'); TODO: handle data and error cases
+            status = command.split('status=')[1].split(',')[0].split(')')[0].strip("'")
+            if 'data=' in command:
+                data = command.split('data=')[1].split(')')[0].strip("'")
+            else:
+                data = '{}'
+
+            if data:
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError:
+                    logger.warning(f'Invalid JSON in data: {data}')
+
+            print('OpenCua terminate status', repr(status))
+            print('OpenCua terminate data', repr(data))
+
+            if status == 'success':
+                return {
+                    'id': 'toolu_opencua_terminate',
+                    'type': 'tool_use',
+                    'name': 'extraction',
+                    'input': {'data': {'status': status, 'data': data}},
+                }
+            else:
+                # handle if data is not a dict
+                if not isinstance(data, dict) or 'reasoning' not in data:
+                    data = {'reasoning': data}
+
+                return {
+                    'id': 'toolu_opencua_terminate',
+                    'type': 'tool_use',
+                    'name': 'ui_not_as_expected',
+                    'input': {
+                        'data': {'status': status, 'reasoning': data['reasoning']}
+                    },
+                }
 
         raise ValueError(f'Unknown command: {command}')
 
@@ -439,13 +468,11 @@ Finally, output the action as PyAutoGUI code or the following functions:
     ) -> tuple[list[BetaContentBlockParam], str]:
         """Convert OpenCua response to provider-specific response."""
 
-        step, thought, action, code = self._extract_assistant_sections(response)
+        print('OpenCua response', repr(response))
 
-        print('OpenCua response', response)
-        print('OpenCua step', step)
-        print('OpenCua thought', thought)
-        print('OpenCua action', action)
-        print('OpenCua code', code)
+        task = self._parse_task(response)
+
+        print('OpenCua task', repr(task))
 
         messages: list[BetaContentBlockParam] = []
         stop_reason = 'end_turn'
@@ -453,17 +480,29 @@ Finally, output the action as PyAutoGUI code or the following functions:
         # Only keep the step and action (alligns with samples from the openCua paper);
         # TODO: Having the though displayed in the UI is nice, but hurts model performance
         # -> include and filter out in convert_to_provider_messages
-        text_message = f'# Step: {step}\n ## Thought: {thought}\n## Action: {action}'
+
+        # construct text message from task
+        text_message = ''
+        if task['step']:
+            text_message += f'# Step: {task["step"]}\n'
+        if task['action']:
+            text_message += f'## Action: {task["action"]}\n'
+
         messages.append(
             cast(BetaTextBlockParam, {'type': 'text', 'text': text_message})
         )
 
-        if code:
-            tool_use = self._convert_pyautogui_code_to_tool_use(code)
+        if task['code']:
+            tool_use = self._convert_pyautogui_code_to_tool_use(task['code'])
             messages.append(tool_use)
-            stop_reason = 'tool_use'
+
+            # End the turn once extraction or ui_not_as_expected is called
+            if tool_use['id'] != 'toolu_opencua_terminate':
+                stop_reason = 'tool_use'
 
         # thought can be dropped, as it's is more or less just reasoning output of the model itself
         # The paper does not include it in the message history, but for the user it might be of interest
+
+        print('OpenCua messages', repr(messages), 'stop_reason', stop_reason)
 
         return messages, stop_reason
