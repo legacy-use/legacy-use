@@ -14,6 +14,8 @@ if [ -z "$RUSTDESK_ID" ] || [ -z "$RUSTDESK_PASSWORD" ]; then
     exit 1
 fi
 
+rustdesk --option allow-linux-headless Y
+
 # Create RustDesk config directory
 mkdir -p ~/.config/rustdesk
 
