@@ -113,6 +113,8 @@ RUN python3 -m venv .venv
 RUN .venv/bin/pip3 install --no-cache-dir -r requirements.txt
 
 # setup desktop env & app
+RUN mkdir -p $HOME/.config/rustdesk
+COPY --chown=$USERNAME:$USERNAME infra/docker/legacy-use-target/image/RustDesk.toml $HOME/.config/rustdesk/RustDesk.toml
 COPY --chown=$USERNAME:$USERNAME infra/docker/legacy-use-target/image/proxychains.conf /etc/proxychains.conf
 COPY --chown=$USERNAME:$USERNAME infra/docker/legacy-use-target/image/ $HOME
 RUN chmod +x $HOME/*.sh
