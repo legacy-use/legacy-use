@@ -104,12 +104,12 @@ Following the steps in the [README.md](./README.md) file will get you up and run
 
 2. **Install JS dependencies:**
    ```bash
-   npm install              # or: bun install
+   pnpm install
    ```
 
 3. **Start the Vite dev server (hot-reload):**
    ```bash
-   npm run dev              # or: bun run dev
+   pnpm run dev
    ```
    Visit http://localhost:5173 and start hacking!
 

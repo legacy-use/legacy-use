@@ -8,14 +8,19 @@ ENV USERNAME=legacy-use-mgmt
 ENV HOME=/home/$USERNAME
 RUN useradd -m -s /bin/bash -d $HOME $USERNAME
 
+# Setup corepack for pnpm
+RUN npm install --global corepack@latest
+
 USER $USERNAME
 WORKDIR $HOME
 
 # Copy package files first for better layer caching
-COPY --chown=$USERNAME:$USERNAME package.json package-lock.json $HOME/
+COPY --chown=$USERNAME:$USERNAME package.json pnpm-lock.yaml $HOME/
 
 # Install all dependencies (including dev dependencies for building)
-RUN cd $HOME && npm install && npm cache clean --force
+RUN corepack enable && \
+    corepack use pnpm && \
+    cd $HOME && pnpm install --frozen-lockfile
 
 # Copy source code in correct structure
 COPY --chown=$USERNAME:$USERNAME app/ $HOME/app/
@@ -37,7 +42,7 @@ USER $USERNAME
 WORKDIR $HOME
 
 # Copy all necessary files from builder stage
-COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/package.json $HOME/package-lock.json $HOME/
+COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/package.json $HOME/pnpm-lock.yaml $HOME/
 COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/node_modules $HOME/node_modules
 COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/app $HOME/app
 COPY --from=builder --chown=$USERNAME:$USERNAME $HOME/public $HOME/public
@@ -53,11 +58,11 @@ echo "Starting React app"\n\
 # Check if debug mode is enabled\n\
 if [ "${LEGACY_USE_DEBUG:-0}" = "1" ]; then\n\
     echo "Debug mode: Installing/updating node dependencies"\n\
-    npm install && npm cache clean --force\n\
+    pnpm install --frozen-lockfile\n\
 fi\n\
-\n\
+\
 echo "Starting development server"\n\
-exec npm start' > $HOME/entrypoint.sh && \
+exec pnpm start' > $HOME/entrypoint.sh && \
     chmod +x $HOME/entrypoint.sh
 
 EXPOSE 5173

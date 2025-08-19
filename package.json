@@ -32,7 +32,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-json-pretty": "^2.2.0",
-    "react-router-dom": "^7.8.0",
+    "react-router-dom": "^7.8.1",
     "react-syntax-highlighter": "^15.6.1",
     "usehooks-ts": "^3.1.1",
     "uuid": "^11.1.0"
@@ -48,5 +48,6 @@
     "orval": "^7.11.2",
     "typescript": "^5.9.2",
     "vite": "^7.1.2"
-  }
+  },
+  "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748"
 }

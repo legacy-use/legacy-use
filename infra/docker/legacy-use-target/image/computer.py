@@ -197,11 +197,17 @@ class BaseComputerTool:
                 command_parts = [self.xdotool, f'mousemove --sync {x} {y}']
                 return await self.shell(' '.join(command_parts))
             elif action == 'left_click_drag':
-                command_parts = [
-                    self.xdotool,
-                    f'mousedown 1 mousemove --sync {x} {y} mouseup 1',
-                ]
-                return await self.shell(' '.join(command_parts))
+                command = (
+                    f'{self.xdotool} '
+                    'mousedown --clearmodifiers 1 '  # start drag, dropping any additional modifiers
+                    'sleep 0.12 '
+                    'mousemove_relative --sync 18 0 '  # threshold to trigger DnD
+                    'sleep 0.05 '
+                    f'mousemove --sync {x} {y} '
+                    'sleep 0.10 '  # brief hover so the target window sees XdndPosition
+                    'mouseup 1'
+                )
+                return await self.shell(command)
 
         if action in ('key', 'type'):
             if text is None:

@@ -44,6 +44,14 @@ These are the predefined tools the model can use to interact with the interface:
     
     - *Double click*
     - *Right click*
+
+- **Drag and drop**
+    
+    Moves an element by dragging it with the cursor.
+    > **Before use**: Ensure the element is selected and the cursor is positioned over it (typically done with the left-click tool first).
+
+    Example: *Click on the file "sample-1.pdf" and drag it into the "work" folder.*
+    
 - **Scroll up / Scroll down**
     
     Scrolls the screen in the corresponding direction.
