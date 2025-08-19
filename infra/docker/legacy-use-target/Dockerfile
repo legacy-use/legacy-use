@@ -16,6 +16,8 @@ RUN apt-get update && \
     sudo \
     x11vnc \
     autocutsel \
+    # Graphics libraries for RustDesk
+    libegl-mesa0 \
     # Input monitoring tools
     xinput \
     x11-utils \
