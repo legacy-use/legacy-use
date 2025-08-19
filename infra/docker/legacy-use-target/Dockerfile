@@ -16,7 +16,7 @@ RUN apt-get install --update -y --no-install-recommends \
     x11vnc \
     autocutsel \
     # Graphics libraries for RustDesk
-    libegl-mesa0 \
+    libegl1 \
     # Input monitoring tools
     xinput \
     x11-utils \
