@@ -61,7 +61,5 @@ def get_tool_version(model_name: str) -> ToolVersion:
     """
     Get the tool version for a given model name.
     """
-    models_20250124 = ['3-7', 'sonnet-4', 'gpt-5']
-    if any(model in model_name.lower() for model in models_20250124):
-        return 'computer_use_20250124'
-    return 'computer_use_20241022'
+    # if needed 'computer_use_20241022', dependend on the model name, but currently all models are 20250124
+    return 'computer_use_20250124'
