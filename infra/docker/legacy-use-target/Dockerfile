@@ -69,13 +69,13 @@ RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee 
 
 # Install RustDesk
 ARG TARGETARCH
+ENV RUSTDESK_VERSION=1.2.6
 RUN case "$TARGETARCH" in \
         amd64) RUSTDESK_ARCH=x86_64 ;; \
         arm64) RUSTDESK_ARCH=aarch64 ;; \
         *) echo "Unsupported architecture for RustDesk: $TARGETARCH" && exit 1 ;; \
     esac && \
-
-    curl -L -o /tmp/rustdesk.deb "https://github.com/rustdesk/rustdesk/releases/download/1.4.1/rustdesk-1.4.1-${RUSTDESK_ARCH}.deb"
+    curl -L -o /tmp/rustdesk.deb "https://github.com/rustdesk/rustdesk/releases/download/${RUSTDESK_VERSION}/rustdesk-${RUSTDESK_VERSION}-${RUSTDESK_ARCH}.deb"
 RUN sudo apt-get update --fix-missing && \
     sudo apt-get install -fy /tmp/rustdesk.deb && \
     rm /tmp/rustdesk.deb && \
