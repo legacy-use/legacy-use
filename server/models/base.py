@@ -47,6 +47,8 @@ class APIDefinitionRuntime:
     def _build_full_prompt_template(self) -> str:
         """Build the full prompt template with cleanup and response example instructions."""
         # Build the full prompt with standard instructions
+        return self.prompt
+
         prompt_full = f'''{self.prompt}
 
 

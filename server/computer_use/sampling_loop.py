@@ -106,8 +106,6 @@ async def sampling_loop(
 
     tool_collection = ToolCollection(*tools)
 
-    provider = APIProvider.OPENCUA
-    print('provider', provider)
     # Initialize handler for the provider
     handler = get_handler(
         provider=provider,
@@ -272,6 +270,7 @@ async def sampling_loop(
         found_tool_use = False
         for content_block in response_params:
             output_callback(content_block)
+            print('content_block', content_block)
             if content_block['type'] == 'tool_use':
                 found_tool_use = True
 

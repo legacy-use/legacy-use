@@ -151,7 +151,7 @@ async def get_providers(request: Request, db_tenant=Depends(get_tenant_db)):
                     get_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY')
                 ),
                 'region': get_tenant_setting(tenant_schema, 'AWS_REGION'),
-                'endpoint': get_tenant_setting(tenant_schema, 'AWS_ENDPOINT'),
+                'endpoint': get_tenant_setting(tenant_schema, 'AWS_SAGEMAKER_ENDPOINT'),
             },
         },
     }
