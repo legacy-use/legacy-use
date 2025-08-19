@@ -139,6 +139,8 @@ Finally, output the action as PyAutoGUI code or the following functions:
         self, messages: list[BetaMessageParam]
     ) -> list[ChatCompletionMessageParam]:
         """Convert messages to provider-specific format."""
+        messages = self.preprocess_messages(messages)
+
         result = []
         for message in messages:
             if message['role'] == 'user':
