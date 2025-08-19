@@ -15,6 +15,9 @@ from openai.types.chat import ChatCompletionMessageParam
 
 from server.computer_use.config import APIProvider
 from server.computer_use.handlers.base import BaseProviderHandler
+from server.computer_use.handlers.converter_utils import (
+    normalize_key_part,
+)
 from server.computer_use.tools.collection import ToolCollection
 
 logger = logging.getLogger(__name__)
@@ -54,6 +57,7 @@ Provide clear, concise, and actionable instructions:
 - If the action involves keyboard actions like `press`, `write`, `hotkey`:
   - Consolidate repetitive keypresses with count
   - Specify expected text outcome for typing actions
+- If at any point you notice a deviation from the expected GUI, call the `computer.terminate` tool with the status `failure` and the data `{"reason": "<TEXT_REASONING_FOR_TERMINATION>"}`
 
 Finally, output the action as PyAutoGUI code or the following functions:
 
@@ -76,7 +80,8 @@ Finally, output the action as PyAutoGUI code or the following functions:
   "parameters": {
     "type": "object",
     "properties": {
-      "status": { "type": "string", "enum": [ "success", "failure" ], "description": "The status of the task" }
+      "status": { "type": "string", "enum": [ "success", "failure" ], "description": "The status of the task" },
+      "data": { "type": "json", "description": "The required data, relevant for completing the task, in json: ```json\n{...}```; an empty object if no data is required}"
     },
     "required": [ "status" ]
   }
@@ -161,10 +166,16 @@ Finally, output the action as PyAutoGUI code or the following functions:
                                 logger.warning(f'Tool result error: {block["error"]}')
 
                                 continue
-                            is_image = block['content'][0]['type'] == 'image'
+                            logger.debug(
+                                f'Tool result block[content]: {self._truncate_for_debug(block["content"])}'
+                            )
+                            is_image = (
+                                len(block['content']) == 1
+                                and block['content'][0]['type'] == 'image'
+                            )
                             if not is_image:
                                 logger.warning(
-                                    f'Tool result is not an image: {block["content"]}'
+                                    f'Tool result is not an image: {self._truncate_for_debug(block["content"])}'
                                 )
                                 continue
                             block_content = block['content'][0]
@@ -324,7 +335,14 @@ Finally, output the action as PyAutoGUI code or the following functions:
     def _convert_pyautogui_code_to_tool_use(self, code: str) -> BetaToolUseBlockParam:
         """Convert PyAutoGUI code to tool use."""
         print('_convert_pyautogui_code_to_tool_use code:', code)
-        command = code.split('pyautogui.')[1]
+        # extract command, these are either pyautogui.<command> or computer.<command>
+        if 'pyautogui.' in code:
+            command = code.split('pyautogui.')[1]
+        elif 'computer.' in code:
+            command = code.split('computer.')[1]
+        else:
+            raise ValueError(f'Unknown command: {code}')
+
         print('_convert_pyautogui_code_to_tool_use command:', command)
 
         def _convert_coordinate(coordinate: str) -> tuple[int, int]:
@@ -386,14 +404,21 @@ Finally, output the action as PyAutoGUI code or the following functions:
             return _construct_tool_use('type', text=text)
         elif command.startswith('press'):
             # press('esc')
-            key = command.split('key=')[1].split(')')[0]
-            return _construct_tool_use('type', text=key)
+            key = command.split('key=')[1].split(')')[0].strip('\'"')
+            normalized_key = normalize_key_part(key)
+            return _construct_tool_use('key', text=normalized_key)
         elif command.startswith('hotkey'):
             # hotkey(['ctrl', 'alt', 'delete'])
             keys: list[str] = command.split('([')[1].split('])')[0].split(',')
-            keys = [key.strip() for key in keys]
-            print('_convert_pyautogui_code_to_tool_use keys:', keys)
-            return _construct_tool_use('key', text='+'.join(keys))
+            keys = [key.strip().strip('\'"') for key in keys]
+            normalized_keys = [normalize_key_part(key) for key in keys]
+            print(
+                '_convert_pyautogui_code_to_tool_use keys:',
+                keys,
+                'normalized:',
+                normalized_keys,
+            )
+            return _construct_tool_use('key', text='+'.join(normalized_keys))
         elif command.startswith('wait'):
             # wait(seconds=1)
             seconds = command.split('seconds=')[1].split(')')[0]
