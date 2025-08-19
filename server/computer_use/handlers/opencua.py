@@ -100,8 +100,8 @@ Finally, output the action as PyAutoGUI code or the following functions:
 
         self.provider = provider
         self.model = model
-        self.endpoint = self.tenant_setting(
-            'AWS_ENDPOINT'
+        self.ENDPOINT = self.tenant_setting(
+            'AWS_SAGEMAKER_ENDPOINT'
         )  # TODO: endpoint effectively the same as model
 
     async def initialize_client(self, api_key: str, **kwargs):
