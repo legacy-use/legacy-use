@@ -3,8 +3,7 @@ FROM docker.io/ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBIAN_PRIORITY=high
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN apt-get install --update -y --no-install-recommends \
     curl \
     wget \
     gnupg \
@@ -43,31 +42,23 @@ RUN apt-get update && \
     python3-venv \
     tightvncserver \
     # Video recording
-    ffmpeg && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    rm -rf /tmp/* /var/tmp/*
+    ffmpeg
+
 
 # Install git temporarily for cloning operations
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
+RUN apt-get install --update -y --no-install-recommends git && \
     # Install noVNC
     git clone --branch v1.5.0 https://github.com/novnc/noVNC.git /opt/noVNC && \
     git clone --branch v0.12.0 https://github.com/novnc/websockify /opt/noVNC/utils/websockify && \
     ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html && \
     # Remove git after use
-    apt-get remove -y git && \
-    apt-get autoremove -y && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get remove -y git && apt-get autoremove -y
 
 # Install Tailscale using official package repository
 RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null && \
     curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list && \
-    apt-get update && \
-    apt-get install -y tailscale && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install --update -y tailscale
+
 
 # Install RustDesk
 ARG TARGETARCH
@@ -78,11 +69,14 @@ RUN case "$TARGETARCH" in \
         *) echo "Unsupported architecture for RustDesk: $TARGETARCH" && exit 1 ;; \
     esac && \
     curl -L -o /tmp/rustdesk.deb "https://github.com/rustdesk/rustdesk/releases/download/${RUSTDESK_VERSION}/rustdesk-${RUSTDESK_VERSION}-${RUSTDESK_ARCH}.deb"
-RUN sudo apt-get update --fix-missing && \
-    sudo apt-get install -fy /tmp/rustdesk.deb && \
-    rm /tmp/rustdesk.deb && \
-    sudo apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN sudo apt-get install --update -fy /tmp/rustdesk.deb && \
+    rm /tmp/rustdesk.deb
+
+
+# Clean up apt
+RUN apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /tmp/* /var/tmp/*
 
 # setup user
 ENV USERNAME=legacy-use
