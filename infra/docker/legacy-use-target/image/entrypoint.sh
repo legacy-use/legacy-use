@@ -8,6 +8,10 @@ export XKB_DEFAULT_MODEL=pc105
 export XKB_DEFAULT_LAYOUT=us
 export XKB_DEFAULT_VARIANT=""
 export XKB_DEFAULT_OPTIONS=""
+export XDG_CONFIG_HOME="$(pwd)/.config"
+
+mkdir -p $XDG_CONFIG_HOME
+
 ./xvfb_startup.sh
 ./x11vnc_startup.sh
 ./novnc_startup.sh
