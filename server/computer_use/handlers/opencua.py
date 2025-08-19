@@ -499,6 +499,20 @@ Finally, output the action as PyAutoGUI code or the following functions:
             # End the turn once extraction or ui_not_as_expected is called
             if tool_use['id'] != 'toolu_opencua_terminate':
                 stop_reason = 'tool_use'
+        else:
+            # No code provided - model needs another try
+            # Add a screenshot request to continue the conversation
+            logger.info(
+                'No code provided by OpenCUA model, requesting screenshot for retry'
+            )
+            mock_screenshot_tool_use: BetaToolUseBlockParam = {
+                'id': 'toolu_retry_screenshot',
+                'type': 'tool_use',
+                'name': 'computer',
+                'input': {'action': 'screenshot'},
+            }
+            messages.append(mock_screenshot_tool_use)
+            stop_reason = 'tool_use'  # Force continuation
 
         # thought can be dropped, as it's is more or less just reasoning output of the model itself
         # The paper does not include it in the message history, but for the user it might be of interest
