@@ -170,7 +170,7 @@ Finally, output the action as PyAutoGUI code or the following functions:
             user_message,
             re.DOTALL,
         )
-        api_prompt_cleanup = cleanup_match.group(1).strip() if cleanup_match else ''
+        api_prompt_cleanup = cleanup_match.group(1).strip() if cleanup_match else '{}'
 
         return prompt, api_name, api_response_example, api_prompt_cleanup
 
