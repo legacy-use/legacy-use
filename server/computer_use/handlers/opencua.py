@@ -141,6 +141,39 @@ Finally, output the action as PyAutoGUI code or the following functions:
 
         return client
 
+    def _extract_api_definitions_from_user_message(
+        self, user_message: str
+    ) -> tuple[str, str, str, str]:
+        """Extract API definitions (prompt, api_name, api_response_example, api_prompt_cleanup) from the full prompt template string."""
+
+        # 1. Extract the original prompt (everything before "IMPORTANT INSTRUCTIONS")
+        prompt_match = re.split(
+            r'\n\s*IMPORTANT INSTRUCTIONS FOR RETURNING RESULTS:\s*\n',
+            user_message,
+            maxsplit=1,
+        )
+        prompt = prompt_match[0].strip() if len(prompt_match) > 1 else ''
+
+        # 2. Extract api_name
+        name_match = re.search(r'"name":\s*"([^"]+)"', user_message)
+        api_name = name_match.group(1) if name_match else ''
+
+        # 3. Extract api_response_example
+        response_match = re.search(
+            r'"result":\s*(.+?)\n\s*}\s*```', user_message, re.DOTALL
+        )
+        api_response_example = response_match.group(1).strip() if response_match else ''
+
+        # 4. Extract prompt_cleanup
+        cleanup_match = re.search(
+            r"After you've completed the extraction, please perform these steps to return the system to its original state:\s*(.+?)\n?$",
+            user_message,
+            re.DOTALL,
+        )
+        api_prompt_cleanup = cleanup_match.group(1).strip() if cleanup_match else ''
+
+        return prompt, api_name, api_response_example, api_prompt_cleanup
+
     def convert_to_provider_messages(
         self, messages: list[BetaMessageParam]
     ) -> list[ChatCompletionMessageParam]:
@@ -215,9 +248,30 @@ Finally, output the action as PyAutoGUI code or the following functions:
         # add '# Task Instruction:' to the first user text message; This is needed to adhere to the OpenCua fine-tuning format
         user_messages = [msg for msg in result if msg['role'] == 'user']
         if len(user_messages) > 0:
-            user_messages[0]['content'][0]['text'] = (
-                f'# Task Instruction:\n{user_messages[0]["content"][0]["text"]}'
+            prompt, api_name, api_response_example, api_prompt_cleanup = (
+                self._extract_api_definitions_from_user_message(
+                    user_messages[0]['content'][0]['text']
+                )
             )
+            print(
+                'OpenCua user_messages', repr(self._truncate_for_debug(user_messages))
+            )
+            print('OpenCua prompt', repr(prompt))
+            print('OpenCua api_name', repr(api_name))
+            print('OpenCua api_response_example', repr(api_response_example))
+            print('OpenCua api_prompt_cleanup', repr(api_prompt_cleanup))
+
+            # update the first user text message with the extracted api definitions
+            user_messages[0]['content'][0]['text'] = (
+                f'# Task Instruction:\n{prompt}\n\nWhen finished call the `computer.terminate` tool with the status `success` and the data `{api_response_example}`'
+            )
+
+            self.latest_api_definitions = {
+                'prompt': prompt,
+                'api_name': api_name,
+                'api_response_example': api_response_example,
+                'api_prompt_cleanup': api_prompt_cleanup,
+            }
 
         return result
 
@@ -489,11 +543,15 @@ Finally, output the action as PyAutoGUI code or the following functions:
             print('OpenCua terminate data', repr(data))
 
             if status == 'success':
+                name = ''
+                if self.latest_api_definitions:
+                    name = self.latest_api_definitions['api_name']
+
                 return {
                     'id': 'toolu_opencua_terminate',
                     'type': 'tool_use',
                     'name': 'extraction',
-                    'input': {'data': {'status': status, 'data': data}},
+                    'input': {'data': {'name': name, 'result': data}},
                 }
             else:
                 # handle if data is not a dict
@@ -504,9 +562,7 @@ Finally, output the action as PyAutoGUI code or the following functions:
                     'id': 'toolu_opencua_terminate',
                     'type': 'tool_use',
                     'name': 'ui_not_as_expected',
-                    'input': {
-                        'data': {'status': status, 'reasoning': data['reasoning']}
-                    },
+                    'input': {'data': {'reasoning': data['reasoning']}},
                 }
 
         raise ValueError(f'Unknown command: {command}')
