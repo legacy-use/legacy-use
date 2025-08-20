@@ -26,7 +26,7 @@ PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.VERTEX: 'claude-sonnet-4@20250514',
     APIProvider.LEGACYUSE_PROXY: 'legacy-use-sonnet-4',  # model selection is handled server side
     APIProvider.OPENAI: 'gpt-5',
-    APIProvider.OPENCUA: 'opencua-7b-1234567890',
+    APIProvider.OPENCUA: 'opencua-7b-1755605386',
 }
 
 

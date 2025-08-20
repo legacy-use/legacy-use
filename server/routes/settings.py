@@ -151,7 +151,6 @@ async def get_providers(request: Request, db_tenant=Depends(get_tenant_db)):
                     get_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY')
                 ),
                 'region': get_tenant_setting(tenant_schema, 'AWS_REGION'),
-                'endpoint': get_tenant_setting(tenant_schema, 'AWS_SAGEMAKER_ENDPOINT'),
             },
         },
     }
@@ -273,9 +272,6 @@ async def update_provider_settings(
             request.credentials['secret_access_key'],
         )
         set_tenant_setting(tenant_schema, 'AWS_REGION', request.credentials['region'])
-        set_tenant_setting(
-            tenant_schema, 'AWS_SAGEMAKER_ENDPOINT', request.credentials['endpoint']
-        )
 
     # Set as active provider
     set_tenant_setting(tenant_schema, 'API_PROVIDER', provider_enum.value)

@@ -45,9 +45,7 @@ class OpenCuaHandler(BaseProviderHandler):
 
         self.provider = provider
         self.model = model
-        self.ENDPOINT = self.tenant_setting(
-            'AWS_SAGEMAKER_ENDPOINT'
-        )  # TODO: endpoint effectively the same as model
+        self.ENDPOINT = model
         self.latest_api_definitions: Dict[str, str] = {}
 
     async def initialize_client(self, api_key: str, **kwargs):
@@ -57,8 +55,6 @@ class OpenCuaHandler(BaseProviderHandler):
         aws_region = self.tenant_setting('AWS_REGION')
         aws_access_key = self.tenant_setting('AWS_ACCESS_KEY_ID')
         aws_secret_key = self.tenant_setting('AWS_SECRET_ACCESS_KEY')
-
-        logger.info(f'Using boto3 session with region: {aws_region}')
 
         # Create session with explicit credentials (None values will use default credential chain)
         session = boto3.Session(
@@ -118,8 +114,6 @@ class OpenCuaHandler(BaseProviderHandler):
         payload = {
             'messages': full_messages,
         }
-
-        # TODO: double check temprature
 
         response = client.invoke_endpoint(
             EndpointName=self.ENDPOINT,

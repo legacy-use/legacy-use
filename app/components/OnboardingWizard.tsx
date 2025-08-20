@@ -64,8 +64,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
   const [awsCredentials, setAwsCredentials] = useState({
     accessKeyId: '',
     secretAccessKey: '',
-    region: 'us-east-1',
-    endpoint: '',
+    region: 'us-east-1'
   });
   const [vertexCredentials, setVertexCredentials] = useState({
     projectId: '',
@@ -275,7 +274,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
         credentials.api_key = openaiCredentials.apiKey.trim();
       }
       else if (selectedProvider === 'opencua') {
-        if (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey || !awsCredentials.region || !awsCredentials.endpoint) {
+        if (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey || !awsCredentials.region) {
           setError('Please enter your AWS credentials to use opencua');
           return;
         }
@@ -283,7 +282,6 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
           access_key_id: awsCredentials.accessKeyId,
           secret_access_key: awsCredentials.secretAccessKey,
           region: awsCredentials.region,
-          endpoint: awsCredentials.endpoint,
         };
       }
 
@@ -694,15 +692,6 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
                 label="Region"
                 value={awsCredentials.region}
                 onChange={e => setAwsCredentials(prev => ({ ...prev, region: e.target.value }))}
-                variant="outlined"
-              />
-            </Grid>
-            <Grid size={12}>
-              <TextField
-                fullWidth
-                label="Endpoint"
-                value={awsCredentials.endpoint}
-                onChange={e => setAwsCredentials(prev => ({ ...prev, endpoint: e.target.value }))}
                 variant="outlined"
               />
             </Grid>
