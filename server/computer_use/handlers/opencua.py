@@ -588,11 +588,21 @@ Finally, output the action as PyAutoGUI code or the following functions:
             )
 
         if task['code']:
-            tool_use = self._convert_pyautogui_code_to_tool_use(task['code'])
-            messages.append(tool_use)
+            commands = task['code'].split('\n')
+            for command in commands:
+                command = command.strip()
+                if not command:
+                    continue
 
-            # End the turn once extraction or ui_not_as_expected is called
-            if tool_use['id'] != 'toolu_opencua_terminate':
+                tool_use = self._convert_pyautogui_code_to_tool_use(command)
+                messages.append(tool_use)
+
+                # End the turn once extraction or ui_not_as_expected is called
+                if tool_use['id'] == 'toolu_opencua_terminate':
+                    # potentially overwrite stop_reason with end_turn
+                    stop_reason = 'end_turn'
+                    break
+
                 stop_reason = 'tool_use'
 
         # thought can be dropped, as it's is more or less just unstructured reasoning output of the model itself
