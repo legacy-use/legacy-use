@@ -84,7 +84,7 @@ Finally, output the action as PyAutoGUI code or the following functions:
       "status": { "type": "string", "enum": [ "success", "failure" ], "description": "The status of the task" },
       "data": { "type": "json", "description": "The required data, relevant for completing the task, in json: ```json\n{...}```; an empty object if no data is required}"
     },
-    "required": [ "status" ]
+    "required": [ "status", "data" ]
   }
 }
 """
@@ -200,17 +200,11 @@ Finally, output the action as PyAutoGUI code or the following functions:
                                 logger.warning(f'Tool result error: {block["error"]}')
 
                                 continue
-                            logger.debug(
-                                f'Tool result block[content]: {self._truncate_for_debug(block["content"])}'
-                            )
                             is_image = (
                                 len(block['content']) == 1
                                 and block['content'][0]['type'] == 'image'
                             )
                             if not is_image:
-                                logger.warning(
-                                    f'Tool result is not an image: {self._truncate_for_debug(block["content"])}'
-                                )
                                 continue
                             block_content = block['content'][0]
                             image_type = block_content['source']['type']
@@ -333,7 +327,6 @@ Finally, output the action as PyAutoGUI code or the following functions:
         )
 
         # if the last user messages does not include a screenshot (image), add one
-        # return tool_use with screenshot
         last_user_message = [
             msg for msg in messages_formatted if msg['role'] == 'user'
         ][-1]
@@ -341,6 +334,7 @@ Finally, output the action as PyAutoGUI code or the following functions:
             logger.info(
                 'No screenshot found in last user message, adding mock screenshot tool use'
             )
+            # return tool_use with screenshot
             mock_screenshot_tool_use: BetaToolUseBlockParam = {
                 'id': 'toolu_retry_screenshot_0',
                 'type': 'tool_use',
