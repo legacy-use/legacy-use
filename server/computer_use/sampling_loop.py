@@ -425,7 +425,7 @@ async def sampling_loop(
             if block.get('type') == 'tool_use'
         )
 
-        if extraction_tool_called and is_completed and extractions:
+        if is_extraction_tool_called and is_completed and extractions:
             logger.info(
                 f'Model called extraction tool and ended turn with {len(extractions)} extractions.'
             )
