@@ -419,7 +419,7 @@ async def sampling_loop(
 
         # Check if loop should terminate
         # Special case: If extraction tool was called and model wants to end, terminate immediately
-        extraction_tool_called = any(
+        is_extraction_tool_called = any(
             block.get('name') == 'extraction'
             for block in response_params
             if block.get('type') == 'tool_use'
