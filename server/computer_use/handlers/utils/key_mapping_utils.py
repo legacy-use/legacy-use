@@ -42,29 +42,6 @@ KEY_ALIASES: Dict[str, Set[str]] = {
     'alt': {'alt', 'alt_l', 'alt_r', 'option'},
 }
 
-# Key normalization mappings for computer tools
-KEY_ALIASES = {
-    'Escape': {'esc', 'escape'},
-    'Return': {'enter', 'return'},
-    'Super_L': {'win', 'windows', 'super', 'meta', 'cmd', 'super_l', 'super_r'},
-    'BackSpace': {'backspace'},
-    'Delete': {'del', 'delete'},
-    'Tab': {'tab'},
-    'space': {'space'},
-    'Page_Up': {'pageup'},
-    'Page_Down': {'pagedown'},
-    'Home': {'home'},
-    'End': {'end'},
-    'Up': {'up'},
-    'Down': {'down'},
-    'Left': {'left'},
-    'Right': {'right'},
-    'Print': {'printscreen', 'prtsc'},
-    'ctrl': {'ctrl', 'control', 'ctrl_l', 'ctrl_r'},
-    'shift': {'shift', 'shift_l', 'shift_r'},
-    'alt': {'alt', 'alt_l', 'alt_r', 'option'},
-}
-
 
 def normalize_key_part(part: str) -> str:
     """
