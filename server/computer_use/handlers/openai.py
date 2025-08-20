@@ -32,8 +32,10 @@ from openai.types.chat import (
 )
 
 from server.computer_use.handlers.base import BaseProviderHandler
-from server.computer_use.handlers.converter_utils import (
+from server.computer_use.handlers.utils.converter_utils import (
     internal_specs_to_openai_chat_functions,
+)
+from server.computer_use.handlers.utils.key_mapping_utils import (
     normalize_key_combo,
 )
 from server.computer_use.logging import logger

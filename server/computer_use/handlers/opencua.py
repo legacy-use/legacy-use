@@ -16,7 +16,7 @@ from openai.types.chat import ChatCompletionMessageParam
 
 from server.computer_use.config import APIProvider
 from server.computer_use.handlers.base import BaseProviderHandler
-from server.computer_use.handlers.converter_utils import (
+from server.computer_use.handlers.utils.key_mapping_utils import (
     normalize_key_part,
 )
 from server.computer_use.tools.collection import ToolCollection
