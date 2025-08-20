@@ -276,7 +276,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
       }
       else if (selectedProvider === 'opencua') {
         if (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey || !awsCredentials.region || !awsCredentials.endpoint) {
-          setError('Please enter your AWS credentials');
+          setError('Please enter your AWS credentials to use opencua');
           return;
         }
         credentials = {
