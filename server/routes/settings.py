@@ -257,7 +257,7 @@ async def update_provider_settings(
         set_tenant_setting(tenant_schema, 'OPENAI_API_KEY', api_key.strip())
 
     elif provider_enum == APIProvider.OPENCUA:
-        required_fields = ['access_key_id', 'secret_access_key', 'region', 'endpoint']
+        required_fields = ['access_key_id', 'secret_access_key', 'region']
         for field in required_fields:
             if field not in request.credentials:
                 raise HTTPException(

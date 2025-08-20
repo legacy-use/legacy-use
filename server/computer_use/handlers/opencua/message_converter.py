@@ -21,7 +21,7 @@ def extract_api_definitions_from_user_message(
         user_message,
         maxsplit=1,
     )
-    prompt = prompt_match[0].strip() if len(prompt_match) > 1 else ''
+    prompt = prompt_match[0].strip() if len(prompt_match) > 1 else user_message.strip()
 
     # 2. Extract api_name
     name_match = re.search(r'"name":\s*"([^"]+)"', user_message)
@@ -109,6 +109,12 @@ def convert_to_opencua_messages(
     # add '# Task Instruction:' to the first user text message; This is needed to adhere to the OpenCua fine-tuning format
     user_messages = [msg for msg in result if msg['role'] == 'user']
     if len(user_messages) > 0:
+        if not (
+            len(user_messages[0]['content']) > 0
+            and user_messages[0]['content'][0]['type'] == 'text'
+        ):
+            raise ValueError('First user message must be a text message')
+
         prompt, api_name, api_response_example, api_prompt_cleanup = (
             extract_api_definitions_from_user_message(
                 user_messages[0]['content'][0]['text']

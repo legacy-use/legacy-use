@@ -181,12 +181,11 @@ class OpenCuaHandler(BaseProviderHandler):
                     ):
                         last_screenshot_tool_use_ids.append(content_block['id'])
 
-            last_screenshot_tool_use_id = last_screenshot_tool_use_ids[-1]
             if (
                 len(last_screenshot_tool_use_ids) > 0
-                and 'toolu_retry_screenshot_' in last_screenshot_tool_use_id
+                and 'toolu_retry_screenshot_' in last_screenshot_tool_use_ids[-1]
             ):
-                retry_count = int(last_screenshot_tool_use_id.split('_')[-1]) + 1
+                retry_count = int(last_screenshot_tool_use_ids[-1].split('_')[-1]) + 1
 
             if retry_count > self.max_retries:
                 logger.warning('Max retries reached, terminating task')

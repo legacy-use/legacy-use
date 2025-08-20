@@ -1,11 +1,11 @@
 """
-Anthropic provider handler implementation.
+Anthropic provider handler implementation (modularized).
 
-This handler manages all Anthropic-specific logic including Claude models
-via direct API, Bedrock, and Vertex AI.
+This module contains the handler class and delegates conversion logic
+to helper modules for readability and maintainability.
 """
 
-from typing import Any, Dict, Iterable, Optional, cast
+from typing import Iterable, Optional, cast
 
 import httpx
 import instructor
@@ -15,7 +15,6 @@ from anthropic import (
     AsyncAnthropicVertex,
 )
 from anthropic.types.beta import (
-    BetaCacheControlEphemeralParam,
     BetaContentBlockParam,
     BetaMessage,
     BetaMessageParam,
@@ -28,38 +27,14 @@ from server.computer_use.config import PROMPT_CACHING_BETA_FLAG, APIProvider
 from server.computer_use.handlers.base import BaseProviderHandler
 from server.computer_use.logging import logger
 from server.computer_use.tools.collection import ToolCollection
-from server.computer_use.utils import (
-    _response_to_params,
-)
 from server.settings import settings
+
+from .message_converter import _inject_prompt_caching
+from .response_converter import convert_from_provider_response as _convert_response
 
 AnthropicClient = (
     AsyncAnthropic | AsyncAnthropicBedrock | AsyncAnthropicVertex | LegacyUseClient
 )
-
-
-def _inject_prompt_caching(
-    messages: list[BetaMessageParam],
-):
-    """
-    Set cache breakpoints for the 3 most recent turns
-    one cache breakpoint is left for tools/system prompt, to be shared across sessions
-    """
-
-    breakpoints_remaining = 3
-    for message in reversed(messages):
-        if message['role'] == 'user' and isinstance(
-            content := message['content'], list
-        ):
-            if breakpoints_remaining:
-                breakpoints_remaining -= 1
-                cast(Dict[str, Any], content[-1])['cache_control'] = (
-                    BetaCacheControlEphemeralParam({'type': 'ephemeral'})
-                )
-            else:
-                cast(Dict[str, Any], content[-1]).pop('cache_control', None)
-                # we'll only every have one extra turn per loop
-                break
 
 
 class AnthropicHandler(BaseProviderHandler):
@@ -76,17 +51,6 @@ class AnthropicHandler(BaseProviderHandler):
         max_retries: int = 2,
         **kwargs,
     ):
-        """
-        Initialize the Anthropic handler.
-
-        Args:
-            provider: The specific Anthropic provider variant
-            model: Model identifier
-            tool_beta_flag: Tool-specific beta flag
-            token_efficient_tools_beta: Whether to use token-efficient tools
-            only_n_most_recent_images: Number of recent images to keep
-            **kwargs: Additional provider-specific parameters
-        """
         super().__init__(
             only_n_most_recent_images=only_n_most_recent_images,
             tenant_schema=tenant_schema,
@@ -104,14 +68,11 @@ class AnthropicHandler(BaseProviderHandler):
     async def initialize_client(
         self, api_key: str, **kwargs
     ) -> instructor.AsyncInstructor:
-        """Initialize the appropriate Anthropic client based on provider."""
-        # Reload settings to get latest environment variables
         settings.__init__()
 
         client = None
 
         if self.provider == APIProvider.ANTHROPIC:
-            # Prefer tenant-specific key if available
             tenant_key = self.tenant_setting('ANTHROPIC_API_KEY')
             client = AsyncAnthropic(api_key=tenant_key or api_key, max_retries=4)
 
@@ -119,7 +80,6 @@ class AnthropicHandler(BaseProviderHandler):
             client = AsyncAnthropicVertex()
 
         elif self.provider == APIProvider.BEDROCK:
-            # AWS credentials from tenant settings (fallback to env settings)
             aws_region = self.tenant_setting('AWS_REGION') or getattr(
                 settings, 'AWS_REGION', None
             )
@@ -136,7 +96,6 @@ class AnthropicHandler(BaseProviderHandler):
             if not aws_region:
                 raise ValueError('AWS_REGION is required for Bedrock provider')
 
-            # Initialize with available credentials using explicit kwargs for clearer typing
             logger.info(f'Using AsyncAnthropicBedrock client with region: {aws_region}')
             client = AsyncAnthropicBedrock(
                 aws_region=aws_region,
@@ -161,10 +120,8 @@ class AnthropicHandler(BaseProviderHandler):
         return client
 
     def prepare_system(self, system_prompt: str) -> Iterable[BetaTextBlockParam]:
-        """Prepare system prompt as Anthropic BetaTextBlockParam."""
         system = BetaTextBlockParam(type='text', text=system_prompt)
 
-        # Add cache control for prompt caching
         if self.enable_prompt_caching:
             system['cache_control'] = {'type': 'ephemeral'}
 
@@ -173,16 +130,10 @@ class AnthropicHandler(BaseProviderHandler):
     def convert_to_provider_messages(
         self, messages: list[BetaMessageParam]
     ) -> list[BetaMessageParam]:
-        """
-        For Anthropic, messages are already in the correct format.
-        Apply caching and image filtering if configured.
-        """
-        # Apply common preprocessing (image filtering only)
         messages = self.preprocess_messages(
             messages, image_truncation_threshold=self.image_truncation_threshold
         )
 
-        # Apply Anthropic-specific prompt caching
         if self.enable_prompt_caching:
             _inject_prompt_caching(messages)
 
@@ -191,12 +142,10 @@ class AnthropicHandler(BaseProviderHandler):
     def prepare_tools(
         self, tool_collection: ToolCollection
     ) -> list[BetaToolUnionParam]:
-        """Convert tool collection to Anthropic format."""
         logger.info(f'tool_collection: {tool_collection}')
         return tool_collection.to_params()
 
     def get_betas(self) -> list[str]:
-        """Get list of Anthropic-specific beta flags."""
         betas = []
         if self.token_efficient_tools_beta:
             betas.append('token-efficient-tools-2025-02-19')
@@ -217,7 +166,6 @@ class AnthropicHandler(BaseProviderHandler):
         temperature: float,
         **kwargs,
     ) -> tuple[BetaMessage, httpx.Request, httpx.Response]:
-        """Make raw API call to Anthropic and return provider-specific response."""
         betas = self.get_betas()
 
         logger.info(f'Messages: {self._truncate_for_debug(messages)}')
@@ -252,19 +200,10 @@ class AnthropicHandler(BaseProviderHandler):
         temperature: float = 0.0,
         **kwargs,
     ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
-        """
-        Make API call to Anthropic and return standardized response format.
-
-        This is the public interface that calls the raw API and converts the response.
-        Now handles conversions internally for a cleaner interface.
-        """
-
-        # Convert inputs to provider format if needed
         system_formatted = self.prepare_system(system)
         tools_formatted = self.prepare_tools(tools)
         messages_formatted = self.convert_to_provider_messages(messages)
 
-        # Call the raw API
         parsed_response, request, raw_response = await self.make_ai_request(
             client=client,
             messages=messages_formatted,
@@ -276,7 +215,6 @@ class AnthropicHandler(BaseProviderHandler):
             **kwargs,
         )
 
-        # Convert response to standardized format
         content_blocks, stop_reason = self.convert_from_provider_response(
             parsed_response
         )
@@ -286,10 +224,4 @@ class AnthropicHandler(BaseProviderHandler):
     def convert_from_provider_response(
         self, response: BetaMessage
     ) -> tuple[list[BetaContentBlockParam], str]:
-        """
-        Convert Anthropic response to content blocks and stop reason.
-        Response is already in Anthropic format.
-        """
-        content_blocks = _response_to_params(response)
-        stop_reason = response.stop_reason or 'end_turn'
-        return content_blocks, stop_reason
+        return _convert_response(response)
