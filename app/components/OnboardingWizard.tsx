@@ -64,7 +64,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
   const [awsCredentials, setAwsCredentials] = useState({
     accessKeyId: '',
     secretAccessKey: '',
-    region: 'us-east-1'
+    region: 'us-east-1',
   });
   const [vertexCredentials, setVertexCredentials] = useState({
     projectId: '',
@@ -241,7 +241,11 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
         }
         credentials.api_key = apiKeyInput;
       } else if (selectedProvider === 'bedrock') {
-        if (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey || !awsCredentials.region) {
+        if (
+          !awsCredentials.accessKeyId ||
+          !awsCredentials.secretAccessKey ||
+          !awsCredentials.region
+        ) {
           setError('Please enter your AWS credentials');
           return;
         }
@@ -272,9 +276,12 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
           return;
         }
         credentials.api_key = openaiCredentials.apiKey.trim();
-      }
-      else if (selectedProvider === 'opencua') {
-        if (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey || !awsCredentials.region) {
+      } else if (selectedProvider === 'opencua') {
+        if (
+          !awsCredentials.accessKeyId ||
+          !awsCredentials.secretAccessKey ||
+          !awsCredentials.region
+        ) {
           setError('Please enter your AWS credentials to use opencua');
           return;
         }
@@ -657,7 +664,6 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
       )}
 
       {selectedProvider === 'opencua' && (
-
         <Paper elevation={1} sx={{ p: 3, mb: 2 }}>
           <Typography variant="h6" gutterBottom>
             OpenCua Configuration
