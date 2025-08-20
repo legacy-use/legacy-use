@@ -258,9 +258,10 @@ Finally, output the action as PyAutoGUI code or the following functions:
     ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
         """Make raw API call to OpenCua and return provider-specific response."""
 
-        # logger.debug(
-        #     f'Messages before conversion: {str(self._truncate_for_debug(messages))}'
-        # )
+        logger.debug(
+            'Messages before conversion: %s',
+            self._truncate_for_debug(messages),
+        )
 
         system_formatted = self.prepare_system(system)
         messages_formatted = self.convert_to_provider_messages(messages)
@@ -280,7 +281,7 @@ Finally, output the action as PyAutoGUI code or the following functions:
                 'No screenshot found in last user message, adding mock screenshot tool use'
             )
             mock_screenshot_tool_use: BetaToolUseBlockParam = {
-                'id': 'toolu_mock123',
+                'id': 'toolu_retry_screenshot_0',
                 'type': 'tool_use',
                 'name': 'computer',
                 'input': {'action': 'screenshot'},
@@ -292,6 +293,46 @@ Finally, output the action as PyAutoGUI code or the following functions:
         )
 
         content_blocks, stop_reason = self.convert_from_provider_response(result)
+
+        # if the last block is not a tool_use, add a mock screenshot tool use
+        if len(content_blocks) == 0 or content_blocks[-1]['type'] != 'tool_use':
+            logger.info('Last block is not a tool_use, adding mock screenshot tool use')
+            retry_count = 0
+            # Collect all tool_use blocks with screenshot action for retry id calculation
+            last_screenshot_tool_use_ids = []
+            for block in messages:
+                if block.get('role') != 'assistant':
+                    continue
+                content = block.get('content')
+                if not isinstance(content, list):
+                    continue
+                for content_block in content:
+                    if (
+                        content_block.get('type') == 'tool_use'
+                        and content_block.get('name') == 'computer'
+                        and isinstance(content_block.get('input'), dict)
+                        and content_block['input'].get('action') == 'screenshot'
+                    ):
+                        last_screenshot_tool_use_ids.append(content_block['id'])
+
+            last_screenshot_tool_use_id = last_screenshot_tool_use_ids[-1]
+            if (
+                len(last_screenshot_tool_use_ids) > 0
+                and 'toolu_retry_screenshot_' in last_screenshot_tool_use_id
+            ):
+                retry_count = int(last_screenshot_tool_use_id.split('_')[-1]) + 1
+
+            if retry_count > self.max_retries:
+                logger.warning('Max retries reached, terminating task')
+                return [], 'end_turn', request, response
+
+            mock_screenshot_tool_use: BetaToolUseBlockParam = {
+                'id': f'toolu_retry_screenshot_{retry_count}',
+                'type': 'tool_use',
+                'name': 'computer',
+                'input': {'action': 'screenshot'},
+            }
+            content_blocks.append(mock_screenshot_tool_use)
 
         return content_blocks, stop_reason, request, response
 
@@ -488,9 +529,10 @@ Finally, output the action as PyAutoGUI code or the following functions:
         if task['action']:
             text_message += f'## Action: {task["action"]}\n'
 
-        messages.append(
-            cast(BetaTextBlockParam, {'type': 'text', 'text': text_message})
-        )
+        if text_message:
+            messages.append(
+                cast(BetaTextBlockParam, {'type': 'text', 'text': text_message})
+            )
 
         if task['code']:
             tool_use = self._convert_pyautogui_code_to_tool_use(task['code'])
@@ -499,20 +541,6 @@ Finally, output the action as PyAutoGUI code or the following functions:
             # End the turn once extraction or ui_not_as_expected is called
             if tool_use['id'] != 'toolu_opencua_terminate':
                 stop_reason = 'tool_use'
-        else:
-            # No code provided - model needs another try
-            # Add a screenshot request to continue the conversation
-            logger.info(
-                'No code provided by OpenCUA model, requesting screenshot for retry'
-            )
-            mock_screenshot_tool_use: BetaToolUseBlockParam = {
-                'id': 'toolu_retry_screenshot',
-                'type': 'tool_use',
-                'name': 'computer',
-                'input': {'action': 'screenshot'},
-            }
-            messages.append(mock_screenshot_tool_use)
-            stop_reason = 'tool_use'  # Force continuation
 
         # thought can be dropped, as it's is more or less just reasoning output of the model itself
         # The paper does not include it in the message history, but for the user it might be of interest
