@@ -50,13 +50,13 @@ class OpenCuaHandler(BaseProviderHandler):
 
     async def initialize_client(self, api_key: str, **kwargs):
         """Initialize OpenCua client."""
-        # AWS credentials from tenant settings (fallback to env settings)
+        # AWS credentials from tenant settings
 
         aws_region = self.tenant_setting('AWS_REGION')
         aws_access_key = self.tenant_setting('AWS_ACCESS_KEY_ID')
         aws_secret_key = self.tenant_setting('AWS_SECRET_ACCESS_KEY')
 
-        # Create session with explicit credentials (None values will use default credential chain)
+        # Create session with explicit credentials
         session = boto3.Session(
             aws_access_key_id=aws_access_key,
             aws_secret_access_key=aws_secret_key,
@@ -91,12 +91,15 @@ class OpenCuaHandler(BaseProviderHandler):
 
     def prepare_system(self, system_prompt: str) -> str:
         """Prepare system prompt for OpenCua."""
-        # Overwrite system prompt for now, TODO: think of a good way to include the overarching system prompt
+        # Overwrite system prompt for now. Our current system prompt breaks the model.
         return SYSTEM_PROMPT
 
     def prepare_tools(self, tool_collection: ToolCollection) -> list[str]:
         """Prepare tools for OpenCua."""
-        # Skip for now: TODO: think of a good way to include tools as a json, just like in the system prompt, but without the model breaking
+        # Tools must be manually added to the opencua specific system prompt.
+        # Simply adding them to the system prompt will break the model,
+        # so one needs to "engineer" new tools into the available tools,
+        # already specified in the system prompt.
         return []
 
     async def make_ai_request(
@@ -131,18 +134,8 @@ class OpenCuaHandler(BaseProviderHandler):
     ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
         """Make raw API call to OpenCua and return provider-specific response."""
 
-        logger.debug(
-            'Messages before conversion: %s',
-            self._truncate_for_debug(messages),
-        )
-
         system_formatted = self.prepare_system(system)
         messages_formatted = self.convert_to_provider_messages(messages)
-
-        logger.debug(
-            'Messages after conversion: %s',
-            self._truncate_for_debug(messages_formatted),
-        )
 
         # if the last user messages does not include a screenshot (image), add one
         last_user_message = [
