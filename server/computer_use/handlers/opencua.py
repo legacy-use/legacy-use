@@ -575,10 +575,6 @@ Finally, output the action as PyAutoGUI code or the following functions:
         messages: list[BetaContentBlockParam] = []
         stop_reason = 'end_turn'
 
-        # Only keep the step and action (alligns with samples from the openCua paper);
-        # TODO: Having the though displayed in the UI is nice, but hurts model performance
-        # -> include and filter out in convert_to_provider_messages
-
         # construct text message from task
         text_message = ''
         if task['step']:
@@ -599,8 +595,9 @@ Finally, output the action as PyAutoGUI code or the following functions:
             if tool_use['id'] != 'toolu_opencua_terminate':
                 stop_reason = 'tool_use'
 
-        # thought can be dropped, as it's is more or less just reasoning output of the model itself
-        # The paper does not include it in the message history, but for the user it might be of interest
+        # thought can be dropped, as it's is more or less just unstructured reasoning output of the model itself
+        # the paper does not include it in the message history for L2 reasoning (which has the best performance)
+        # can be interesting for the user to be debug, but one needs to be aware that it's reasoning output as the quality of the text is quite low
 
         print('OpenCua messages', repr(messages), 'stop_reason', stop_reason)
 
