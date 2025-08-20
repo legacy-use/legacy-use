@@ -212,6 +212,13 @@ Finally, output the action as PyAutoGUI code or the following functions:
                 if content and len(content) > 0:
                     result.append({'role': 'assistant', 'content': content})
 
+        # add '# Task Instruction:' to the first user text message; This is needed to adhere to the OpenCua fine-tuning format
+        user_messages = [msg for msg in result if msg['role'] == 'user']
+        if len(user_messages) > 0:
+            user_messages[0]['content'][0]['text'] = (
+                f'# Task Instruction:\n{user_messages[0]["content"][0]["text"]}'
+            )
+
         return result
 
     def prepare_system(self, system_prompt: str) -> str:
@@ -342,7 +349,7 @@ Finally, output the action as PyAutoGUI code or the following functions:
 
         # Step (optional, e.g. '# Step 1:')
         step_match = re.search(r'#\s*Step\s*([^\n:]+):?', text, re.IGNORECASE)
-        step = f'Step {step_match.group(1).strip()}' if step_match else None
+        step = f'{step_match.group(1).strip()}' if step_match else None
 
         # Thought
         thought_match = re.search(
