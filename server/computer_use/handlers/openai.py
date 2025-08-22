@@ -32,8 +32,11 @@ from openai.types.chat import (
 )
 
 from server.computer_use.handlers.base import BaseProviderHandler
-from server.computer_use.handlers.converter_utils import (
+from server.computer_use.handlers.utils.converter_utils import (
     internal_specs_to_openai_chat_functions,
+)
+from server.computer_use.handlers.utils.key_mapping_utils import (
+    normalize_key_combo,
 )
 from server.computer_use.logging import logger
 from server.computer_use.tools import ToolCollection
@@ -61,29 +64,6 @@ class OpenAIHandler(BaseProviderHandler):
         'left_mouse_up',
         'hold_key',
         'wait',
-    }
-
-    # Key normalization mappings
-    KEY_ALIASES = {
-        'Escape': {'esc', 'escape'},
-        'Return': {'enter', 'return'},
-        'Super_L': {'win', 'windows', 'super', 'meta', 'cmd', 'super_l', 'super_r'},
-        'BackSpace': {'backspace'},
-        'Delete': {'del', 'delete'},
-        'Tab': {'tab'},
-        'space': {'space'},
-        'Page_Up': {'pageup'},
-        'Page_Down': {'pagedown'},
-        'Home': {'home'},
-        'End': {'end'},
-        'Up': {'up'},
-        'Down': {'down'},
-        'Left': {'left'},
-        'Right': {'right'},
-        'Print': {'printscreen', 'prtsc'},
-        'ctrl': {'ctrl', 'control', 'ctrl_l', 'ctrl_r'},
-        'shift': {'shift', 'shift_l', 'shift_r'},
-        'alt': {'alt', 'alt_l', 'alt_r', 'option'},
     }
 
     # OpenAI finish reason to Anthropic stop reason mapping
@@ -135,50 +115,6 @@ class OpenAIHandler(BaseProviderHandler):
         Prepare system prompt for OpenAI.
         """
         return system_prompt
-
-    def _normalize_key_combo(self, combo: str) -> str:
-        """
-        Normalize key combinations for xdotool compatibility.
-
-        Args:
-            combo: Key combination string (e.g., 'ctrl+c', 'alt+tab')
-
-        Returns:
-            Normalized key combination string
-        """
-        if not isinstance(combo, str):
-            return combo
-
-        parts = [p.strip() for p in combo.replace(' ', '').split('+') if p.strip()]
-        normalized = [self._normalize_key_part(p) for p in parts]
-        return '+'.join(normalized)
-
-    def _normalize_key_part(self, part: str) -> str:
-        """
-        Normalize a single key part.
-
-        Args:
-            part: Single key part to normalize
-
-        Returns:
-            Normalized key string
-        """
-        low = part.lower()
-
-        # Check key aliases - find canonical form for any alias
-        for canonical, aliases in self.KEY_ALIASES.items():
-            if low in aliases:
-                return canonical
-
-        # Function keys
-        if low.startswith('f') and low[1:].isdigit():
-            return f'F{int(low[1:])}'
-
-        # Single letters or digits: keep as-is
-        if len(part) == 1:
-            return part
-
-        return part
 
     def _create_text_message(
         self, role: str, content: str
@@ -415,7 +351,7 @@ class OpenAIHandler(BaseProviderHandler):
         message with tool_calls, without any user messages in between.
         """
         # Apply common preprocessing
-        messages = self.preprocess_messages(messages, image_truncation_threshold=1)
+        messages = self.preprocess_messages(messages)
         openai_messages: list[ChatCompletionMessageParam] = []
 
         logger.info(
@@ -631,7 +567,7 @@ class OpenAIHandler(BaseProviderHandler):
                 # Remap key -> text
                 tool_input['text'] = tool_input.pop('key')
             if 'text' in tool_input and isinstance(tool_input['text'], str):
-                tool_input['text'] = self._normalize_key_combo(tool_input['text'])
+                tool_input['text'] = normalize_key_combo(tool_input['text'])
 
         # Special handling for scroll: ensure scroll_amount is int and direction is valid
         if action == 'scroll':

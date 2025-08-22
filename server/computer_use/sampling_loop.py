@@ -417,6 +417,19 @@ async def sampling_loop(
                 tool_output_callback(result, content_block['id'])
 
         # Check if loop should terminate
+        # Special case: If extraction tool was called and model wants to end, terminate immediately
+        is_extraction_tool_called = any(
+            block.get('name') == 'extraction'
+            for block in response_params
+            if block.get('type') == 'tool_use'
+        )
+
+        if is_extraction_tool_called and is_completed and extractions:
+            logger.info(
+                f'Model called extraction tool and ended turn with {len(extractions)} extractions.'
+            )
+            return extractions[-1], exchanges
+
         if not found_tool_use:
             if is_completed:
                 logger.info(
@@ -439,7 +452,7 @@ async def sampling_loop(
                 # Model has more to say (e.g., text response without tool use), continue loop.
                 logger.info(f'Job {job_id}: Model has more to say, continuing loop')
                 continue
-        # else: If tools were used, the loop automatically continues.
+        # else: If tools were used (other than extraction with end_turn), the loop automatically continues.
 
         # Check for cancellation before potential next iteration
         try:

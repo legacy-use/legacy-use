@@ -142,16 +142,10 @@ class BaseComputerTool(BaseAnthropicTool):
                             'items': {'type': 'integer'},
                             'minItems': 2,
                             'maxItems': 2,
-                        },
-                        'to': {
-                            'type': 'array',
-                            'items': {'type': 'integer'},
-                            'minItems': 2,
-                            'maxItems': 2,
-                        },
+                        }
                     },
-                    'required': ['coordinate', 'to'],
-                    'description': 'Drag the mouse from the given coordinate to the given coordinate with the mouse button held down',
+                    'required': ['coordinate'],
+                    'description': 'Drag the mouse from the current position to the given coordinate with the mouse button held down',
                 },
                 {
                     'name': 'right_click',

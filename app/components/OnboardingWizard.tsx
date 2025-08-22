@@ -31,10 +31,10 @@ import {
 import posthog from 'posthog-js';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { ProviderConfiguration } from '@/gen/endpoints';
 import { useAiProvider } from '../contexts/AiProviderContext';
 import { getProviders, getTargets, updateProviderSettings } from '../services/apiService';
 import { API_BASE_URL } from '../utils/apiConstants';
-import type { ProviderConfiguration } from '@/gen/endpoints';
 
 const OnboardingWizard = ({ open, onClose, onComplete }) => {
   const navigate = useNavigate();
@@ -241,7 +241,11 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
         }
         credentials.api_key = apiKeyInput;
       } else if (selectedProvider === 'bedrock') {
-        if (!awsCredentials.accessKeyId || !awsCredentials.secretAccessKey) {
+        if (
+          !awsCredentials.accessKeyId ||
+          !awsCredentials.secretAccessKey ||
+          !awsCredentials.region
+        ) {
           setError('Please enter your AWS credentials');
           return;
         }
@@ -272,6 +276,20 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
           return;
         }
         credentials.api_key = openaiCredentials.apiKey.trim();
+      } else if (selectedProvider === 'opencua') {
+        if (
+          !awsCredentials.accessKeyId ||
+          !awsCredentials.secretAccessKey ||
+          !awsCredentials.region
+        ) {
+          setError('Please enter your AWS credentials to use opencua');
+          return;
+        }
+        credentials = {
+          access_key_id: awsCredentials.accessKeyId,
+          secret_access_key: awsCredentials.secretAccessKey,
+          region: awsCredentials.region,
+        };
       }
 
       // Use the new backend logic to configure the provider
@@ -642,6 +660,48 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
             placeholder="Enter your OpenAI API key"
             helperText="You can get your API key from the OpenAI Console"
           />
+        </Paper>
+      )}
+
+      {selectedProvider === 'opencua' && (
+        <Paper elevation={1} sx={{ p: 3, mb: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            OpenCua Configuration
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid size={12}>
+              <TextField
+                fullWidth
+                label="Access Key ID"
+                value={awsCredentials.accessKeyId}
+                onChange={e =>
+                  setAwsCredentials(prev => ({ ...prev, accessKeyId: e.target.value }))
+                }
+                variant="outlined"
+              />
+            </Grid>
+            <Grid size={12}>
+              <TextField
+                fullWidth
+                label="Secret Access Key"
+                type="password"
+                value={awsCredentials.secretAccessKey}
+                onChange={e =>
+                  setAwsCredentials(prev => ({ ...prev, secretAccessKey: e.target.value }))
+                }
+                variant="outlined"
+              />
+            </Grid>
+            <Grid size={12}>
+              <TextField
+                fullWidth
+                label="Region"
+                value={awsCredentials.region}
+                onChange={e => setAwsCredentials(prev => ({ ...prev, region: e.target.value }))}
+                variant="outlined"
+              />
+            </Grid>
+          </Grid>
         </Paper>
       )}
 
