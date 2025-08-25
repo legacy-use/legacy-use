@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from typing import Literal, Optional, Tuple, Union, get_args
 
 from computer import (
@@ -16,6 +17,11 @@ from fastapi import Path as FastAPIPath
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from recording import router as recording_router
+
+# Force logging to stdout, so easily visible in docker logs
+logging.basicConfig(
+    level=logging.INFO, handlers=[logging.StreamHandler(sys.stdout)], force=True
+)
 
 logger = logging.getLogger('computer_api')
 
