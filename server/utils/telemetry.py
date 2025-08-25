@@ -41,13 +41,27 @@ def capture_event(request: Request | None, event_name: str, properties: dict):
     try:
         distinct_id = get_distinct_id(request)
 
+        enriched = {**properties, '$process_person_profile': 'always'}
+        if request:
+            headers = request.headers
+
+            enriched.update(
+                {
+                    '$raw_user_agent': headers.get('User-Agent'),
+                    '$referrer': headers.get('Referer'),
+                    '$host': headers.get('Host'),
+                    '$ip': getattr(request.client, 'host', None),
+                    '$browser_language': headers.get('Accept-Language'),
+                    'content_type': headers.get('Content-Type'),
+                    'origin': headers.get('Origin'),
+                    'has_cookies': bool(headers.get('Cookie')),
+                }
+            )
+
         posthog.capture(
             event_name,
             distinct_id=distinct_id,
-            properties={
-                **properties,
-                '$process_person_profile': 'always',
-            },
+            properties=enriched,
         )
     except Exception as e:
         logger.debug(f"Telemetry event '{event_name}' failed: {e}")
