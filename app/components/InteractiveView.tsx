@@ -1,32 +1,40 @@
 import {
+  Add,
+  CropFree,
+  Delete,
+  ExpandMore,
+  Keyboard,
+  Mouse,
+  PlayArrow,
+  SwipeUp,
+  Timer,
+  TouchApp,
+} from '@mui/icons-material';
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
-  Grid,
-  Paper,
-  TextField,
-  Typography,
-  Alert,
   CircularProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   FormControl,
+  Grid,
+  IconButton,
   InputLabel,
-  Select,
+  List,
+  ListItem,
+  ListItemText,
   MenuItem,
+  Paper,
+  Select,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
-import {
-  ExpandMore,
-  Mouse,
-  Keyboard,
-  CropFree,
-  TouchApp,
-  SwipeUp,
-  Timer,
-} from '@mui/icons-material';
 import { useContext, useState } from 'react';
 import { SessionContext } from '../App';
 import { apiClient } from '../services/apiService';
@@ -42,6 +50,51 @@ interface CoordinateInput {
   y: number;
 }
 
+interface KeyboardSequenceStep {
+  id: string;
+  type: 'text' | 'key';
+  content: string;
+  delay?: number;
+}
+
+const SPECIAL_KEYS = {
+  tab: 'Tab',
+  enter: 'Return',
+  space: 'space',
+  escape: 'Escape',
+  backspace: 'BackSpace',
+  delete: 'Delete',
+  home: 'Home',
+  end: 'End',
+  pageup: 'Page_Up',
+  pagedown: 'Page_Down',
+  arrowup: 'Up',
+  arrowdown: 'Down',
+  arrowleft: 'Left',
+  arrowright: 'Right',
+  f1: 'F1',
+  f2: 'F2',
+  f3: 'F3',
+  f4: 'F4',
+  f5: 'F5',
+  f6: 'F6',
+  f7: 'F7',
+  f8: 'F8',
+  f9: 'F9',
+  f10: 'F10',
+  f11: 'F11',
+  f12: 'F12',
+  'ctrl+c': 'ctrl+c',
+  'ctrl+v': 'ctrl+v',
+  'ctrl+x': 'ctrl+x',
+  'ctrl+z': 'ctrl+z',
+  'ctrl+y': 'ctrl+y',
+  'ctrl+a': 'ctrl+a',
+  'ctrl+s': 'ctrl+s',
+  'alt+tab': 'alt+Tab',
+  'shift+tab': 'shift+Tab',
+};
+
 const InteractiveView = () => {
   const { currentSession } = useContext(SessionContext);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -52,6 +105,11 @@ const InteractiveView = () => {
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | 'left' | 'right'>('up');
   const [scrollAmount, setScrollAmount] = useState(3);
   const [duration, setDuration] = useState(1);
+  const [keyboardSequence, setKeyboardSequence] = useState<KeyboardSequenceStep[]>([]);
+  const [newStepType, setNewStepType] = useState<'text' | 'key'>('text');
+  const [newStepContent, setNewStepContent] = useState('');
+  const [selectedSpecialKey, setSelectedSpecialKey] = useState('tab');
+  const [isExecutingSequence, setIsExecutingSequence] = useState(false);
 
   if (!currentSession || currentSession.is_archived || currentSession.state !== 'ready') {
     return (
@@ -74,19 +132,16 @@ const InteractiveView = () => {
 
     try {
       // Call the new computer tool endpoint
-      const response = await apiClient.post(
-        `/sessions/${currentSession.id}/tools/${action}`,
-        {
-          ...params,
-          api_type: 'computer_20250124', // Use the latest version
-        }
-      );
+      const response = await apiClient.post(`/sessions/${currentSession.id}/tools/${action}`, {
+        ...params,
+        api_type: 'computer_20250124', // Use the latest version
+      });
 
       setLastResult(response.data);
     } catch (error: any) {
       console.error('Error executing computer tool:', error);
       setLastResult({
-        error: error.response?.data?.message || error.message || 'Unknown error occurred'
+        error: error.response?.data?.message || error.message || 'Unknown error occurred',
       });
     } finally {
       setIsExecuting(false);
@@ -145,14 +200,125 @@ const InteractiveView = () => {
   };
 
   const handleScroll = () => {
-    executeComputerTool('scroll', { 
-      scroll_direction: scrollDirection, 
-      scroll_amount: scrollAmount 
+    executeComputerTool('scroll', {
+      scroll_direction: scrollDirection,
+      scroll_amount: scrollAmount,
     });
   };
 
   const handleWait = () => {
     executeComputerTool('wait', { duration });
+  };
+
+  const generateId = () => {
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  };
+
+  const addSequenceStep = () => {
+    if (!newStepContent.trim() && newStepType === 'text') return;
+
+    const content = newStepType === 'key' ? selectedSpecialKey : newStepContent;
+    const newStep: KeyboardSequenceStep = {
+      id: generateId(),
+      type: newStepType,
+      content: content,
+      delay: 0.1,
+    };
+
+    setKeyboardSequence([...keyboardSequence, newStep]);
+    setNewStepContent('');
+  };
+
+  const removeSequenceStep = (id: string) => {
+    setKeyboardSequence(keyboardSequence.filter(step => step.id !== id));
+  };
+
+  const executeSequenceStep = async (action: string, params: Record<string, any> = {}) => {
+    if (!currentSession?.container_ip) {
+      throw new Error('No container IP available');
+    }
+
+    try {
+      const response = await apiClient.post(`/sessions/${currentSession.id}/tools/${action}`, {
+        ...params,
+        api_type: 'computer_20250124',
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error executing computer tool:', error);
+      throw error;
+    }
+  };
+
+  const executeKeyboardSequence = async () => {
+    if (keyboardSequence.length === 0) return;
+
+    setIsExecutingSequence(true);
+    setLastResult(null);
+
+    try {
+      for (let i = 0; i < keyboardSequence.length; i++) {
+        const step = keyboardSequence[i];
+
+        let result;
+        if (step.type === 'text') {
+          result = await executeSequenceStep('type', { text: step.content });
+        } else {
+          const keyValue = SPECIAL_KEYS[step.content as keyof typeof SPECIAL_KEYS] || step.content;
+          result = await executeSequenceStep('key', { text: keyValue });
+        }
+
+        // Update last result with the final step's result
+        if (i === keyboardSequence.length - 1) {
+          setLastResult(result);
+        }
+
+        // Add delay between steps
+        if (i < keyboardSequence.length - 1 && step.delay) {
+          await new Promise(resolve => setTimeout(resolve, step.delay! * 1000));
+        }
+      }
+    } catch (error: any) {
+      console.error('Error executing keyboard sequence:', error);
+      setLastResult({
+        error: error.response?.data?.message || error.message || 'Unknown error occurred',
+      });
+    } finally {
+      setIsExecutingSequence(false);
+    }
+  };
+
+  const renderSequenceStep = (step: KeyboardSequenceStep, index: number) => {
+    if (step.type === 'text') {
+      return (
+        <Chip
+          key={step.id}
+          label={`${index + 1}. "${step.content}"`}
+          variant="outlined"
+          color="primary"
+          onDelete={() => removeSequenceStep(step.id)}
+          sx={{ m: 0.5 }}
+        />
+      );
+    } else {
+      return (
+        <Chip
+          key={step.id}
+          label={`${index + 1}. ${step.content}`}
+          variant="filled"
+          color="secondary"
+          onDelete={() => removeSequenceStep(step.id)}
+          sx={{
+            m: 0.5,
+            fontFamily: 'monospace',
+            backgroundColor: 'secondary.dark',
+            '&:hover': {
+              backgroundColor: 'secondary.main',
+            },
+          }}
+        />
+      );
+    }
   };
 
   return (
@@ -177,7 +343,7 @@ const InteractiveView = () => {
                 label="X Coordinate"
                 type="number"
                 value={coordinate.x}
-                onChange={(e) => setCoordinate({ ...coordinate, x: parseInt(e.target.value) || 0 })}
+                onChange={e => setCoordinate({ ...coordinate, x: parseInt(e.target.value) || 0 })}
                 fullWidth
                 size="small"
               />
@@ -187,7 +353,7 @@ const InteractiveView = () => {
                 label="Y Coordinate"
                 type="number"
                 value={coordinate.y}
-                onChange={(e) => setCoordinate({ ...coordinate, y: parseInt(e.target.value) || 0 })}
+                onChange={e => setCoordinate({ ...coordinate, y: parseInt(e.target.value) || 0 })}
                 fullWidth
                 size="small"
               />
@@ -273,22 +439,12 @@ const InteractiveView = () => {
               </Button>
             </Grid>
             <Grid item xs={6} sm={4}>
-              <Button
-                variant="outlined"
-                fullWidth
-                onClick={handleMouseDown}
-                disabled={isExecuting}
-              >
+              <Button variant="outlined" fullWidth onClick={handleMouseDown} disabled={isExecuting}>
                 Mouse Down
               </Button>
             </Grid>
             <Grid item xs={6} sm={4}>
-              <Button
-                variant="outlined"
-                fullWidth
-                onClick={handleMouseUp}
-                disabled={isExecuting}
-              >
+              <Button variant="outlined" fullWidth onClick={handleMouseUp} disabled={isExecuting}>
                 Mouse Up
               </Button>
             </Grid>
@@ -305,11 +461,15 @@ const InteractiveView = () => {
           </Box>
         </AccordionSummary>
         <AccordionDetails>
-          <Box sx={{ mb: 2 }}>
+          {/* Single Actions */}
+          <Typography variant="subtitle1" gutterBottom>
+            Single Actions
+          </Typography>
+          <Box sx={{ mb: 3 }}>
             <TextField
               label="Text to Type"
               value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
+              onChange={e => setTextInput(e.target.value)}
               fullWidth
               multiline
               rows={2}
@@ -326,11 +486,11 @@ const InteractiveView = () => {
             </Button>
           </Box>
 
-          <Box sx={{ mb: 2 }}>
+          <Box sx={{ mb: 3 }}>
             <TextField
               label="Key Combination (e.g., ctrl+c, alt+tab, Enter)"
               value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
+              onChange={e => setKeyInput(e.target.value)}
               fullWidth
               sx={{ mb: 2 }}
             />
@@ -363,11 +523,116 @@ const InteractiveView = () => {
             label="Duration (seconds)"
             type="number"
             value={duration}
-            onChange={(e) => setDuration(parseFloat(e.target.value) || 1)}
+            onChange={e => setDuration(parseFloat(e.target.value) || 1)}
             inputProps={{ min: 0.1, max: 10, step: 0.1 }}
             size="small"
-            sx={{ width: 150 }}
+            sx={{ width: 150, mb: 3 }}
           />
+
+          {/* Keyboard Sequences */}
+          <Typography variant="subtitle1" gutterBottom>
+            Keyboard Sequences
+          </Typography>
+
+          {/* Sequence Builder */}
+          <Paper sx={{ p: 2, mb: 2, backgroundColor: 'grey.900' }}>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} sm={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Type</InputLabel>
+                  <Select
+                    value={newStepType}
+                    onChange={e => setNewStepType(e.target.value as 'text' | 'key')}
+                    label="Type"
+                  >
+                    <MenuItem value="text">Text</MenuItem>
+                    <MenuItem value="key">Special Key</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {newStepType === 'text' ? (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Text to type"
+                    value={newStepContent}
+                    onChange={e => setNewStepContent(e.target.value)}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+              ) : (
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Special Key</InputLabel>
+                    <Select
+                      value={selectedSpecialKey}
+                      onChange={e => setSelectedSpecialKey(e.target.value)}
+                      label="Special Key"
+                    >
+                      {Object.entries(SPECIAL_KEYS).map(([key, value]) => (
+                        <MenuItem key={key} value={key}>
+                          {key} ({value})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
+
+              <Grid item xs={12} sm={3}>
+                <Button
+                  variant="contained"
+                  onClick={addSequenceStep}
+                  disabled={newStepType === 'text' && !newStepContent.trim()}
+                  startIcon={<Add />}
+                  fullWidth
+                >
+                  Add Step
+                </Button>
+              </Grid>
+            </Grid>
+          </Paper>
+
+          {/* Sequence Display */}
+          {keyboardSequence.length > 0 && (
+            <Paper sx={{ p: 2, mb: 2 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  mb: 2,
+                }}
+              >
+                <Typography variant="subtitle2">
+                  Sequence ({keyboardSequence.length} steps)
+                </Typography>
+                <Box>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    onClick={executeKeyboardSequence}
+                    disabled={isExecutingSequence || isExecuting}
+                    startIcon={isExecutingSequence ? <CircularProgress size={16} /> : <PlayArrow />}
+                    sx={{ mr: 1 }}
+                  >
+                    {isExecutingSequence ? 'Executing...' : 'Execute Sequence'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setKeyboardSequence([])}
+                    disabled={isExecutingSequence}
+                  >
+                    Clear All
+                  </Button>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {keyboardSequence.map((step, index) => renderSequenceStep(step, index))}
+              </Box>
+            </Paper>
+          )}
         </AccordionDetails>
       </Accordion>
 
@@ -415,7 +680,7 @@ const InteractiveView = () => {
                   <InputLabel>Direction</InputLabel>
                   <Select
                     value={scrollDirection}
-                    onChange={(e) => setScrollDirection(e.target.value as any)}
+                    onChange={e => setScrollDirection(e.target.value as any)}
                     label="Direction"
                   >
                     <MenuItem value="up">Up</MenuItem>
@@ -430,7 +695,7 @@ const InteractiveView = () => {
                   label="Amount"
                   type="number"
                   value={scrollAmount}
-                  onChange={(e) => setScrollAmount(parseInt(e.target.value) || 1)}
+                  onChange={e => setScrollAmount(parseInt(e.target.value) || 1)}
                   inputProps={{ min: 1, max: 10 }}
                   size="small"
                   fullWidth
@@ -453,10 +718,12 @@ const InteractiveView = () => {
       </Accordion>
 
       {/* Execution Status */}
-      {isExecuting && (
+      {(isExecuting || isExecutingSequence) && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 3 }}>
           <CircularProgress size={20} />
-          <Typography>Executing tool...</Typography>
+          <Typography>
+            {isExecutingSequence ? 'Executing keyboard sequence...' : 'Executing tool...'}
+          </Typography>
         </Box>
       )}
 
@@ -467,13 +734,13 @@ const InteractiveView = () => {
             <Typography variant="h6" gutterBottom>
               Last Result
             </Typography>
-            
+
             {lastResult.error && (
               <Alert severity="error" sx={{ mb: 2 }}>
                 {lastResult.error}
               </Alert>
             )}
-            
+
             {lastResult.output && (
               <Box sx={{ mb: 2 }}>
                 <Typography variant="subtitle2" gutterBottom>
@@ -486,7 +753,7 @@ const InteractiveView = () => {
                 </Paper>
               </Box>
             )}
-            
+
             {lastResult.base64_image && (
               <Box>
                 <Typography variant="subtitle2" gutterBottom>

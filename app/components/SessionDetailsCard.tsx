@@ -40,7 +40,7 @@ const SessionDetailsCard = ({
 }) => {
   const [logsModalOpen, setLogsModalOpen] = useState(false);
   const navigate = useNavigate();
-  
+
   if (!selectedSession) return null;
   return (
     <>
