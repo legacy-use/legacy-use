@@ -92,6 +92,9 @@ if [ "$REMOTE_CLIENT_TYPE" = 'rdp' ]; then
         setxkbmap us 2>/dev/null || true
     }
 
+    # Ensure local share directory for RDP drive redirection exists
+    mkdir -p /tmp/rdp_agent_share
+
     while true; do
         # For OpenVPN, ensure FreeRDP uses system DNS resolution
         if [ "$REMOTE_VPN_TYPE" = 'openvpn' ]; then
@@ -102,6 +105,8 @@ if [ "$REMOTE_CLIENT_TYPE" = 'rdp' ]; then
 
         # Build argv as array; no quotes after the colon
         ARGS=(/u:${REMOTE_USERNAME} /p:${REMOTE_PASSWORD} /v:${HOST_IP}:${HOST_PORT})
+        # Always map local share to \\tsclient\agent inside the session
+        ARGS+=(/drive:agent,/tmp/rdp_agent_share)
 
         if [ -n "${RDP_PARAMS}" ]; then
             # Parse RDP_PARAMS handling both quoted and unquoted parameters safely

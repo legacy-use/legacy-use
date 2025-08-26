@@ -538,10 +538,11 @@ class ComputerTool20250124(BaseComputerTool):
 
             powershell_cmd = r'powershell -NoProfile -ExecutionPolicy Bypass -File \\tsclient\agent\windows_state.ps1'
 
+            # Use Windows Run dialog for reliable command execution
             command_parts = [
                 self.xdotool,
-                'key ctrl+esc',
-                'sleep 0.20',
+                'key super+r',
+                'sleep 0.25',
                 f'type --delay {TYPING_DELAY_MS} -- {shlex.quote(powershell_cmd)}',
                 'sleep 0.05',
                 'key Return',
