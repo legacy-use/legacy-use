@@ -54,6 +54,7 @@ Action_20250124 = (
         'hold_key',
         'wait',
         'triple_click',
+        'probe:windows_state',
     ]
 )
 
@@ -460,6 +461,227 @@ class ComputerTool20250124(BaseComputerTool):
 
             return await self.shell(' '.join(command_parts))
 
+        if action == 'probe:windows_state':
+            return await self._probe_windows_state()
+
         return await super().__call__(
             action=action, text=text, coordinate=coordinate, key=key, **kwargs
         )
+
+    async def _probe_windows_state(self) -> ToolResult:
+        """Collect a structured snapshot of open windows and their state.
+
+        Tries wmctrl first (if available), falls back to xdotool+xprop.
+        Returns JSON in the output field of ToolResult.
+        """
+        import json
+
+        async def get_active_window_id_decimal() -> int | None:
+            try:
+                code, out, _ = await run(f'{self.xdotool} getactivewindow', timeout=5.0)
+                if code == 0 and out.strip().isdigit():
+                    return int(out.strip())
+            except Exception:
+                pass
+            return None
+
+        async def get_current_desktop() -> int | None:
+            try:
+                code, out, _ = await run(f'{self._display_prefix}wmctrl -d', timeout=5.0)
+                if code == 0:
+                    # line with '*' denotes current desktop; parse first int id
+                    for line in out.splitlines():
+                        if '*' in line:
+                            parts = line.split()
+                            if parts and parts[0].isdigit():
+                                return int(parts[0])
+            except Exception:
+                return None
+            return None
+
+        async def read_proc_comm(pid: int) -> str | None:
+            try:
+                with open(f'/proc/{pid}/comm', 'r', encoding='utf-8', errors='ignore') as f:
+                    return f.read().strip() or None
+            except Exception:
+                return None
+
+        active_dec = await get_active_window_id_decimal()
+        current_desktop = await get_current_desktop()
+
+        windows: list[dict] = []
+
+        if shutil.which('wmctrl'):
+            code, out, err = await run(
+                f"{self._display_prefix}wmctrl -lpGx", timeout=8.0, truncate_after=None
+            )
+            if code == 0 and out:
+                for line in out.splitlines():
+                    try:
+                        parts = line.split()
+                        if len(parts) < 9:
+                            continue
+                        win_hex = parts[0]
+                        desktop = int(parts[1]) if parts[1].lstrip('-').isdigit() else None
+                        pid = int(parts[2]) if parts[2].isdigit() else None
+                        x = int(parts[3]); y = int(parts[4]); w = int(parts[5]); h = int(parts[6])
+                        app_class = parts[7]
+                        host = parts[8]
+                        title = ' '.join(parts[9:]) if len(parts) > 9 else ''
+
+                        # convert hex id to decimal for comparison
+                        win_dec = int(win_hex, 16)
+                        focused = active_dec is not None and win_dec == active_dec
+
+                        # query xprop for state flags and workspace if needed
+                        minimized = False
+                        maximized = False
+                        fullscreen = False
+                        sticky = False
+                        workspace = desktop
+                        try:
+                            _c, xprop_out, _e = await run(
+                                f"{self._display_prefix}xprop -id {win_hex} _NET_WM_STATE _NET_WM_DESKTOP",
+                                timeout=5.0,
+                                truncate_after=None,
+                            )
+                            for l in (xprop_out or '').splitlines():
+                                if l.startswith('_NET_WM_DESKTOP'):
+                                    try:
+                                        workspace = int(l.split()[-1])
+                                    except Exception:
+                                        pass
+                                if l.startswith('_NET_WM_STATE'):
+                                    vals = l.split('=')[-1]
+                                    minimized = '_NET_WM_STATE_HIDDEN' in vals
+                                    maximized = '_NET_WM_STATE_MAXIMIZED_VERT' in vals or '_NET_WM_STATE_MAXIMIZED_HORZ' in vals
+                                    fullscreen = '_NET_WM_STATE_FULLSCREEN' in vals
+                                    sticky = '_NET_WM_STATE_STICKY' in vals
+                        except Exception:
+                            pass
+
+                        process_name = await read_proc_comm(pid) if pid else None
+
+                        windows.append(
+                            {
+                                'id': {
+                                    'hex': win_hex,
+                                    'dec': win_dec,
+                                },
+                                'pid': pid,
+                                'process_name': process_name,
+                                'app_class': app_class,
+                                'host': host,
+                                'title': title,
+                                'bounds': {'x': x, 'y': y, 'width': w, 'height': h},
+                                'workspace': workspace,
+                                'state': {
+                                    'focused': focused,
+                                    'visible': not minimized,
+                                    'minimized': minimized,
+                                    'maximized': maximized,
+                                    'fullscreen': fullscreen,
+                                    'sticky': sticky,
+                                },
+                            }
+                        )
+                    except Exception:
+                        continue
+        else:
+            # Fallback: use xdotool to enumerate windows
+            code, out, _ = await run(
+                f"{self.xdotool} search --onlyvisible --name ''", timeout=8.0
+            )
+            if code == 0 and out:
+                for line in out.splitlines():
+                    if not line.strip().isdigit():
+                        continue
+                    win_dec = int(line.strip())
+                    win_hex = hex(win_dec)
+                    title = ''
+                    pid = None
+                    app_class = None
+                    workspace = None
+                    minimized = False
+                    maximized = False
+                    fullscreen = False
+                    sticky = False
+                    x = y = w = h = 0
+                    try:
+                        _c, xprop_out, _e = await run(
+                            f"{self._display_prefix}xprop -id {win_dec}",
+                            timeout=5.0,
+                            truncate_after=None,
+                        )
+                        for l in (xprop_out or '').splitlines():
+                            if l.startswith('WM_NAME(') or l.startswith('_NET_WM_NAME'):
+                                try:
+                                    title = l.split('=')[-1].strip().strip(' \"')
+                                except Exception:
+                                    pass
+                            if l.startswith('WM_CLASS('):
+                                try:
+                                    app_class = l.split('=')[-1].strip().strip(' \"')
+                                except Exception:
+                                    pass
+                            if l.startswith('_NET_WM_PID'):
+                                try:
+                                    pid = int(l.split()[-1])
+                                except Exception:
+                                    pass
+                            if l.startswith('_NET_WM_DESKTOP'):
+                                try:
+                                    workspace = int(l.split()[-1])
+                                except Exception:
+                                    pass
+                            if l.startswith('_NET_WM_STATE'):
+                                vals = l.split('=')[-1]
+                                minimized = '_NET_WM_STATE_HIDDEN' in vals
+                                maximized = '_NET_WM_STATE_MAXIMIZED_VERT' in vals or '_NET_WM_STATE_MAXIMIZED_HORZ' in vals
+                                fullscreen = '_NET_WM_STATE_FULLSCREEN' in vals
+                                sticky = '_NET_WM_STATE_STICKY' in vals
+                    except Exception:
+                        pass
+                    try:
+                        _c, geo_out, _e = await run(
+                            f"{self.xdotool} getwindowgeometry --shell {win_dec}",
+                            timeout=5.0,
+                        )
+                        geo_map = {k: v for k, v in (p.split('=') for p in (geo_out or '').split()) if '=' in p}
+                        x = int(geo_map.get('X', '0')); y = int(geo_map.get('Y', '0'))
+                        w = int(geo_map.get('WIDTH', '0')); h = int(geo_map.get('HEIGHT', '0'))
+                    except Exception:
+                        pass
+
+                    process_name = await read_proc_comm(pid) if pid else None
+
+                    windows.append(
+                        {
+                            'id': {
+                                'hex': win_hex,
+                                'dec': win_dec,
+                            },
+                            'pid': pid,
+                            'process_name': process_name,
+                            'app_class': app_class,
+                            'host': None,
+                            'title': title,
+                            'bounds': {'x': x, 'y': y, 'width': w, 'height': h},
+                            'workspace': workspace,
+                            'state': {
+                                'focused': active_dec is not None and win_dec == active_dec,
+                                'visible': not minimized,
+                                'minimized': minimized,
+                                'maximized': maximized,
+                                'fullscreen': fullscreen,
+                                'sticky': sticky,
+                            },
+                        }
+                    )
+
+        result_obj = {
+            'active_window': {'dec': active_dec, 'hex': hex(active_dec) if isinstance(active_dec, int) else None},
+            'current_desktop': current_desktop,
+            'windows': windows,
+        }
+        return ToolResult(output=json.dumps(result_obj), error=None, base64_image=None)

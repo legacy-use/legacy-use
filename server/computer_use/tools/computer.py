@@ -32,6 +32,7 @@ Action_20250124 = (
         'hold_key',
         'wait',
         'triple_click',
+        'probe:windows_state',
     ]
 )
 
@@ -234,6 +235,12 @@ class BaseComputerTool(BaseAnthropicTool):
                     'params': {'duration': {'type': 'number'}},
                     'required': ['duration'],
                     'description': 'Wait for the given duration in seconds',
+                },
+                {
+                    'name': 'probe:windows_state',
+                    'params': {},
+                    'required': [],
+                    'description': 'Return a structured snapshot of all open windows and their state',
                 },
             ],
             'options': self.options,
