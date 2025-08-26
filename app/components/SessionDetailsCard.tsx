@@ -3,6 +3,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import TouchAppIcon from '@mui/icons-material/TouchApp';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import {
   Alert,
@@ -20,6 +22,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ContainerLogsModal from './ContainerLogsModal';
 
 const SessionDetailsCard = ({
@@ -36,6 +39,8 @@ const SessionDetailsCard = ({
   getStateBadgeColor,
 }) => {
   const [logsModalOpen, setLogsModalOpen] = useState(false);
+  const navigate = useNavigate();
+  
   if (!selectedSession) return null;
   return (
     <>
@@ -55,14 +60,36 @@ const SessionDetailsCard = ({
             <Chip label="Archived" size="small" color="default" sx={{ ml: 2 }} />
           )}
         </Box>
-        <Button
-          variant="contained"
-          color="error"
-          startIcon={<DeleteIcon />}
-          onClick={handleDeleteClick}
-        >
-          {selectedSession.is_archived ? 'Permanently Delete' : 'Archive Session'}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {selectedSession.state === 'ready' && !selectedSession.is_archived && (
+            <>
+              <Button
+                variant="outlined"
+                color="primary"
+                startIcon={<SmartToyIcon />}
+                onClick={() => navigate(`/sessions/${selectedSession.id}/teaching`)}
+              >
+                Teaching Mode
+              </Button>
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<TouchAppIcon />}
+                onClick={() => navigate(`/sessions/${selectedSession.id}/interactive`)}
+              >
+                Interactive Mode
+              </Button>
+            </>
+          )}
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={handleDeleteClick}
+          >
+            {selectedSession.is_archived ? 'Permanently Delete' : 'Archive Session'}
+          </Button>
+        </Box>
       </Box>
       <Card sx={{ mb: 3 }}>
         <CardContent>

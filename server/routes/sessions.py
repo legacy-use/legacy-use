@@ -344,6 +344,42 @@ async def execute_api_on_session(
         ) from e
 
 
+@session_router.post('/{session_id}/tools/{action}', response_model=Dict[str, Any])
+async def execute_computer_tool(
+    session_id: UUID,
+    action: str,
+    tool_request: Dict[str, Any],
+    request: Request,
+    db_tenant=Depends(get_tenant_db),
+):
+    """
+    Execute a computer use tool on the session's container.
+
+    This endpoint forwards computer tool requests to the container's tool_use endpoint.
+    """
+    # Get session
+    session = db_tenant.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail='Session not found')
+
+    # Check if container is running
+    if not session.get('container_id') or not session.get('container_ip'):
+        raise HTTPException(status_code=400, detail='Session has no active container')
+
+    # Forward request to container's tool_use endpoint
+    try:
+        container_url = f'http://{session["container_ip"]}:8088/tool_use/{action}'
+        response = requests.post(container_url, json=tool_request, timeout=60)
+
+        # Return response from container
+        return response.json()
+    except requests.RequestException as e:
+        logger.error(f'Error communicating with container for tool {action}: {str(e)}')
+        raise HTTPException(
+            status_code=502, detail=f'Error communicating with container: {str(e)}'
+        ) from e
+
+
 @session_router.get('/{session_id}/vnc/{path:path}', include_in_schema=True)
 async def proxy_vnc(
     session_id: UUID, path: str, request: Request, db_tenant=Depends(get_tenant_db)
