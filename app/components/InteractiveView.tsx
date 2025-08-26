@@ -1,7 +1,6 @@
 import {
   Add,
   CropFree,
-  Delete,
   ExpandMore,
   Keyboard,
   Mouse,
@@ -23,16 +22,11 @@ import {
   CircularProgress,
   FormControl,
   Grid,
-  IconButton,
   InputLabel,
-  List,
-  ListItem,
-  ListItemText,
   MenuItem,
   Paper,
   Select,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import { useContext, useState } from 'react';
