@@ -2,3 +2,6 @@ fastapi==0.104.1
 uvicorn[standard]
 pydantic==2.4.2
 httpx==0.25.1 
+pywinrm==0.5.0
+requests-ntlm==1.3.0
+pysocks==1.7.1

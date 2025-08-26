@@ -35,6 +35,21 @@ async def check_target_container_health(container_ip: str) -> dict:
         async with httpx.AsyncClient(timeout=5.0) as client:
             health_response = await client.get(health_url)
 
+            # also check the /tool_use/probe:windows_state endpoint
+
+            probe_url = f'http://{container_ip}:8088/tool_use/probe:windows_state'
+            probe_response = await client.post(
+                probe_url, json={'action': 'probe:windows_state'}
+            )
+            print(probe_response.json())
+
+            # also check the /winrm/run endpoint
+            winrm_url = f'http://{container_ip}:8088/winrm/run'
+            winrm_response = await client.post(
+                winrm_url, json={'script': 'Get-Process'}
+            )
+            print(winrm_response.json())
+
             if health_response.status_code == 200:
                 logger.info(f'Health check passed for target {container_ip}')
                 return {'healthy': True, 'reason': 'Health check successful.'}

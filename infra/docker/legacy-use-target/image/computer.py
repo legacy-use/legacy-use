@@ -471,10 +471,99 @@ class ComputerTool20250124(BaseComputerTool):
     async def _probe_windows_state(self) -> ToolResult:
         """Collect a structured snapshot of open windows and their state.
 
-        Tries wmctrl first (if available), falls back to xdotool+xprop.
-        Returns JSON in the output field of ToolResult.
+        If connected via RDP, triggers a remote PowerShell probe that writes a JSON
+        file to the redirected drive (\\tsclient\\agent\\windows_state.json) and
+        returns its contents. Otherwise, uses local X11 enumeration as a fallback.
         """
         import json
+
+        remote_client_type = (os.getenv('REMOTE_CLIENT_TYPE') or '').lower()
+        if remote_client_type == 'rdp':
+            share_dir = Path('/tmp/rdp_agent_share')
+            share_dir.mkdir(parents=True, exist_ok=True)
+
+            ps_script_path = share_dir / 'windows_state.ps1'
+
+            ps_code = (
+                '$cs = @"\n'
+                'using System;\nusing System.Text;\nusing System.Runtime.InteropServices;\n'
+                'public static class U {\n'
+                '  public delegate bool EnumWindowsProc(IntPtr h, IntPtr l);\n'
+                '  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lp);\n'
+                '  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);\n'
+                '  [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr h);\n'
+                '  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int m);\n'
+                '  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);\n'
+                '  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();\n'
+                '  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);\n'
+                '  public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }\n'
+                '}\n"@; Add-Type $cs\n'
+                '$active = [U]::GetForegroundWindow()\n'
+                '$list = New-Object System.Collections.Generic.List[Object]\n'
+                '[U]::EnumWindows({ param($h,$l)\n'
+                '  if (-not [U]::IsWindowVisible($h)) { return $true }\n'
+                '  $len = [U]::GetWindowTextLength($h); if ($len -le 0) { return $true }\n'
+                '  $sb = New-Object System.Text.StringBuilder ($len+1); [void][U]::GetWindowText($h,$sb,$sb.Capacity)\n'
+                '  $r = New-Object U+RECT; [void][U]::GetWindowRect($h,[ref]$r)\n'
+                '  [uint32]$pid=0; [void][U]::GetWindowThreadProcessId($h,[ref]$pid)\n'
+                '  try { $p = Get-Process -Id $pid -ErrorAction Stop } catch { $p = $null }\n'
+                '  $list.Add([pscustomobject]@{\n'
+                '    id     = ("0x{0:X}" -f $h.ToInt64())\n'
+                '    title  = $sb.ToString()\n'
+                '    app    = @{ pid=$pid; name=$p?.ProcessName; exe=$p?.Path }\n'
+                '    bounds = @{ x=$r.Left; y=$r.Top; width=($r.Right-$r.Left); height=($r.Bottom-$r.Top) }\n'
+                '    state  = @{ focused=($h -eq $active); visible=$true }\n'
+                '  }); $true\n'
+                '}, [IntPtr]::Zero) | Out-Null\n'
+                '\n'
+                '[pscustomobject]@{\n'
+                "  probe='windows_state'\n"
+                '  captured_at=[int][DateTimeOffset]::Now.ToUnixTimeSeconds()\n'
+                '  active_window_id=("0x{0:X}" -f $active.ToInt64())\n'
+                '  windows=$list\n'
+                '} | ConvertTo-Json -Depth 6 -Compress |\n'
+                '  Set-Content \\\\tsclient\\agent\\windows_state.json -Encoding utf8\n'
+            )
+
+            try:
+                existing = (
+                    ps_script_path.read_text(encoding='utf-8')
+                    if ps_script_path.exists()
+                    else None
+                )
+            except Exception:
+                existing = None
+            if existing != ps_code:
+                ps_script_path.write_text(ps_code, encoding='utf-8')
+
+            powershell_cmd = r'powershell -NoProfile -ExecutionPolicy Bypass -File \\tsclient\agent\windows_state.ps1'
+
+            command_parts = [
+                self.xdotool,
+                'key ctrl+esc',
+                'sleep 0.20',
+                f'type --delay {TYPING_DELAY_MS} -- {shlex.quote(powershell_cmd)}',
+                'sleep 0.05',
+                'key Return',
+            ]
+            await self.shell(' '.join(command_parts), take_screenshot=False)
+
+            json_path = share_dir / 'windows_state.json'
+            for _ in range(30):
+                if json_path.exists():
+                    try:
+                        content = json_path.read_text(encoding='utf-8')
+                        # ensure valid JSON
+                        _ = json.loads(content)
+                        screenshot_b64 = (await self.screenshot()).base64_image
+                        return ToolResult(
+                            output=content, error=None, base64_image=screenshot_b64
+                        )
+                    except Exception:
+                        pass
+                await asyncio.sleep(0.1)
+
+            raise ToolError('windows_state.json not produced by remote within timeout')
 
         async def get_active_window_id_decimal() -> int | None:
             try:
@@ -487,7 +576,9 @@ class ComputerTool20250124(BaseComputerTool):
 
         async def get_current_desktop() -> int | None:
             try:
-                code, out, _ = await run(f'{self._display_prefix}wmctrl -d', timeout=5.0)
+                code, out, _ = await run(
+                    f'{self._display_prefix}wmctrl -d', timeout=5.0
+                )
                 if code == 0:
                     # line with '*' denotes current desktop; parse first int id
                     for line in out.splitlines():
@@ -501,7 +592,9 @@ class ComputerTool20250124(BaseComputerTool):
 
         async def read_proc_comm(pid: int) -> str | None:
             try:
-                with open(f'/proc/{pid}/comm', 'r', encoding='utf-8', errors='ignore') as f:
+                with open(
+                    f'/proc/{pid}/comm', 'r', encoding='utf-8', errors='ignore'
+                ) as f:
                     return f.read().strip() or None
             except Exception:
                 return None
@@ -513,7 +606,7 @@ class ComputerTool20250124(BaseComputerTool):
 
         if shutil.which('wmctrl'):
             code, out, err = await run(
-                f"{self._display_prefix}wmctrl -lpGx", timeout=8.0, truncate_after=None
+                f'{self._display_prefix}wmctrl -lpGx', timeout=8.0, truncate_after=None
             )
             if code == 0 and out:
                 for line in out.splitlines():
@@ -522,9 +615,14 @@ class ComputerTool20250124(BaseComputerTool):
                         if len(parts) < 9:
                             continue
                         win_hex = parts[0]
-                        desktop = int(parts[1]) if parts[1].lstrip('-').isdigit() else None
+                        desktop = (
+                            int(parts[1]) if parts[1].lstrip('-').isdigit() else None
+                        )
                         pid = int(parts[2]) if parts[2].isdigit() else None
-                        x = int(parts[3]); y = int(parts[4]); w = int(parts[5]); h = int(parts[6])
+                        x = int(parts[3])
+                        y = int(parts[4])
+                        w = int(parts[5])
+                        h = int(parts[6])
                         app_class = parts[7]
                         host = parts[8]
                         title = ' '.join(parts[9:]) if len(parts) > 9 else ''
@@ -541,20 +639,23 @@ class ComputerTool20250124(BaseComputerTool):
                         workspace = desktop
                         try:
                             _c, xprop_out, _e = await run(
-                                f"{self._display_prefix}xprop -id {win_hex} _NET_WM_STATE _NET_WM_DESKTOP",
+                                f'{self._display_prefix}xprop -id {win_hex} _NET_WM_STATE _NET_WM_DESKTOP',
                                 timeout=5.0,
                                 truncate_after=None,
                             )
-                            for l in (xprop_out or '').splitlines():
-                                if l.startswith('_NET_WM_DESKTOP'):
+                            for line in (xprop_out or '').splitlines():
+                                if line.startswith('_NET_WM_DESKTOP'):
                                     try:
-                                        workspace = int(l.split()[-1])
+                                        workspace = int(line.split()[-1])
                                     except Exception:
                                         pass
-                                if l.startswith('_NET_WM_STATE'):
-                                    vals = l.split('=')[-1]
+                                if line.startswith('_NET_WM_STATE'):
+                                    vals = line.split('=')[-1]
                                     minimized = '_NET_WM_STATE_HIDDEN' in vals
-                                    maximized = '_NET_WM_STATE_MAXIMIZED_VERT' in vals or '_NET_WM_STATE_MAXIMIZED_HORZ' in vals
+                                    maximized = (
+                                        '_NET_WM_STATE_MAXIMIZED_VERT' in vals
+                                        or '_NET_WM_STATE_MAXIMIZED_HORZ' in vals
+                                    )
                                     fullscreen = '_NET_WM_STATE_FULLSCREEN' in vals
                                     sticky = '_NET_WM_STATE_STICKY' in vals
                         except Exception:
@@ -609,47 +710,58 @@ class ComputerTool20250124(BaseComputerTool):
                     x = y = w = h = 0
                     try:
                         _c, xprop_out, _e = await run(
-                            f"{self._display_prefix}xprop -id {win_dec}",
+                            f'{self._display_prefix}xprop -id {win_dec}',
                             timeout=5.0,
                             truncate_after=None,
                         )
-                        for l in (xprop_out or '').splitlines():
-                            if l.startswith('WM_NAME(') or l.startswith('_NET_WM_NAME'):
+                        for line in (xprop_out or '').splitlines():
+                            if line.startswith('WM_NAME(') or line.startswith(
+                                '_NET_WM_NAME'
+                            ):
                                 try:
-                                    title = l.split('=')[-1].strip().strip(' \"')
+                                    title = line.split('=')[-1].strip().strip(' "')
                                 except Exception:
                                     pass
-                            if l.startswith('WM_CLASS('):
+                            if line.startswith('WM_CLASS('):
                                 try:
-                                    app_class = l.split('=')[-1].strip().strip(' \"')
+                                    app_class = line.split('=')[-1].strip().strip(' "')
                                 except Exception:
                                     pass
-                            if l.startswith('_NET_WM_PID'):
+                            if line.startswith('_NET_WM_PID'):
                                 try:
-                                    pid = int(l.split()[-1])
+                                    pid = int(line.split()[-1])
                                 except Exception:
                                     pass
-                            if l.startswith('_NET_WM_DESKTOP'):
+                            if line.startswith('_NET_WM_DESKTOP'):
                                 try:
-                                    workspace = int(l.split()[-1])
+                                    workspace = int(line.split()[-1])
                                 except Exception:
                                     pass
-                            if l.startswith('_NET_WM_STATE'):
-                                vals = l.split('=')[-1]
+                            if line.startswith('_NET_WM_STATE'):
+                                vals = line.split('=')[-1]
                                 minimized = '_NET_WM_STATE_HIDDEN' in vals
-                                maximized = '_NET_WM_STATE_MAXIMIZED_VERT' in vals or '_NET_WM_STATE_MAXIMIZED_HORZ' in vals
+                                maximized = (
+                                    '_NET_WM_STATE_MAXIMIZED_VERT' in vals
+                                    or '_NET_WM_STATE_MAXIMIZED_HORZ' in vals
+                                )
                                 fullscreen = '_NET_WM_STATE_FULLSCREEN' in vals
                                 sticky = '_NET_WM_STATE_STICKY' in vals
                     except Exception:
                         pass
                     try:
                         _c, geo_out, _e = await run(
-                            f"{self.xdotool} getwindowgeometry --shell {win_dec}",
+                            f'{self.xdotool} getwindowgeometry --shell {win_dec}',
                             timeout=5.0,
                         )
-                        geo_map = {k: v for k, v in (p.split('=') for p in (geo_out or '').split()) if '=' in p}
-                        x = int(geo_map.get('X', '0')); y = int(geo_map.get('Y', '0'))
-                        w = int(geo_map.get('WIDTH', '0')); h = int(geo_map.get('HEIGHT', '0'))
+                        geo_map: dict[str, str] = {}
+                        for part in (geo_out or '').split():
+                            if '=' in part:
+                                k, v = part.split('=', 1)
+                                geo_map[k] = v
+                        x = int(geo_map.get('X', '0'))
+                        y = int(geo_map.get('Y', '0'))
+                        w = int(geo_map.get('WIDTH', '0'))
+                        h = int(geo_map.get('HEIGHT', '0'))
                     except Exception:
                         pass
 
@@ -669,7 +781,8 @@ class ComputerTool20250124(BaseComputerTool):
                             'bounds': {'x': x, 'y': y, 'width': w, 'height': h},
                             'workspace': workspace,
                             'state': {
-                                'focused': active_dec is not None and win_dec == active_dec,
+                                'focused': active_dec is not None
+                                and win_dec == active_dec,
                                 'visible': not minimized,
                                 'minimized': minimized,
                                 'maximized': maximized,
@@ -680,7 +793,10 @@ class ComputerTool20250124(BaseComputerTool):
                     )
 
         result_obj = {
-            'active_window': {'dec': active_dec, 'hex': hex(active_dec) if isinstance(active_dec, int) else None},
+            'active_window': {
+                'dec': active_dec,
+                'hex': hex(active_dec) if isinstance(active_dec, int) else None,
+            },
             'current_desktop': current_desktop,
             'windows': windows,
         }

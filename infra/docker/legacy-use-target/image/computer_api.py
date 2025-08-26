@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import sys
@@ -147,3 +148,86 @@ async def tool_use(
             status_code=500,
             content={'output': None, 'error': str(exc), 'base64_image': None},
         )
+
+
+class WinRMRequest(BaseModel):
+    script: str
+    host: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    transport: Optional[str] = 'ntlm'  # ntlm | kerberos | credssp | plaintext | ssl
+    use_ssl: Optional[bool] = False
+    port: Optional[int] = None  # default 5985/5986 based on use_ssl
+    validate_cert: Optional[bool] = True  # for HTTPS with self-signed certs
+    proxy: Optional[str] = None  # e.g. socks5h://127.0.0.1:1080
+
+
+@app.post('/winrm/run')
+async def winrm_run(req: WinRMRequest):
+    """Run a PowerShell script on the Windows target via WinRM and return stdout/stderr."""
+    try:
+        # Import lazily so the module is only required if this endpoint is used
+        import winrm  # type: ignore
+
+        host = req.host or os.getenv('WINRM_HOST') or os.getenv('HOST_IP')
+        if not host:
+            raise HTTPException(
+                status_code=400,
+                detail='Missing host (env WINRM_HOST/HOST_IP or request.host)',
+            )
+
+        username = (
+            req.username or os.getenv('WINRM_USERNAME') or os.getenv('REMOTE_USERNAME')
+        )
+        password = (
+            req.password or os.getenv('WINRM_PASSWORD') or os.getenv('REMOTE_PASSWORD')
+        )
+        if not username or not password:
+            raise HTTPException(
+                status_code=400,
+                detail='Missing credentials (env WINRM_USERNAME/WINRM_PASSWORD or request.username/password)',
+            )
+
+        use_ssl = bool(req.use_ssl)
+        port = req.port or (5986 if use_ssl else 5985)
+        scheme = 'https' if use_ssl else 'http'
+        endpoint = f'{scheme}://{host}:{port}/wsman'
+
+        session_kwargs = {
+            'auth': (username, password),
+            'transport': req.transport or 'ntlm',
+        }
+        if use_ssl and not req.validate_cert:
+            session_kwargs['server_cert_validation'] = 'ignore'
+
+        # Configure proxying for tailscale/wireguard userspace networking or when provided explicitly
+        proxy_url = req.proxy or os.getenv('WINRM_PROXY')
+        if not proxy_url:
+            vpn_type = os.getenv('REMOTE_VPN_TYPE', '').lower()
+            if vpn_type in ('tailscale', 'wireguard'):
+                # Local SOCKS5 proxy started by start_vpn.sh
+                proxy_url = 'socks5h://127.0.0.1:1080'
+        if proxy_url:
+            # requests honors these environment variables
+            os.environ['HTTP_PROXY'] = proxy_url
+            os.environ['HTTPS_PROXY'] = proxy_url
+            os.environ['NO_PROXY'] = ''
+
+        def _run_ps():
+            s = winrm.Session(endpoint, **session_kwargs)
+            return s.run_ps(req.script)
+
+        loop = asyncio.get_running_loop()
+        r = await loop.run_in_executor(None, _run_ps)
+
+        return {
+            'endpoint': endpoint,
+            'status_code': r.status_code,
+            'std_out': (r.std_out or b'').decode(errors='ignore'),
+            'std_err': (r.std_err or b'').decode(errors='ignore'),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        logger.exception('WinRM run failed')
+        raise HTTPException(status_code=500, detail=str(exc))
