@@ -522,14 +522,35 @@ const InteractiveView = () => {
             size="small"
             sx={{ width: 150, mb: 3 }}
           />
+        </AccordionDetails>
+      </Accordion>
 
-          {/* Keyboard Sequences */}
-          <Typography variant="subtitle1" gutterBottom>
-            Keyboard Sequences
+      {/* Keyboard Sequences */}
+      <Accordion>
+        <AccordionSummary expandIcon={<ExpandMore />}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PlayArrow />
+            <Typography variant="h6">Keyboard Sequences</Typography>
+            {keyboardSequence.length > 0 && (
+              <Chip
+                label={`${keyboardSequence.length} steps`}
+                size="small"
+                color="primary"
+                sx={{ ml: 1 }}
+              />
+            )}
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Build and execute multi-step keyboard sequences with text input and special keys.
           </Typography>
 
           {/* Sequence Builder */}
           <Paper sx={{ p: 2, mb: 2, backgroundColor: 'grey.900' }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Add New Step
+            </Typography>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} sm={3}>
                 <FormControl fullWidth size="small">
@@ -553,6 +574,7 @@ const InteractiveView = () => {
                     onChange={e => setNewStepContent(e.target.value)}
                     fullWidth
                     size="small"
+                    placeholder="Enter text to type..."
                   />
                 </Grid>
               ) : (
@@ -589,7 +611,7 @@ const InteractiveView = () => {
           </Paper>
 
           {/* Sequence Display */}
-          {keyboardSequence.length > 0 && (
+          {keyboardSequence.length > 0 ? (
             <Paper sx={{ p: 2, mb: 2 }}>
               <Box
                 sx={{
@@ -600,7 +622,7 @@ const InteractiveView = () => {
                 }}
               >
                 <Typography variant="subtitle2">
-                  Sequence ({keyboardSequence.length} steps)
+                  Current Sequence ({keyboardSequence.length} steps)
                 </Typography>
                 <Box>
                   <Button
@@ -625,6 +647,12 @@ const InteractiveView = () => {
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                 {keyboardSequence.map((step, index) => renderSequenceStep(step, index))}
               </Box>
+            </Paper>
+          ) : (
+            <Paper sx={{ p: 3, textAlign: 'center', backgroundColor: 'grey.900' }}>
+              <Typography variant="body2" color="text.secondary">
+                No steps added yet. Use the form above to build your keyboard sequence.
+              </Typography>
             </Paper>
           )}
         </AccordionDetails>
