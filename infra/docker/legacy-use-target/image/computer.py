@@ -538,23 +538,34 @@ class ComputerTool20250124(BaseComputerTool):
 
             powershell_cmd = r'powershell -NoProfile -ExecutionPolicy Bypass -File \\tsclient\agent\windows_state.ps1'
 
+            # Try to focus the FreeRDP window before sending keystrokes
+            focus_cmd = (
+                f'{self.xdotool} search --class xfreerdp windowactivate --sync $('
+                f'{self.xdotool} search --class xfreerdp | head -n1)'
+            )
+            try:
+                await self.shell(focus_cmd, take_screenshot=False)
+                await asyncio.sleep(0.2)
+            except Exception:
+                # Best effort; continue even if focusing fails
+                pass
+
             # Use Windows Run dialog for reliable command execution
             command_parts = [
                 self.xdotool,
                 'key super+r',
-                'sleep 0.25',
+                'sleep 0.80',
                 f'type --delay {TYPING_DELAY_MS} -- {shlex.quote(powershell_cmd)}',
-                'sleep 0.05',
+                'sleep 0.10',
                 'key Return',
             ]
             await self.shell(' '.join(command_parts), take_screenshot=False)
 
             json_path = share_dir / 'windows_state.json'
-            for _ in range(30):
+            for i in range(50):
                 if json_path.exists():
                     try:
                         content = json_path.read_text(encoding='utf-8')
-                        # ensure valid JSON
                         _ = json.loads(content)
                         screenshot_b64 = (await self.screenshot()).base64_image
                         return ToolResult(
@@ -562,6 +573,16 @@ class ComputerTool20250124(BaseComputerTool):
                         )
                     except Exception:
                         pass
+                if i == 25:
+                    retrigger = [
+                        self.xdotool,
+                        'key super+r',
+                        'sleep 0.25',
+                        f'type --delay {TYPING_DELAY_MS} -- {shlex.quote(powershell_cmd)}',
+                        'sleep 0.05',
+                        'key Return',
+                    ]
+                    await self.shell(' '.join(retrigger), take_screenshot=False)
                 await asyncio.sleep(0.1)
 
             raise ToolError('windows_state.json not produced by remote within timeout')

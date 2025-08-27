@@ -120,7 +120,7 @@ if [ "$REMOTE_CLIENT_TYPE" = 'rdp' ]; then
             ARGS+=("${EXTRA[@]}")
             echo "Parsed RDP parameters: ${EXTRA[@]}"
         else
-            ARGS+=(/f +auto-reconnect +clipboard /cert:ignore)
+            ARGS+=(/f +auto-reconnect +clipboard +grab-keyboard /dynamic-resolution /cert:ignore)
         fi
 
         # Show current DNS configuration for debugging
