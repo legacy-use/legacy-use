@@ -20,6 +20,7 @@ import CreateTarget from './components/CreateTarget';
 import Dashboard from './components/Dashboard';
 import EditApiDefinition from './components/EditApiDefinition';
 import TeachingMode from './components/TeachingMode';
+import InteractiveView from './components/InteractiveView';
 import JobDetails from './components/JobDetails';
 import JobsList from './components/JobsList';
 import OnboardingWizard from './components/OnboardingWizard';
@@ -264,6 +265,7 @@ const AppLayout = () => {
     currentSession &&
     currentSession.state === 'ready';
   const isTeachingMode = location.pathname.includes('/teaching');
+  const isInteractiveMode = location.pathname.includes('/interactive');
 
   // Determine if we should show the not ready placeholder
   const showNotReadyPlaceholder =
@@ -359,7 +361,7 @@ const AppLayout = () => {
                 }}
                 sx={{ height: '100%', p: 2 }}
               >
-                {showVncViewer && <VncViewer viewOnly={!isTeachingMode} />}
+                {showVncViewer && <VncViewer viewOnly={!isTeachingMode && !isInteractiveMode} />}
                 {showNotReadyPlaceholder && <NotReadySessionPlaceholder session={currentSession} />}
                 {showArchivedPlaceholder && <ArchivedSessionPlaceholder />}
               </Grid>
@@ -397,6 +399,7 @@ function App() {
                 <Route path="sessions/new" element={<CreateSession />} />
                 <Route path="sessions/:sessionId" element={<TargetDetails />} />
                 <Route path="sessions/:sessionId/teaching" element={<TeachingMode />} />
+                <Route path="sessions/:sessionId/interactive" element={<InteractiveView />} />
                 <Route path="jobs" element={<JobsList />} />
                 <Route path="jobs/:targetId/:jobId" element={<JobDetails />} />
                 <Route path="targets" element={<TargetList />} />

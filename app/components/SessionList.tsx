@@ -1,6 +1,7 @@
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import TouchAppIcon from '@mui/icons-material/TouchApp';
 import {
   Box,
   Button,
@@ -280,18 +281,32 @@ const SessionList = () => {
                       <TableCell>{formatDate(session.created_at)}</TableCell>
                       <TableCell align="right">
                         {session.state === 'ready' && !session.is_archived && (
-                          <Tooltip title="Teaching Mode" sx={{ mr: 1 }}>
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={e => {
-                                e.stopPropagation();
-                                navigate(`/sessions/${session.id}/teaching`);
-                              }}
-                            >
-                              <SmartToyIcon />
-                            </IconButton>
-                          </Tooltip>
+                          <>
+                            <Tooltip title="Teaching Mode" sx={{ mr: 1 }}>
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  navigate(`/sessions/${session.id}/teaching`);
+                                }}
+                              >
+                                <SmartToyIcon />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Interactive Mode" sx={{ mr: 1 }}>
+                              <IconButton
+                                size="small"
+                                color="secondary"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  navigate(`/sessions/${session.id}/interactive`);
+                                }}
+                              >
+                                <TouchAppIcon />
+                              </IconButton>
+                            </Tooltip>
+                          </>
                         )}
                         {!session.is_archived && (
                           <Tooltip title="Archive Session">
