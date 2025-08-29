@@ -269,8 +269,8 @@ async def interrupt_job(
 
     interrupted = False
 
-    # Interrupt running job
-    if current_status == JobStatus.RUNNING:
+    # Interrupt running or recovery job
+    if current_status in [JobStatus.RUNNING, JobStatus.RECOVERY]:
         # Cross-process cancel via DB flag only
         db_tenant.request_job_cancel(job_id)
         interrupted = True
@@ -384,6 +384,7 @@ async def cancel_job(
             JobStatus.ERROR,
             JobStatus.CANCELED,
             JobStatus.PAUSED,
+            JobStatus.RECOVERY,
         ]
         if current_status in non_cancelable_states:
             raise HTTPException(

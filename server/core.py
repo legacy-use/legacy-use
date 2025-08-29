@@ -68,6 +68,7 @@ class APIGatewayCore:
                     'parameters': version.parameters,
                     'prompt': version.prompt,
                     'prompt_cleanup': version.prompt_cleanup,
+                    'recovery_prompt': getattr(version, 'recovery_prompt', None),
                     'response_example': version.response_example,
                     'version': version.version_number,
                     'version_id': str(version.id),
@@ -236,6 +237,71 @@ class APIGatewayCore:
                     f'Failed to update job {job_id} final status to {final_status.value}: {db_err}'
                 )
                 # Decide how to handle - return response based on loop result anyway?
+
+            # Recovery flow: if error and API has recovery_prompt, trigger recovery
+            try:
+                if final_status == JobStatus.ERROR:
+                    # Re-fetch job data and api_def to check for recovery
+                    job_data = self.db_tenant.get_job(job_id)
+                    api_name = job_data.get('api_name') if job_data else None
+                    api_def = None
+                    if api_name:
+                        # Reload to ensure latest
+                        api_map = await self.load_api_definitions()
+                        api_def = api_map.get(api_name)
+
+                    recovery_prompt = getattr(api_def, 'recovery_prompt', None) if api_def else None
+                    if recovery_prompt:
+                        from server.routes.jobs import add_job_log as route_add_log
+                        route_add_log(job_id, 'system', 'Recovery initiated', self.tenant_schema)
+                        # Mark job as RECOVERY (non-terminal) before running recovery
+                        try:
+                            self.db_tenant.update_job(job_id, {'status': JobStatus.RECOVERY.value, 'updated_at': datetime.now()})
+                        except Exception:
+                            pass
+
+                        # Build recovery message and run a minimal sampling to execute recovery steps
+                        recovery_messages = [BetaMessageParam(role='user', content=recovery_prompt)]
+                        try:
+                            _recovery_result, _ = await sampling_loop(
+                                job_id=job_id,
+                                db_tenant=self.db_tenant,
+                                model=self.model,
+                                provider=self.provider,
+                                system_prompt_suffix='',
+                                messages=recovery_messages,
+                                output_callback=output_callback or (lambda x: None),
+                                tool_output_callback=tool_callback or (lambda x, y: None),
+                                api_response_callback=api_response_callback or (lambda x, y, z: None),
+                                api_key=self.api_key,
+                                only_n_most_recent_images=3,
+                                session_id=session_id,
+                                tool_version=self.tool_version,
+                                tenant_schema=self.tenant_schema,
+                            )
+                            # Recovery run completed; mark job as FAILED as per spec
+                            self.db_tenant.update_job(
+                                job_id,
+                                {
+                                    'status': JobStatus.FAILED.value,
+                                    'updated_at': datetime.now(),
+                                },
+                            )
+                            route_add_log(job_id, 'system', 'Recovery completed; job marked as failed', self.tenant_schema)
+                        except Exception as rec_err:
+                            # Recovery failed; mark error and block queue
+                            self.db_tenant.update_job(
+                                job_id,
+                                {
+                                    'status': JobStatus.ERROR.value,
+                                    'error': f'Recovery failed: {str(rec_err)}',
+                                    'updated_at': datetime.now(),
+                                },
+                            )
+                            route_add_log(job_id, 'error', f'Recovery failed: {str(rec_err)}', self.tenant_schema)
+                            final_status = JobStatus.ERROR
+            except Exception as recovery_flow_err:
+                logger.error(f'Recovery flow error for job {job_id}: {recovery_flow_err}')
 
             # Ensure extraction is properly formatted for APIResponse
             extraction_data = update_data['result']
