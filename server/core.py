@@ -177,6 +177,7 @@ class APIGatewayCore:
                 session_id=session_id,
                 tool_version=self.tool_version,
                 tenant_schema=self.tenant_schema,
+                job_data=job_data,
             )
 
             # --- Interpret result and Update DB Status --- START

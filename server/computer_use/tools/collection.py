@@ -87,6 +87,6 @@ class ToolCollection:
             if isinstance(tool, BaseComputerTool):
                 return await tool(session_id=session_id, session=session, **tool_input)
             else:
-                return await tool(**tool_input)
+                return await tool(**tool_input, session_id=session_id, session=session)
         except ToolError as e:
             return ToolFailure(error=e.message)

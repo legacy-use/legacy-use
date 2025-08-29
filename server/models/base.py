@@ -17,6 +17,13 @@ class Parameter(BaseModel):
     default: Optional[Union[str, List[Any]]] = None
 
 
+class CustomAction(BaseModel):
+    """A single custom action with name and parameters."""
+
+    name: str = Field(..., description="The tool name to execute (e.g., 'computer')")
+    tools: Dict[str, Any] = Field(..., description='The actions to execute')
+
+
 class APIDefinition(BaseModel):
     name: str
     description: str

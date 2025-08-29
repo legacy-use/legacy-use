@@ -17,6 +17,8 @@ from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from server.computer_use.tools.collection import ToolCollection
+from server.computer_use.tools.groups import TOOL_GROUPS_BY_VERSION
 from server.config.default_ports import DEFAULT_PORTS
 from server.models.base import (
     JobStatus,
@@ -769,4 +771,53 @@ async def get_session_container_logs(
         logger.error(f'Error getting Docker logs for session {session_id}: {stderr}')
         raise HTTPException(
             status_code=500, detail=f'Failed to retrieve Docker logs: {stderr}'
+        )
+
+
+@session_router.post('/{session_id}/tools/{action}', response_model=Dict[str, Any])
+async def execute_computer_tool(
+    session_id: UUID,
+    action: str,
+    tool_request: Dict[str, Any],
+    request: Request,
+    db_tenant=Depends(get_tenant_db),
+):
+    """Execute a computer use tool on the session's container."""
+    session_obj = db_tenant.get_session(str(session_id))
+    if not session_obj:
+        raise HTTPException(status_code=404, detail='Session not found')
+
+    # Check if container is running
+    if not session_obj.get('container_id') or not session_obj.get('container_ip'):
+        raise HTTPException(status_code=400, detail='Session has no active container')
+
+    tool_group = TOOL_GROUPS_BY_VERSION['computer_use_20250124']
+
+    # Create tools (no longer need database service)
+    tools = []
+    for ToolCls in tool_group.tools:
+        tools.append(ToolCls())
+
+    tool_collection = ToolCollection(*tools)
+
+    if action == 'custom_action':
+        tool_request['api_name'] = 'Tool Test but pixel dependent'
+        tool_request['tool_collection'] = tool_collection
+        # TODO include session?
+        # tool_request['session_id'] = session_id
+        # tool_request['session'] = session_obj
+
+    # Forward request to container's tool_use endpoint
+    try:
+        result = await tool_collection.run(
+            name=action,
+            tool_input=tool_request,
+            session_id=str(session_id),
+            session=session_obj,
+        )
+        return result
+    except Exception as e:
+        logger.error(f'Error executing computer tool {action}: {str(e)}')
+        raise HTTPException(
+            status_code=500, detail=f'Error executing computer tool: {str(e)}'
         )

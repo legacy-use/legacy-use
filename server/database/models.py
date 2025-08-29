@@ -135,6 +135,8 @@ class APIDefinitionVersion(Base):
         Boolean, default=True
     )  # Only one version can be active at a time
 
+    custom_actions = Column(JSONB, nullable=True, default=dict)
+
     # Relationships
     api_definition = relationship('APIDefinition', back_populates='versions')
     jobs = relationship('Job', back_populates='api_definition_version')

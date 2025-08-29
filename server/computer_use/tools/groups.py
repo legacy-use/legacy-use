@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Literal
 
+from server.computer_use.tools.custom_action import CustomActionTool
+
 from .base import BaseAnthropicTool
 from .computer import ComputerTool20241022, ComputerTool20250124
 from .extraction import ExtractionTool
@@ -20,12 +22,22 @@ class ToolGroup:
 TOOL_GROUPS: list[ToolGroup] = [
     ToolGroup(
         version='computer_use_20241022',
-        tools=[ComputerTool20241022, ExtractionTool, UINotAsExpectedTool],
+        tools=[
+            ComputerTool20241022,
+            ExtractionTool,
+            UINotAsExpectedTool,
+            CustomActionTool,
+        ],
         beta_flag='computer-use-2024-10-22',
     ),
     ToolGroup(
         version='computer_use_20250124',
-        tools=[ComputerTool20250124, ExtractionTool, UINotAsExpectedTool],
+        tools=[
+            ComputerTool20250124,
+            ExtractionTool,
+            UINotAsExpectedTool,
+            CustomActionTool,
+        ],
         beta_flag='computer-use-2025-01-24',
     ),
 ]

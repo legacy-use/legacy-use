@@ -69,6 +69,7 @@ async def sampling_loop(
     only_n_most_recent_images: Optional[int] = None,
     session_id: str,
     tenant_schema: str,
+    job_data: dict[str, Any],
     # Remove job_id from here as it's now a primary parameter
     # job_id: Optional[str] = None,
 ) -> tuple[Any, list[dict[str, Any]]]:  # Return format remains the same
@@ -335,6 +336,19 @@ async def sampling_loop(
                         logger.warning(f'Invalid session_id format: {session_id}')
                     except Exception as e:
                         logger.warning(f'Could not retrieve session {session_id}: {e}')
+
+                if content_block['name'] == 'custom_action':
+                    # expected to have action_id already in input
+                    content_block['input']['api_name'] = job_data['api_name']
+                    content_block['input']['parameters'] = job_data['parameters']
+                    content_block['input']['tool_collection'] = (
+                        tool_collection  # TODO: crazy anti-pattern?
+                    )
+                    print(
+                        'Enriching custom action input with job data, session_id, and session_obj',
+                        session_id,
+                        session_obj,
+                    )
 
                 result = await tool_collection.run(
                     name=content_block['name'],

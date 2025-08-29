@@ -8,7 +8,7 @@ from sqlalchemy import Integer, cast, func, or_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import text
 
-from server.models.base import JobStatus, JobTerminalStates
+from server.models.base import CustomAction, JobStatus, JobTerminalStates
 
 from .models import (
     APIDefinition,
@@ -959,6 +959,7 @@ class DatabaseService:
         prompt,
         prompt_cleanup,
         response_example,
+        custom_actions=None,
         is_active=True,
     ):
         """Create a new API definition version."""
@@ -980,6 +981,8 @@ class DatabaseService:
                 response_example=response_example,
                 is_active=is_active,
             )
+            # Set custom actions after creation to avoid constructor issues
+            setattr(api_definition_version, 'custom_actions', custom_actions or {})
             session.add(api_definition_version)
             session.commit()
             return self._to_dict(api_definition_version)
@@ -1364,5 +1367,120 @@ class DatabaseService:
                 exc_info=True,
             )
             return {'has_active_session': False, 'session': None}
+        finally:
+            session.close()
+
+    # Custom Actions Methods
+    def get_custom_actions(self, version_id: str) -> Dict[str, Dict[str, Any]]:
+        """Get custom actions for an API definition version with validation.
+
+        Args:
+            version_id: The ID of the API definition version
+
+        Returns:
+            Dict of validated custom actions where keys are action names
+        """
+        session = self.Session()
+        try:
+            api_version = (
+                session.query(APIDefinitionVersion)
+                .filter(APIDefinitionVersion.id == version_id)
+                .first()
+            )
+
+            if not api_version:
+                return {}
+
+            actions_data = getattr(api_version, 'custom_actions', None) or {}
+            validated_actions = {}
+
+            for action_name, action_data in actions_data.items():
+                try:
+                    action = CustomAction(**action_data)
+                    validated_actions[action_name] = action.model_dump()
+                except Exception as e:
+                    # Log validation error but don't fail
+                    logging.warning(
+                        f"Invalid custom action data for '{action_name}': {action_data}, error: {e}"
+                    )
+                    continue
+
+            return validated_actions
+        finally:
+            session.close()
+
+    def set_custom_actions(
+        self, version_id: str, actions: Dict[str, Dict[str, Any]]
+    ) -> bool:
+        """Set custom actions for an API definition version with validation.
+
+        Args:
+            version_id: The ID of the API definition version
+            actions: Dict of action dictionaries to validate and store, keyed by action name
+
+        Returns:
+            True if successful, False otherwise
+
+        Raises:
+            ValueError: If actions don't match the expected format
+        """
+        session = self.Session()
+        try:
+            api_version = (
+                session.query(APIDefinitionVersion)
+                .filter(APIDefinitionVersion.id == version_id)
+                .first()
+            )
+
+            if not api_version:
+                return False
+
+            if not actions:
+                setattr(api_version, 'custom_actions', {})
+                session.commit()
+                return True
+
+            try:
+                # Validate each action
+                validated_actions = {}
+                for action_name, action_data in actions.items():
+                    validated_action = CustomAction(**action_data)
+                    validated_actions[action_name] = validated_action.model_dump()
+
+                setattr(api_version, 'custom_actions', validated_actions)
+                session.commit()
+                return True
+            except Exception as e:
+                raise ValueError(f'Invalid custom actions format: {e}')
+        finally:
+            session.close()
+
+    def validate_custom_actions(self, version_id: str) -> bool:
+        """Validate custom actions for an API definition version without modifying them.
+
+        Args:
+            version_id: The ID of the API definition version
+
+        Returns:
+            True if all actions are valid, False otherwise
+        """
+        session = self.Session()
+        try:
+            api_version = (
+                session.query(APIDefinitionVersion)
+                .filter(APIDefinitionVersion.id == version_id)
+                .first()
+            )
+
+            if not api_version:
+                return False
+
+            try:
+                actions_data = getattr(api_version, 'custom_actions', None) or {}
+                for action_name, action_data in actions_data.items():
+                    CustomAction(**action_data)
+                return True
+            except Exception:
+                return False
         finally:
             session.close()
