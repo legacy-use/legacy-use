@@ -34,6 +34,7 @@ class APIDefinitionRuntime:
         self.parameters = data.get('parameters', [])
         self.prompt = data.get('prompt', '')
         self.prompt_cleanup = data.get('prompt_cleanup', '')
+        self.recovery_prompt = data.get('recovery_prompt')
         self.response_example = data.get('response_example', {})
         self.version = data.get('version', '1')
         self.version_id = data.get('version_id')
@@ -216,13 +217,20 @@ class JobStatus(str, Enum):
     PENDING = 'pending'
     QUEUED = 'queued'
     RUNNING = 'running'
+    RECOVERY = 'recovery'
     PAUSED = 'paused'
     SUCCESS = 'success'
+    FAILED = 'failed'
     ERROR = 'error'
     CANCELED = 'canceled'
 
 
-JobTerminalStates = [JobStatus.SUCCESS, JobStatus.ERROR, JobStatus.CANCELED]
+JobTerminalStates = [
+    JobStatus.SUCCESS,
+    JobStatus.FAILED,
+    JobStatus.ERROR,
+    JobStatus.CANCELED,
+]
 
 
 class APIResponse(BaseModel):
