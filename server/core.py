@@ -241,7 +241,13 @@ class APIGatewayCore:
             # Recovery flow: if error and API has recovery_prompt, trigger recovery
             try:
                 if final_status in [JobStatus.ERROR, JobStatus.PAUSED]:
-                    final_status = await self.execute_recovery(job_id, session_id)
+                    final_status = await self.execute_recovery(
+                        job_id,
+                        session_id,
+                        output_callback,
+                        tool_callback,
+                        api_response_callback,
+                    )
             except Exception as recovery_flow_err:
                 logger.error(
                     f'Recovery flow error for job {job_id}: {recovery_flow_err}'
@@ -282,7 +288,13 @@ class APIGatewayCore:
                     f'Failed to update job {job_id} status to ERROR after sampling_loop exception: {db_err}'
                 )
 
-            final_status = await self.execute_recovery(job_id, session_id)
+            final_status = await self.execute_recovery(
+                job_id,
+                session_id,
+                output_callback,
+                tool_callback,
+                api_response_callback,
+            )
 
             # Return ERROR APIResponse
             return APIResponse(
@@ -293,7 +305,14 @@ class APIGatewayCore:
             )
         # --- Process results --- END (Removed original block)
 
-    async def execute_recovery(self, job_id: str, session_id: str) -> JobStatus:
+    async def execute_recovery(
+        self,
+        job_id: str,
+        session_id: str,
+        output_callback,
+        tool_callback,
+        api_response_callback,
+    ) -> JobStatus:
         # Re-fetch job data and api_def to check for recovery
         job_data = self.db_tenant.get_job(job_id)
         api_name = job_data.get('api_name') if job_data else None
