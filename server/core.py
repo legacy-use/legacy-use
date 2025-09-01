@@ -250,18 +250,31 @@ class APIGatewayCore:
                         api_map = await self.load_api_definitions()
                         api_def = api_map.get(api_name)
 
-                    recovery_prompt = getattr(api_def, 'recovery_prompt', None) if api_def else None
+                    recovery_prompt = (
+                        getattr(api_def, 'recovery_prompt', None) if api_def else None
+                    )
                     if recovery_prompt:
                         from server.routes.jobs import add_job_log as route_add_log
-                        route_add_log(job_id, 'system', 'Recovery initiated', self.tenant_schema)
+
+                        route_add_log(
+                            job_id, 'system', 'Recovery initiated', self.tenant_schema
+                        )
                         # Mark job as RECOVERY (non-terminal) before running recovery
                         try:
-                            self.db_tenant.update_job(job_id, {'status': JobStatus.RECOVERY.value, 'updated_at': datetime.now()})
+                            self.db_tenant.update_job(
+                                job_id,
+                                {
+                                    'status': JobStatus.RECOVERY.value,
+                                    'updated_at': datetime.now(),
+                                },
+                            )
                         except Exception:
                             pass
 
                         # Build recovery message and run a minimal sampling to execute recovery steps
-                        recovery_messages = [BetaMessageParam(role='user', content=recovery_prompt)]
+                        recovery_messages = [
+                            BetaMessageParam(role='user', content=recovery_prompt)
+                        ]
                         try:
                             _recovery_result, _ = await sampling_loop(
                                 job_id=job_id,
@@ -271,8 +284,10 @@ class APIGatewayCore:
                                 system_prompt_suffix='',
                                 messages=recovery_messages,
                                 output_callback=output_callback or (lambda x: None),
-                                tool_output_callback=tool_callback or (lambda x, y: None),
-                                api_response_callback=api_response_callback or (lambda x, y, z: None),
+                                tool_output_callback=tool_callback
+                                or (lambda x, y: None),
+                                api_response_callback=api_response_callback
+                                or (lambda x, y, z: None),
                                 api_key=self.api_key,
                                 only_n_most_recent_images=3,
                                 session_id=session_id,
@@ -287,7 +302,12 @@ class APIGatewayCore:
                                     'updated_at': datetime.now(),
                                 },
                             )
-                            route_add_log(job_id, 'system', 'Recovery completed; job marked as failed', self.tenant_schema)
+                            route_add_log(
+                                job_id,
+                                'system',
+                                'Recovery completed; job marked as failed',
+                                self.tenant_schema,
+                            )
                         except Exception as rec_err:
                             # Recovery failed; mark error and block queue
                             self.db_tenant.update_job(
@@ -298,10 +318,17 @@ class APIGatewayCore:
                                     'updated_at': datetime.now(),
                                 },
                             )
-                            route_add_log(job_id, 'error', f'Recovery failed: {str(rec_err)}', self.tenant_schema)
+                            route_add_log(
+                                job_id,
+                                'error',
+                                f'Recovery failed: {str(rec_err)}',
+                                self.tenant_schema,
+                            )
                             final_status = JobStatus.ERROR
             except Exception as recovery_flow_err:
-                logger.error(f'Recovery flow error for job {job_id}: {recovery_flow_err}')
+                logger.error(
+                    f'Recovery flow error for job {job_id}: {recovery_flow_err}'
+                )
 
             # Ensure extraction is properly formatted for APIResponse
             extraction_data = update_data['result']
