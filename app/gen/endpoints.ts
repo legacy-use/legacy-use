@@ -49,15 +49,7 @@ export interface HTTPValidationError {
   detail?: ValidationError[];
 }
 
-export type HttpExchangeLogContent = { [key: string]: unknown };
-
-export interface HttpExchangeLog {
-  id: string;
-  job_id: string;
-  timestamp: string;
-  log_type?: string;
-  content: HttpExchangeLogContent;
-}
+export type ImportApiDefinitionBodyRecoveryPrompt = string | null;
 
 export type ImportApiDefinitionBodyResponseExample = { [key: string]: unknown };
 
@@ -67,24 +59,12 @@ export interface ImportApiDefinitionBody {
   parameters: Parameter[];
   prompt: string;
   prompt_cleanup: string;
+  recovery_prompt?: ImportApiDefinitionBodyRecoveryPrompt;
   response_example: ImportApiDefinitionBodyResponseExample;
 }
 
 export interface ImportApiDefinitionRequest {
   api_definition: ImportApiDefinitionBody;
-}
-
-export type InputLogEntryDetails = { [key: string]: unknown };
-
-/**
- * Model for individual input log entries
- */
-export interface InputLogEntry {
-  timestamp: string;
-  session_id: string;
-  source: string;
-  action_type: string;
-  details: InputLogEntryDetails;
 }
 
 export type JobSessionId = string | null;
@@ -136,14 +116,6 @@ export interface JobCreate {
   status?: JobStatus;
 }
 
-export interface JobLogEntry {
-  id: string;
-  job_id: string;
-  timestamp: string;
-  log_type: string;
-  content: unknown;
-}
-
 export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
@@ -151,8 +123,10 @@ export const JobStatus = {
   pending: 'pending',
   queued: 'queued',
   running: 'running',
+  recovery: 'recovery',
   paused: 'paused',
   success: 'success',
+  failed: 'failed',
   error: 'error',
   canceled: 'canceled',
 } as const;
@@ -191,141 +165,6 @@ export interface ProviderConfiguration {
 export interface ProvidersResponse {
   current_provider: string;
   providers: ProviderConfiguration[];
-}
-
-export type RecordingRequestFramerate = number | null;
-
-export type RecordingRequestQuality = string | null;
-
-export type RecordingRequestFormat = string | null;
-
-/**
- * Request model for starting a recording
- */
-export interface RecordingRequest {
-  framerate?: RecordingRequestFramerate;
-  quality?: RecordingRequestQuality;
-  format?: RecordingRequestFormat;
-}
-
-export type RecordingResultResponseRecordingId = string | null;
-
-export type RecordingResultResponseFileSizeBytes = number | null;
-
-export type RecordingResultResponseDurationSeconds = number | null;
-
-export type RecordingResultResponseInputLogs = InputLogEntry[] | null;
-
-export interface RecordingResultResponse {
-  status: RecordingStatus;
-  message: string;
-  recording_id?: RecordingResultResponseRecordingId;
-  file_size_bytes?: RecordingResultResponseFileSizeBytes;
-  duration_seconds?: RecordingResultResponseDurationSeconds;
-  base64_video: string;
-  input_logs?: RecordingResultResponseInputLogs;
-}
-
-export type RecordingStatus = (typeof RecordingStatus)[keyof typeof RecordingStatus];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const RecordingStatus = {
-  started: 'started',
-  stopped: 'stopped',
-  completed: 'completed',
-  recording: 'recording',
-} as const;
-
-export type RecordingStatusResponseRecordingId = string | null;
-
-export type RecordingStatusResponseSessionId = string | null;
-
-export type RecordingStatusResponseFilePath = string | null;
-
-export type RecordingStatusResponseDurationSeconds = number | null;
-
-export type RecordingStatusResponseStartTime = string | null;
-
-export interface RecordingStatusResponse {
-  status: RecordingStatus;
-  message: string;
-  recording_id?: RecordingStatusResponseRecordingId;
-  session_id?: RecordingStatusResponseSessionId;
-  file_path?: RecordingStatusResponseFilePath;
-  duration_seconds?: RecordingStatusResponseDurationSeconds;
-  start_time?: RecordingStatusResponseStartTime;
-}
-
-export type SessionDescription = string | null;
-
-export type SessionContainerId = string | null;
-
-export type SessionContainerIp = string | null;
-
-export type SessionArchiveReason = string | null;
-
-export type SessionLastJobTime = string | null;
-
-/**
- * Session model for API responses.
- */
-export interface Session {
-  id: string;
-  name: string;
-  description?: SessionDescription;
-  target_id: string;
-  status: string;
-  state?: string;
-  container_id?: SessionContainerId;
-  container_ip?: SessionContainerIp;
-  created_at: string;
-  updated_at: string;
-  is_archived?: boolean;
-  archive_reason?: SessionArchiveReason;
-  last_job_time?: SessionLastJobTime;
-}
-
-export interface SessionContainerLogs {
-  session_id: string;
-  container_id: string;
-  logs: string;
-  lines_retrieved: number;
-  max_lines_requested: number;
-}
-
-export type SessionCreateDescription = string | null;
-
-/**
- * Session creation model.
- */
-export interface SessionCreate {
-  name: string;
-  description?: SessionCreateDescription;
-  target_id: string;
-}
-
-export type SessionUpdateName = string | null;
-
-export type SessionUpdateDescription = string | null;
-
-export type SessionUpdateStatus = string | null;
-
-export type SessionUpdateState = string | null;
-
-export type SessionUpdateContainerId = string | null;
-
-export type SessionUpdateContainerIp = string | null;
-
-/**
- * Session update model.
- */
-export interface SessionUpdate {
-  name?: SessionUpdateName;
-  description?: SessionUpdateDescription;
-  status?: SessionUpdateStatus;
-  state?: SessionUpdateState;
-  container_id?: SessionUpdateContainerId;
-  container_ip?: SessionUpdateContainerIp;
 }
 
 export type TargetUsername = string | null;
@@ -512,18 +351,6 @@ export type ExportApiDefinitionApiDefinitionsApiNameExportGet200 = {
   [key: string]: { [key: string]: unknown };
 };
 
-export type GetApiDefinitionVersionsApiDefinitionsApiNameVersionsGet200Item = {
-  [key: string]: unknown;
-};
-
-export type GetApiDefinitionVersionsApiDefinitionsApiNameVersionsGet200 = {
-  [key: string]: GetApiDefinitionVersionsApiDefinitionsApiNameVersionsGet200Item[];
-};
-
-export type GetApiDefinitionVersionApiDefinitionsApiNameVersionsVersionIdGet200 = {
-  [key: string]: { [key: string]: unknown };
-};
-
 export type ImportApiDefinitionApiDefinitionsImportPost200 = { [key: string]: string };
 
 export type UnarchiveApiDefinitionApiDefinitionsApiNameUnarchivePost200 = { [key: string]: string };
@@ -534,26 +361,6 @@ export type GetApiDefinitionMetadataApiDefinitionsApiNameMetadataGet200 = {
 
 export type ListTargetsTargetsGetParams = {
   include_archived?: boolean;
-};
-
-export type ListSessionsSessionsGetParams = {
-  include_archived?: boolean;
-};
-
-export type CreateSessionSessionsPostParams = {
-  get_or_create?: boolean;
-};
-
-export type ExecuteApiOnSessionSessionsSessionIdExecutePostBody = { [key: string]: unknown };
-
-export type ExecuteApiOnSessionSessionsSessionIdExecutePost200 = { [key: string]: unknown };
-
-export type UpdateSessionStateSessionsSessionIdStatePutParams = {
-  state: string;
-};
-
-export type GetSessionContainerLogsSessionsSessionIdContainerLogsGetParams = {
-  lines?: number;
 };
 
 export type ListAllJobsJobsGetParams = {
@@ -568,8 +375,6 @@ export type ListTargetJobsTargetsTargetIdJobsGetParams = {
   limit?: number;
   offset?: number;
 };
-
-export type ResolveJobTargetsTargetIdJobsJobIdResolvePostBody = { [key: string]: unknown };
 
 export type UpdateProviderSettingsSettingsProvidersPost200 = { [key: string]: string };
 
@@ -625,31 +430,6 @@ export const archiveApiDefinitionApiDefinitionsApiNameDelete = (apiName: string)
 export const exportApiDefinitionApiDefinitionsApiNameExportGet = (apiName: string) => {
   return customInstance<ExportApiDefinitionApiDefinitionsApiNameExportGet200>({
     url: `/api/definitions/${apiName}/export`,
-    method: 'GET',
-  });
-};
-
-/**
- * Get all versions of a specific API definition.
- * @summary Get Api Definition Versions
- */
-export const getApiDefinitionVersionsApiDefinitionsApiNameVersionsGet = (apiName: string) => {
-  return customInstance<GetApiDefinitionVersionsApiDefinitionsApiNameVersionsGet200>({
-    url: `/api/definitions/${apiName}/versions`,
-    method: 'GET',
-  });
-};
-
-/**
- * Get a specific version of an API definition.
- * @summary Get Api Definition Version
- */
-export const getApiDefinitionVersionApiDefinitionsApiNameVersionsVersionIdGet = (
-  apiName: string,
-  versionId: string,
-) => {
-  return customInstance<GetApiDefinitionVersionApiDefinitionsApiNameVersionsVersionIdGet200>({
-    url: `/api/definitions/${apiName}/versions/${versionId}`,
     method: 'GET',
   });
 };
@@ -764,178 +544,11 @@ export const deleteTargetTargetsTargetIdDelete = (targetId: string) => {
 };
 
 /**
- * Permanently delete a target (hard delete).
- * @summary Hard Delete Target
- */
-export const hardDeleteTargetTargetsTargetIdHardDelete = (targetId: string) => {
-  return customInstance<unknown>({ url: `/targets/${targetId}/hard`, method: 'DELETE' });
-};
-
-/**
  * Unarchive a target.
  * @summary Unarchive Target
  */
 export const unarchiveTargetTargetsTargetIdUnarchivePost = (targetId: string) => {
   return customInstance<unknown>({ url: `/targets/${targetId}/unarchive`, method: 'POST' });
-};
-
-/**
- * List all active sessions.
- * @summary List Sessions
- */
-export const listSessionsSessionsGet = (params?: ListSessionsSessionsGetParams) => {
-  return customInstance<Session[]>({ url: `/sessions/`, method: 'GET', params });
-};
-
-/**
- * Create a new session for a target.
-
-If get_or_create is True, will return an existing ready session for the target if one exists.
- * @summary Create Session
- */
-export const createSessionSessionsPost = (
-  sessionCreate: SessionCreate,
-  params?: CreateSessionSessionsPostParams,
-) => {
-  return customInstance<Session>({
-    url: `/sessions/`,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    data: sessionCreate,
-    params,
-  });
-};
-
-/**
- * Get details of a specific session.
- * @summary Get Session
- */
-export const getSessionSessionsSessionIdGet = (sessionId: string) => {
-  return customInstance<unknown>({ url: `/sessions/${sessionId}`, method: 'GET' });
-};
-
-/**
- * Update a session's configuration.
- * @summary Update Session
- */
-export const updateSessionSessionsSessionIdPut = (
-  sessionId: string,
-  sessionUpdate: SessionUpdate,
-) => {
-  return customInstance<unknown>({
-    url: `/sessions/${sessionId}`,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    data: sessionUpdate,
-  });
-};
-
-/**
- * Archive a session.
- * @summary Delete Session
- */
-export const deleteSessionSessionsSessionIdDelete = (sessionId: string) => {
-  return customInstance<unknown>({ url: `/sessions/${sessionId}`, method: 'DELETE' });
-};
-
-/**
- * Permanently delete a session and stop its container (hard delete).
- * @summary Hard Delete Session
- */
-export const hardDeleteSessionSessionsSessionIdHardDelete = (sessionId: string) => {
-  return customInstance<unknown>({ url: `/sessions/${sessionId}/hard`, method: 'DELETE' });
-};
-
-/**
- * Execute an API call on the session's container.
-
-This endpoint forwards API requests to the container running the session.
- * @summary Execute Api On Session
- */
-export const executeApiOnSessionSessionsSessionIdExecutePost = (
-  sessionId: string,
-  executeApiOnSessionSessionsSessionIdExecutePostBody: ExecuteApiOnSessionSessionsSessionIdExecutePostBody,
-) => {
-  return customInstance<ExecuteApiOnSessionSessionsSessionIdExecutePost200>({
-    url: `/sessions/${sessionId}/execute`,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    data: executeApiOnSessionSessionsSessionIdExecutePostBody,
-  });
-};
-
-/**
- * Proxy VNC viewer requests to the container running the session.
-
-This endpoint forwards VNC viewer requests to the container's VNC server running on port 6080.
- * @summary Proxy Vnc
- */
-export const proxyVncSessionsSessionIdVncPathGet = (sessionId: string, path: string) => {
-  return customInstance<unknown>({ url: `/sessions/${sessionId}/vnc/${path}`, method: 'GET' });
-};
-
-/**
- * Update the state of a session.
- * @summary Update Session State
- */
-export const updateSessionStateSessionsSessionIdStatePut = (
-  sessionId: string,
-  params: UpdateSessionStateSessionsSessionIdStatePutParams,
-) => {
-  return customInstance<unknown>({ url: `/sessions/${sessionId}/state`, method: 'PUT', params });
-};
-
-/**
- * Start screen recording on a session
- * @summary Start Session Recording
- */
-export const startSessionRecordingSessionsSessionIdRecordingStartPost = (
-  sessionId: string,
-  recordingRequest: RecordingRequest,
-) => {
-  return customInstance<RecordingStatusResponse>({
-    url: `/sessions/${sessionId}/recording/start`,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    data: recordingRequest,
-  });
-};
-
-/**
- * Stop screen recording on a session and get the video
- * @summary Stop Session Recording
- */
-export const stopSessionRecordingSessionsSessionIdRecordingStopPost = (sessionId: string) => {
-  return customInstance<RecordingResultResponse>({
-    url: `/sessions/${sessionId}/recording/stop`,
-    method: 'POST',
-  });
-};
-
-/**
- * Get recording status from a session
- * @summary Get Session Recording Status
- */
-export const getSessionRecordingStatusSessionsSessionIdRecordingStatusGet = (sessionId: string) => {
-  return customInstance<RecordingStatusResponse>({
-    url: `/sessions/${sessionId}/recording/status`,
-    method: 'GET',
-  });
-};
-
-/**
- * Get Docker logs for a session's container.
- * @summary Get Session Container Logs
- */
-export const getSessionContainerLogsSessionsSessionIdContainerLogsGet = (
-  sessionId: string,
-  params?: GetSessionContainerLogsSessionsSessionIdContainerLogsGetParams,
-) => {
-  return customInstance<SessionContainerLogs>({
-    url: `/sessions/${sessionId}/container_logs`,
-    method: 'GET',
-    params,
-  });
 };
 
 /**
@@ -984,28 +597,6 @@ export const getJobTargetsTargetIdJobsJobIdGet = (targetId: string, jobId: strin
 };
 
 /**
- * Get the current status of the job queue for the current tenant.
- * @summary Get Queue Status
- */
-export const getQueueStatusJobsQueueStatusGet = () => {
-  return customInstance<unknown>({ url: `/jobs/queue/status`, method: 'GET' });
-};
-
-/**
- * Interrupt a running, queued, or pending job.
- * @summary Interrupt Job
- */
-export const interruptJobTargetsTargetIdJobsJobIdInterruptPost = (
-  targetId: string,
-  jobId: string,
-) => {
-  return customInstance<unknown>({
-    url: `/targets/${targetId}/jobs/${jobId}/interrupt/`,
-    method: 'POST',
-  });
-};
-
-/**
  * Cancel a job and mark its status as 'canceled'.
  * @summary Cancel Job
  */
@@ -1013,99 +604,6 @@ export const cancelJobTargetsTargetIdJobsJobIdCancelPost = (targetId: string, jo
   return customInstance<unknown>({
     url: `/targets/${targetId}/jobs/${jobId}/cancel/`,
     method: 'POST',
-  });
-};
-
-/**
- * Get logs for a specific job.
- * @summary Get Job Logs
- */
-export const getJobLogsTargetsTargetIdJobsJobIdLogsGet = (targetId: string, jobId: string) => {
-  return customInstance<JobLogEntry[]>({
-    url: `/targets/${targetId}/jobs/${jobId}/logs/`,
-    method: 'GET',
-  });
-};
-
-/**
- * Get HTTP exchange logs for a specific job.
-
-Args:
-    target_id: ID of the target
-    job_id: ID of the job
- * @summary Get Job Http Exchanges
- */
-export const getJobHttpExchangesTargetsTargetIdJobsJobIdHttpExchangesGet = (
-  targetId: string,
-  jobId: string,
-) => {
-  return customInstance<HttpExchangeLog[]>({
-    url: `/targets/${targetId}/jobs/${jobId}/http_exchanges/`,
-    method: 'GET',
-  });
-};
-
-/**
- * Resolve a job that's in error or paused state.
-
-This endpoint allows setting a result for a job and marking it as successful.
-If all error/paused jobs for this target are resolved, the queue will automatically resume.
- * @summary Resolve Job
- */
-export const resolveJobTargetsTargetIdJobsJobIdResolvePost = (
-  targetId: string,
-  jobId: string,
-  resolveJobTargetsTargetIdJobsJobIdResolvePostBody: ResolveJobTargetsTargetIdJobsJobIdResolvePostBody,
-) => {
-  return customInstance<unknown>({
-    url: `/targets/${targetId}/jobs/${jobId}/resolve/`,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    data: resolveJobTargetsTargetIdJobsJobIdResolvePostBody,
-  });
-};
-
-/**
- * Resumes a paused or error job by setting its status to queued.
- * @summary Resume Job
- */
-export const resumeJobTargetsTargetIdJobsJobIdResumePost = (targetId: string, jobId: string) => {
-  return customInstance<Job>({ url: `/targets/${targetId}/jobs/${jobId}/resume/`, method: 'POST' });
-};
-
-/**
- * Get diagnostic information about the job queue and running jobs for the current tenant.
-
-This is a temporary endpoint to help diagnose issues with the job processing system.
-It provides insights into why jobs might be stuck in the QUEUED state.
- * @summary Diagnose Job Queue
- */
-export const diagnoseJobQueueDiagnosticsQueueGet = () => {
-  return customInstance<unknown>({ url: `/diagnostics/queue`, method: 'GET' });
-};
-
-/**
- * Manually start the job queue processor for the current tenant.
-
-This endpoint can be used to manually start the job queue processor if it's
-not running or has stopped due to an exception.
- * @summary Start Job Processor
- */
-export const startJobProcessorDiagnosticsQueueStartPost = () => {
-  return customInstance<unknown>({ url: `/diagnostics/queue/start`, method: 'POST' });
-};
-
-/**
- * Check if a target has available sessions.
-
-This can help diagnose why jobs for a specific target might be stuck in the QUEUED state.
-For jobs to run, there needs to be at least one session in the "ready" state.
- * @summary Check Target Sessions
- */
-export const checkTargetSessionsDiagnosticsTargetsTargetIdSessionsGet = (targetId: string) => {
-  return customInstance<unknown>({
-    url: `/diagnostics/targets/${targetId}/sessions`,
-    method: 'GET',
   });
 };
 
@@ -1157,10 +655,6 @@ export const rootGet = () => {
   return customInstance<unknown>({ url: `/`, method: 'GET' });
 };
 
-type AwaitedInput<T> = PromiseLike<T> | T;
-
-type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
-
 export type GetApiDefinitionsApiDefinitionsGetResult = NonNullable<
   Awaited<ReturnType<typeof getApiDefinitionsApiDefinitionsGet>>
 >;
@@ -1175,12 +669,6 @@ export type ArchiveApiDefinitionApiDefinitionsApiNameDeleteResult = NonNullable<
 >;
 export type ExportApiDefinitionApiDefinitionsApiNameExportGetResult = NonNullable<
   Awaited<ReturnType<typeof exportApiDefinitionApiDefinitionsApiNameExportGet>>
->;
-export type GetApiDefinitionVersionsApiDefinitionsApiNameVersionsGetResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDefinitionVersionsApiDefinitionsApiNameVersionsGet>>
->;
-export type GetApiDefinitionVersionApiDefinitionsApiNameVersionsVersionIdGetResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDefinitionVersionApiDefinitionsApiNameVersionsVersionIdGet>>
 >;
 export type ImportApiDefinitionApiDefinitionsImportPostResult = NonNullable<
   Awaited<ReturnType<typeof importApiDefinitionApiDefinitionsImportPost>>
@@ -1209,50 +697,8 @@ export type UpdateTargetTargetsTargetIdPutResult = NonNullable<
 export type DeleteTargetTargetsTargetIdDeleteResult = NonNullable<
   Awaited<ReturnType<typeof deleteTargetTargetsTargetIdDelete>>
 >;
-export type HardDeleteTargetTargetsTargetIdHardDeleteResult = NonNullable<
-  Awaited<ReturnType<typeof hardDeleteTargetTargetsTargetIdHardDelete>>
->;
 export type UnarchiveTargetTargetsTargetIdUnarchivePostResult = NonNullable<
   Awaited<ReturnType<typeof unarchiveTargetTargetsTargetIdUnarchivePost>>
->;
-export type ListSessionsSessionsGetResult = NonNullable<
-  Awaited<ReturnType<typeof listSessionsSessionsGet>>
->;
-export type CreateSessionSessionsPostResult = NonNullable<
-  Awaited<ReturnType<typeof createSessionSessionsPost>>
->;
-export type GetSessionSessionsSessionIdGetResult = NonNullable<
-  Awaited<ReturnType<typeof getSessionSessionsSessionIdGet>>
->;
-export type UpdateSessionSessionsSessionIdPutResult = NonNullable<
-  Awaited<ReturnType<typeof updateSessionSessionsSessionIdPut>>
->;
-export type DeleteSessionSessionsSessionIdDeleteResult = NonNullable<
-  Awaited<ReturnType<typeof deleteSessionSessionsSessionIdDelete>>
->;
-export type HardDeleteSessionSessionsSessionIdHardDeleteResult = NonNullable<
-  Awaited<ReturnType<typeof hardDeleteSessionSessionsSessionIdHardDelete>>
->;
-export type ExecuteApiOnSessionSessionsSessionIdExecutePostResult = NonNullable<
-  Awaited<ReturnType<typeof executeApiOnSessionSessionsSessionIdExecutePost>>
->;
-export type ProxyVncSessionsSessionIdVncPathGetResult = NonNullable<
-  Awaited<ReturnType<typeof proxyVncSessionsSessionIdVncPathGet>>
->;
-export type UpdateSessionStateSessionsSessionIdStatePutResult = NonNullable<
-  Awaited<ReturnType<typeof updateSessionStateSessionsSessionIdStatePut>>
->;
-export type StartSessionRecordingSessionsSessionIdRecordingStartPostResult = NonNullable<
-  Awaited<ReturnType<typeof startSessionRecordingSessionsSessionIdRecordingStartPost>>
->;
-export type StopSessionRecordingSessionsSessionIdRecordingStopPostResult = NonNullable<
-  Awaited<ReturnType<typeof stopSessionRecordingSessionsSessionIdRecordingStopPost>>
->;
-export type GetSessionRecordingStatusSessionsSessionIdRecordingStatusGetResult = NonNullable<
-  Awaited<ReturnType<typeof getSessionRecordingStatusSessionsSessionIdRecordingStatusGet>>
->;
-export type GetSessionContainerLogsSessionsSessionIdContainerLogsGetResult = NonNullable<
-  Awaited<ReturnType<typeof getSessionContainerLogsSessionsSessionIdContainerLogsGet>>
 >;
 export type ListAllJobsJobsGetResult = NonNullable<Awaited<ReturnType<typeof listAllJobsJobsGet>>>;
 export type ListTargetJobsTargetsTargetIdJobsGetResult = NonNullable<
@@ -1264,35 +710,8 @@ export type CreateJobTargetsTargetIdJobsPostResult = NonNullable<
 export type GetJobTargetsTargetIdJobsJobIdGetResult = NonNullable<
   Awaited<ReturnType<typeof getJobTargetsTargetIdJobsJobIdGet>>
 >;
-export type GetQueueStatusJobsQueueStatusGetResult = NonNullable<
-  Awaited<ReturnType<typeof getQueueStatusJobsQueueStatusGet>>
->;
-export type InterruptJobTargetsTargetIdJobsJobIdInterruptPostResult = NonNullable<
-  Awaited<ReturnType<typeof interruptJobTargetsTargetIdJobsJobIdInterruptPost>>
->;
 export type CancelJobTargetsTargetIdJobsJobIdCancelPostResult = NonNullable<
   Awaited<ReturnType<typeof cancelJobTargetsTargetIdJobsJobIdCancelPost>>
->;
-export type GetJobLogsTargetsTargetIdJobsJobIdLogsGetResult = NonNullable<
-  Awaited<ReturnType<typeof getJobLogsTargetsTargetIdJobsJobIdLogsGet>>
->;
-export type GetJobHttpExchangesTargetsTargetIdJobsJobIdHttpExchangesGetResult = NonNullable<
-  Awaited<ReturnType<typeof getJobHttpExchangesTargetsTargetIdJobsJobIdHttpExchangesGet>>
->;
-export type ResolveJobTargetsTargetIdJobsJobIdResolvePostResult = NonNullable<
-  Awaited<ReturnType<typeof resolveJobTargetsTargetIdJobsJobIdResolvePost>>
->;
-export type ResumeJobTargetsTargetIdJobsJobIdResumePostResult = NonNullable<
-  Awaited<ReturnType<typeof resumeJobTargetsTargetIdJobsJobIdResumePost>>
->;
-export type DiagnoseJobQueueDiagnosticsQueueGetResult = NonNullable<
-  Awaited<ReturnType<typeof diagnoseJobQueueDiagnosticsQueueGet>>
->;
-export type StartJobProcessorDiagnosticsQueueStartPostResult = NonNullable<
-  Awaited<ReturnType<typeof startJobProcessorDiagnosticsQueueStartPost>>
->;
-export type CheckTargetSessionsDiagnosticsTargetsTargetIdSessionsGetResult = NonNullable<
-  Awaited<ReturnType<typeof checkTargetSessionsDiagnosticsTargetsTargetIdSessionsGet>>
 >;
 export type GetProvidersSettingsProvidersGetResult = NonNullable<
   Awaited<ReturnType<typeof getProvidersSettingsProvidersGet>>
