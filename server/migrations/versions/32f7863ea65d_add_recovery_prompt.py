@@ -10,6 +10,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from alembic_postgresql_enum import TableReference
 
 from server.migrations.tenant import for_each_tenant_schema
 
@@ -27,8 +28,44 @@ def upgrade(schema: str) -> None:
         sa.Column('recovery_prompt', sa.String(), nullable=True),
         schema=schema,
     )
+    op.sync_enum_values(
+        enum_schema='shared',
+        enum_name='jobstatus',
+        new_values=[
+            'PENDING',
+            'QUEUED',
+            'RUNNING',
+            'RECOVERY',
+            'PAUSED',
+            'SUCCESS',
+            'FAILED',
+            'ERROR',
+            'CANCELED',
+        ],
+        affected_columns=[
+            TableReference(table_schema=schema, table_name='jobs', column_name='status')
+        ],
+        enum_values_to_rename=[],
+    )
 
 
 @for_each_tenant_schema
 def downgrade(schema: str) -> None:
     op.drop_column('api_definition_versions', 'recovery_prompt', schema=schema)
+    op.sync_enum_values(
+        enum_schema='shared',
+        enum_name='jobstatus',
+        new_values=[
+            'PENDING',
+            'QUEUED',
+            'RUNNING',
+            'PAUSED',
+            'SUCCESS',
+            'ERROR',
+            'CANCELED',
+        ],
+        affected_columns=[
+            TableReference(table_schema=schema, table_name='jobs', column_name='status')
+        ],
+        enum_values_to_rename=[],
+    )
