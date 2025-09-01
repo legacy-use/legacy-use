@@ -25,12 +25,10 @@ def upgrade(schema: str) -> None:
     op.add_column(
         'api_definition_versions',
         sa.Column('recovery_prompt', sa.String(), nullable=True),
-        schema='tenant_default',
+        schema=schema,
     )
 
 
 @for_each_tenant_schema
 def downgrade(schema: str) -> None:
-    op.drop_column(
-        'api_definition_versions', 'recovery_prompt', schema='tenant_default'
-    )
+    op.drop_column('api_definition_versions', 'recovery_prompt', schema=schema)
