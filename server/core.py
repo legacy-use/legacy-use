@@ -240,7 +240,7 @@ class APIGatewayCore:
 
             # Recovery flow: if error and API has recovery_prompt, trigger recovery
             try:
-                if final_status == JobStatus.ERROR:
+                if final_status in [JobStatus.ERROR, JobStatus.PAUSED]:
                     # Re-fetch job data and api_def to check for recovery
                     job_data = self.db_tenant.get_job(job_id)
                     api_name = job_data.get('api_name') if job_data else None
