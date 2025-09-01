@@ -37,9 +37,7 @@ def upgrade(schema: str) -> None:
             'CANCELED',
         ],
         affected_columns=[
-            TableReference(
-                table_schema='tenant_default', table_name='jobs', column_name='status'
-            )
+            TableReference(table_schema=schema, table_name='jobs', column_name='status')
         ],
         enum_values_to_rename=[],
     )
@@ -60,9 +58,7 @@ def downgrade(schema: str) -> None:
             'CANCELED',
         ],
         affected_columns=[
-            TableReference(
-                table_schema='tenant_default', table_name='jobs', column_name='status'
-            )
+            TableReference(table_schema=schema, table_name='jobs', column_name='status')
         ],
         enum_values_to_rename=[],
     )
