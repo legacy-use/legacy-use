@@ -282,9 +282,11 @@ class APIGatewayCore:
                     f'Failed to update job {job_id} status to ERROR after sampling_loop exception: {db_err}'
                 )
 
+            final_status = await self.execute_recovery(job_id, session_id)
+
             # Return ERROR APIResponse
             return APIResponse(
-                status=JobStatus.ERROR,
+                status=final_status,
                 reason=error_message,
                 extraction=None,
                 exchanges=[],  # Exchanges might not be available if error was early
