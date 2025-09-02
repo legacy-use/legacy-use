@@ -28,7 +28,7 @@ def upgrade(schema: str) -> None:
         sa.Column('recovery_prompt', sa.String(), nullable=True),
         schema=schema,
     )
-    op.sync_enum_values(
+    op.sync_enum_values(  # type: ignore
         enum_schema='shared',
         enum_name='jobstatus',
         new_values=[
@@ -52,7 +52,7 @@ def upgrade(schema: str) -> None:
 @for_each_tenant_schema
 def downgrade(schema: str) -> None:
     op.drop_column('api_definition_versions', 'recovery_prompt', schema=schema)
-    op.sync_enum_values(
+    op.sync_enum_values(  # type: ignore
         enum_schema='shared',
         enum_name='jobstatus',
         new_values=[
