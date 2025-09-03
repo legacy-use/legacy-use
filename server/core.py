@@ -325,6 +325,10 @@ class APIGatewayCore:
             api_def = api_map.get(api_name)
 
         recovery_prompt = getattr(api_def, 'recovery_prompt', None) if api_def else None
+
+        # Default to error unless success/pause determined
+        final_status = JobStatus.ERROR
+
         if recovery_prompt:
             from server.routes.jobs import add_job_log as route_add_log
 
@@ -359,7 +363,7 @@ class APIGatewayCore:
             recovery_messages = [BetaMessageParam(role='user', content=recovery_prompt)]
             try:
                 # We have to include this in the highest level, since claude does not support mid conversation system prompts. (OpenAI does)
-                system_prompt_suffix = 'You are in recovery mode! You should drop any tasks you were following before and only execute the given Recovery Instructions. When you have successfully recovered, return success.'
+                system_prompt_suffix = 'You are in recovery mode! You should drop any tasks you were following before and only execute the given Recovery Instructions. When you have successfully recovered, return success using the extraction tool.'
                 _recovery_result, _ = await sampling_loop(
                     job_id=job_id,
                     db_tenant=self.db_tenant,
@@ -379,6 +383,10 @@ class APIGatewayCore:
                     job_data=job_data,
                     messages_cutoff=messages_cutoff,
                 )
+                if _recovery_result.get('success'):
+                    final_status = JobStatus.FAILED
+                else:
+                    final_status = JobStatus.ERROR
                 # Recovery run completed; mark job as FAILED as per spec
                 self.db_tenant.update_job(
                     job_id,
