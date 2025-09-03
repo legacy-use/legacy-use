@@ -54,6 +54,12 @@ import {
   updateApiDefinitionApiDefinitionsApiNamePut,
   updateProviderSettingsSettingsProvidersPost,
   updateTargetTargetsTargetIdPut,
+  // Generated: Tools & Custom Actions
+  getToolsGroupToolsGroupGroupNameGet,
+  getKeysToolsKeysGet,
+  addCustomActionApiDefinitionsApiNameCustomActionsPost,
+  listCustomActionsApiDefinitionsApiNameCustomActionsGet,
+  deleteCustomActionApiDefinitionsApiNameCustomActionsActionNameDelete,
 } from '../gen/endpoints';
 import { API_BASE_URL } from '../utils/apiConstants';
 import { forwardDistinctId } from './telemetryService';
@@ -386,4 +392,33 @@ export const getRecordingStatus = async (sessionId: string) => {
 // Container logs
 export const getSessionContainerLogs = async (sessionId: string, lines = 1000) => {
   return getSessionContainerLogsSessionsSessionIdContainerLogsGet(sessionId, { lines });
+};
+
+// Tools
+export const getToolsGroup = async (groupName: string) => {
+  const response = (await getToolsGroupToolsGroupGroupNameGet(groupName)) as any;
+  return response?.message ?? [];
+};
+
+// Available keys for computer use key action
+export const getAvailableKeys = async (): Promise<string[]> => {
+  const response = (await getKeysToolsKeysGet()) as any;
+  return response?.message ?? [];
+};
+
+// Custom Actions (append one action entry for an API)
+export const addCustomActionToApi = async (
+  apiName: string,
+  payload: { name: string; tools: any[] },
+) => {
+  return addCustomActionApiDefinitionsApiNameCustomActionsPost(apiName, payload);
+};
+
+export const listCustomActions = async (apiName: string) => {
+  const response = (await listCustomActionsApiDefinitionsApiNameCustomActionsGet(apiName)) as any;
+  return response?.actions ?? {};
+};
+
+export const deleteCustomAction = async (apiName: string, actionName: string) => {
+  return deleteCustomActionApiDefinitionsApiNameCustomActionsActionNameDelete(apiName, actionName);
 };

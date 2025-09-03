@@ -6,6 +6,7 @@ from typing import Any, Dict
 from anthropic.types.beta import BetaToolUnionParam
 
 from server.computer_use.logging import logger
+from server.computer_use.tools.custom_action import CustomActionTool
 
 from .base import (
     BaseAnthropicTool,
@@ -84,7 +85,14 @@ class ToolCollection:
             )
 
         try:
-            if isinstance(tool, BaseComputerTool):
+            if isinstance(tool, CustomActionTool):
+                return await tool(
+                    session_id=session_id,
+                    session=session,
+                    tool_collection=self,
+                    **tool_input,
+                )
+            elif isinstance(tool, BaseComputerTool):
                 return await tool(session_id=session_id, session=session, **tool_input)
             else:
                 return await tool(**tool_input)

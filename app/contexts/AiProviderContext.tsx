@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { getProviders } from '../services/apiService';
 import type { ProviderConfiguration } from '@/gen/endpoints';
+import { getProviders } from '../services/apiService';
 
 // Create the context
 export const AiProviderContext = createContext({

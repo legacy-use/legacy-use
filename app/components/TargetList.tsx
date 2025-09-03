@@ -35,6 +35,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import type { Target } from '@/gen/endpoints';
 import {
   deleteTarget,
   getJobs,
@@ -43,10 +44,8 @@ import {
   unarchiveTarget,
   updateTarget,
 } from '../services/apiService';
-
 import ResolutionRecommendation from './ResolutionRecommendation';
 import VPNConfigInputField from './VPNConfigInputField';
-import type { Target } from '@/gen/endpoints';
 
 type TargetWithDetails = Target & {
   is_blocked: boolean | 'Error' | null | undefined;

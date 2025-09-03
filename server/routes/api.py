@@ -4,13 +4,13 @@ API definition and execution routes.
 
 import logging
 import traceback
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from server.core import APIGatewayCore
-from server.models.base import APIDefinition, Parameter
+from server.models.base import APIDefinition, CustomAction, Parameter
 from server.settings import settings
 from server.utils.db_dependencies import get_tenant_db
 from server.utils.telemetry import (
@@ -129,6 +129,7 @@ async def export_api_definition(
             'api_definition': {
                 'name': api_definition_db.name,
                 'description': api_definition_db.description,
+                'custom_actions': version.custom_actions,
                 'parameters': version.parameters,
                 'prompt': version.prompt,
                 'prompt_cleanup': version.prompt_cleanup,
@@ -156,6 +157,7 @@ async def export_api_definition(
         'api_definition': {
             'name': api.name,
             'description': api.description,
+            'custom_actions': api.custom_actions,
             'parameters': api.parameters,
             'prompt': api.prompt,
             'prompt_cleanup': api.prompt_cleanup,
@@ -271,6 +273,7 @@ class ImportApiDefinitionBody(BaseModel):
     prompt_cleanup: str
     recovery_prompt: str | None = None
     response_example: Dict[str, Any]
+    custom_actions: Optional[Dict[str, CustomAction]] = None
 
 
 class ImportApiDefinitionRequest(BaseModel):
@@ -301,7 +304,8 @@ async def import_api_definition(
                 version_number=str(
                     version_number
                 ),  # Convert to string to ensure consistency
-                parameters=api_def.parameters,
+                parameters=[param.model_dump() for param in api_def.parameters],
+                custom_actions=api_def.custom_actions,
                 prompt=api_def.prompt,
                 prompt_cleanup=api_def.prompt_cleanup,
                 recovery_prompt=api_def.recovery_prompt,
@@ -322,6 +326,7 @@ async def import_api_definition(
                 api_definition_id=new_api_dict['id'],
                 version_number=version_number,  # Use string to ensure consistency
                 parameters=[param.model_dump() for param in api_def.parameters],
+                custom_actions=api_def.custom_actions,
                 prompt=api_def.prompt,
                 prompt_cleanup=api_def.prompt_cleanup,
                 recovery_prompt=api_def.recovery_prompt,
@@ -339,7 +344,7 @@ async def import_api_definition(
         core = APIGatewayCore(tenant_schema=tenant['schema'], db_tenant=db_tenant)
         await core.load_api_definitions()
 
-        capture_api_created(request, api_def, api_id, str(version_number))
+        capture_api_created(request, api_def.model_dump(), api_id, str(version_number))
         return {'status': 'success', 'message': message, 'name': api_def.name}
     except Exception as e:
         logger.error(f'Error importing API definition: {str(e)}')
@@ -389,6 +394,14 @@ async def update_api_definition(
                 existing_api.id, description=api_def.description
             )
 
+        # get all existing custom actions
+        active_version = await db_tenant.get_active_api_definition_version(
+            existing_api.id
+        )
+        print('active_version:', active_version)
+        existing_custom_actions = db_tenant.get_custom_actions(active_version.id)
+        print('existing_custom_actions:', existing_custom_actions)
+
         # Create a new version with the updated fields
         version_number = await db_tenant.get_next_version_number(existing_api.id)
         await db_tenant.create_api_definition_version(
@@ -402,6 +415,7 @@ async def update_api_definition(
             recovery_prompt=api_def.recovery_prompt,
             response_example=api_def.response_example,
             is_active=True,  # Make this the active version
+            custom_actions=existing_custom_actions,
         )
 
         # Get tenant schema for APIGatewayCore
@@ -413,7 +427,9 @@ async def update_api_definition(
         core = APIGatewayCore(tenant_schema=tenant['schema'], db_tenant=db_tenant)
         await core.load_api_definitions()
 
-        capture_api_updated(request, api_def, existing_api.id, str(version_number))
+        capture_api_updated(
+            request, api_def.model_dump(), existing_api.id, str(version_number)
+        )
 
         return {
             'status': 'success',
@@ -536,3 +552,83 @@ async def get_api_definition_metadata(api_name: str, db_tenant=Depends(get_tenan
         'updated_at': api_definition.updated_at.isoformat(),
         'is_archived': api_definition.is_archived,
     }
+
+
+# function to add a custom action to the api definition
+@api_router.post(
+    '/definitions/{api_name}/custom_actions',
+    response_model=Dict[str, str],
+    tags=['API Definitions'],
+)
+async def add_custom_action(
+    api_name: str, custom_action: CustomAction, db_tenant=Depends(get_tenant_db)
+):
+    """Add a custom action to the API definition"""
+    api_definition = await db_tenant.get_api_definition_by_name(api_name)
+
+    if not api_definition:
+        raise HTTPException(
+            status_code=404, detail=f"API definition '{api_name}' not found"
+        )
+
+    # Get the latest version of the API definition
+    version = await db_tenant.get_latest_api_definition_version(api_definition.id)
+
+    print('Appending custom action:', custom_action, 'to version:', version.id)
+    # Add the custom action to the API definition
+    success = db_tenant.append_custom_action(version.id, custom_action)
+    if not success:
+        raise HTTPException(status_code=500, detail='Failed to append custom action')
+
+    return {
+        'status': 'success',
+        'message': f"Custom action '{custom_action.name}' added to API definition '{api_name}'",
+    }
+
+
+@api_router.get(
+    '/definitions/{api_name}/custom_actions',
+    response_model=Dict[str, Any],
+    tags=['API Definitions'],
+)
+async def list_custom_actions(api_name: str, db_tenant=Depends(get_tenant_db)):
+    """List custom actions for the latest version of an API definition."""
+    api_definition = await db_tenant.get_api_definition_by_name(api_name)
+
+    if not api_definition:
+        raise HTTPException(
+            status_code=404, detail=f"API definition '{api_name}' not found"
+        )
+
+    version = await db_tenant.get_latest_api_definition_version(api_definition.id)
+    actions = db_tenant.get_custom_actions(version.id)
+    return {'status': 'success', 'actions': actions}
+
+
+@api_router.delete(
+    '/definitions/{api_name}/custom_actions/{action_name}',
+    response_model=Dict[str, str],
+    tags=['API Definitions'],
+)
+async def delete_custom_action(
+    api_name: str, action_name: str, db_tenant=Depends(get_tenant_db)
+):
+    """Delete a custom action by name from the latest version of an API definition."""
+    api_definition = await db_tenant.get_api_definition_by_name(api_name)
+    if not api_definition:
+        raise HTTPException(
+            status_code=404, detail=f"API definition '{api_name}' not found"
+        )
+
+    version = await db_tenant.get_latest_api_definition_version(api_definition.id)
+    actions: dict[str, CustomAction] = db_tenant.get_custom_actions(version.id)
+    if action_name not in actions:
+        raise HTTPException(status_code=404, detail='Custom action not found')
+    # Remove and persist
+    logger.info(f'Deleting custom action: {action_name}')
+    actions.pop(action_name, None)
+    logger.info(f'Updated custom actions: {actions}')
+    ok = db_tenant.set_custom_actions(version.id, actions)
+    if not ok:
+        raise HTTPException(status_code=500, detail='Failed to update custom actions')
+    return {'status': 'success', 'message': f"Custom action '{action_name}' deleted"}

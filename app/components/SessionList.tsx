@@ -27,8 +27,8 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { deleteSession, getSessions, getTargets } from '../services/apiService';
 import type { Session } from '@/gen/endpoints';
+import { deleteSession, getSessions, getTargets } from '../services/apiService';
 
 const SessionList = () => {
   const navigate = useNavigate();

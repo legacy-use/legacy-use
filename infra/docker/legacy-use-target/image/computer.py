@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 OUTPUT_DIR = '/tmp/outputs'
 
-TYPING_DELAY_MS = 12
+TYPING_DELAY_MS = 20
 TYPING_GROUP_SIZE = 50
 
 
@@ -94,7 +94,27 @@ class ComputerToolOptions(TypedDict):
 
 
 def chunks(s: str, chunk_size: int) -> list[str]:
-    return [s[i : i + chunk_size] for i in range(0, len(s), chunk_size)]
+    """Split a string into chunks of a given size and extract newlines as individual chunks."""
+    result = []
+    current_chunk = ''
+
+    for char in s:
+        if char == '\n':
+            if current_chunk:
+                result.append(current_chunk)
+                current_chunk = ''
+            result.append('\n')
+        else:
+            current_chunk += char
+            if len(current_chunk) == chunk_size:
+                result.append(current_chunk)
+                current_chunk = ''
+
+    # Add any remaining chunk
+    if current_chunk:
+        result.append(current_chunk)
+
+    return result
 
 
 TRUNCATED_MESSAGE: str = '<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>'
@@ -224,13 +244,22 @@ class BaseComputerTool:
             elif action == 'type':
                 results: list[ToolResult] = []
                 for chunk in chunks(text, TYPING_GROUP_SIZE):
-                    command_parts = [
-                        self.xdotool,
-                        f'type --delay {TYPING_DELAY_MS} -- {shlex.quote(chunk)}',
-                    ]
-                    results.append(
+                    if chunk == '\n':
+                        command_parts = [
+                            self.xdotool,
+                            f'key --delay {TYPING_DELAY_MS} -- Return',
+                        ]
                         await self.shell(' '.join(command_parts), take_screenshot=False)
-                    )
+                    else:
+                        command_parts = [
+                            self.xdotool,
+                            f'type --delay {TYPING_DELAY_MS} -- {shlex.quote(chunk)}',
+                        ]
+                        results.append(
+                            await self.shell(
+                                ' '.join(command_parts), take_screenshot=False
+                            )
+                        )
                 # delay to let things settle before taking a screenshot
                 await asyncio.sleep(self._screenshot_delay)
                 screenshot_base64 = (await self.screenshot()).base64_image

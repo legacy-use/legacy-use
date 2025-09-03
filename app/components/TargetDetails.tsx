@@ -8,12 +8,12 @@ import { Link as RouterLink, useLocation, useParams } from 'react-router-dom';
 import type { Job, Session, Target, TargetBlockingJobsAnyOfItem } from '@/gen/endpoints';
 import { SessionContext } from '../App';
 import { deleteSession, getJobs, getSession, getSessions, getTarget } from '../services/apiService';
+import { getJobStatusChipColor } from '../utils/jobStatus';
 import DeleteSessionDialog from './DeleteSessionDialog';
 import JobsSection from './JobsSection';
 import SessionDetailsCard from './SessionDetailsCard';
 import SessionSelector from './SessionSelector';
 import TargetInfoCard from './TargetInfoCard';
-import { getJobStatusChipColor } from '../utils/jobStatus';
 
 const TargetDetails = () => {
   const { targetId } = useParams();

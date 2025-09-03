@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import type { HttpExchangeLog, Job, JobLogEntry, Target } from '@/gen/endpoints';
 import { SessionContext } from '../App';
 import {
   cancelJob,
@@ -31,10 +32,9 @@ import {
   resolveJob,
   resumeJob,
 } from '../services/apiService';
+import { getJobStatusChipColor } from '../utils/jobStatus';
 import JobStatusCard from './JobStatusCard';
 import JobTabs from './JobTabs';
-import type { HttpExchangeLog, Job, JobLogEntry, Target } from '@/gen/endpoints';
-import { getJobStatusChipColor } from '../utils/jobStatus';
 
 const JobDetails = () => {
   const { targetId, jobId } = useParams();
@@ -428,7 +428,7 @@ const JobDetails = () => {
       setTimeout(() => {
         setInterrupting(false);
       }, 2000);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error interrupting job:', err);
       setError(`Failed to interrupt job: ${err.message || 'Unknown error'}`);
       setInterrupting(false);

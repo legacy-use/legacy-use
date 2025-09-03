@@ -27,6 +27,7 @@ import {
   getApiDefinitionVersions,
   updateApiDefinition,
 } from '../services/apiService';
+import ApiCustomActions from './ApiCustomActions';
 
 // Local types for editor state (permissive to keep edits minimal)
 interface ApiParamState {
@@ -626,6 +627,10 @@ const EditApiDefinition = () => {
             Add Parameter
           </Button>
         )}
+      </Paper>
+      {/* Custom Actions */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <ApiCustomActions apiName={apiName as string} isArchived={apiDefinition.is_archived} />
       </Paper>
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>

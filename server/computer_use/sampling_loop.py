@@ -32,6 +32,7 @@ from server.computer_use.tools import (
     ToolResult,
     ToolVersion,
 )
+from server.computer_use.tools.custom_action import CustomActionTool
 from server.computer_use.utils import (
     _beta_message_param_to_job_message_content,
     _job_message_to_beta_message_param,
@@ -69,6 +70,7 @@ async def sampling_loop(
     only_n_most_recent_images: Optional[int] = None,
     session_id: str,
     tenant_schema: str,
+    job_data: dict[str, Any],
     # Remove job_id from here as it's now a primary parameter
     # job_id: Optional[str] = None,
 ) -> tuple[Any, list[dict[str, Any]]]:  # Return format remains the same
@@ -102,7 +104,14 @@ async def sampling_loop(
     # Create tools (no longer need database service)
     tools = []
     for ToolCls in tool_group.tools:
-        tools.append(ToolCls())
+        if ToolCls == CustomActionTool:
+            # get api_def specific custom actions
+            custom_actions = db_tenant.get_custom_actions(
+                job_data['api_definition_version_id'],
+            )
+            tools.append(ToolCls(custom_actions, job_data['parameters']))
+        else:
+            tools.append(ToolCls())
 
     tool_collection = ToolCollection(*tools)
 

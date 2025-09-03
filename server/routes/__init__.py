@@ -9,6 +9,7 @@ from .settings import settings_router
 from .specs import specs_router
 from .targets import target_router
 from .teaching_mode import teaching_mode_router
+from .tools import tools_router
 
 __all__ = [
     'api_router',
@@ -19,4 +20,5 @@ __all__ = [
     'websocket_router',
     'settings_router',
     'specs_router',
+    'tools_router',
 ]

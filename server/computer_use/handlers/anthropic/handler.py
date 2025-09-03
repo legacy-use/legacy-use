@@ -167,7 +167,6 @@ class AnthropicHandler(BaseProviderHandler):
         self, tool_collection: ToolCollection
     ) -> list[BetaToolUnionParam]:
         """Convert tool collection to Anthropic format."""
-        logger.info(f'tool_collection: {tool_collection}')
         return tool_collection.to_params()
 
     def get_betas(self) -> list[str]:

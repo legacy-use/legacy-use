@@ -66,6 +66,7 @@ class APIGatewayCore:
                     'name': api_def.name,
                     'description': api_def.description,
                     'parameters': version.parameters,
+                    'custom_actions': version.custom_actions,
                     'prompt': version.prompt,
                     'prompt_cleanup': version.prompt_cleanup,
                     'recovery_prompt': getattr(version, 'recovery_prompt', None),
@@ -178,6 +179,7 @@ class APIGatewayCore:
                 session_id=session_id,
                 tool_version=self.tool_version,
                 tenant_schema=self.tenant_schema,
+                job_data=job_data,
             )
 
             # --- Interpret result and Update DB Status --- START

@@ -14,8 +14,8 @@ import {
 } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { getAllJobs, getApiDefinitions, getSessions, getTargets } from '../services/apiService';
 import type { APIDefinition, Job, Session, Target } from '@/gen/endpoints';
+import { getAllJobs, getApiDefinitions, getSessions, getTargets } from '../services/apiService';
 import { getJobStatusChipColor } from '../utils/jobStatus';
 
 const Dashboard = () => {

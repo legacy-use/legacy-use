@@ -45,6 +45,18 @@ export interface BodyAnalyzeVideoTeachingModeAnalyzeVideoPost {
   video: Blob;
 }
 
+export type CustomActionToolsItem = { [key: string]: unknown };
+
+/**
+ * A single custom action with name and parameters.
+ */
+export interface CustomAction {
+  /** The tool name to execute (e.g., 'computer') */
+  name: string;
+  /** Ordered list of action objects to execute */
+  tools: CustomActionToolsItem[];
+}
+
 export interface HTTPValidationError {
   detail?: ValidationError[];
 }
@@ -537,6 +549,14 @@ export type GetApiDefinitionMetadataApiDefinitionsApiNameMetadataGet200 = {
   [key: string]: unknown;
 };
 
+export type AddCustomActionApiDefinitionsApiNameCustomActionsPost200 = { [key: string]: string };
+
+export type ListCustomActionsApiDefinitionsApiNameCustomActionsGet200 = { [key: string]: unknown };
+
+export type DeleteCustomActionApiDefinitionsApiNameCustomActionsActionNameDelete200 = {
+  [key: string]: string;
+};
+
 export type ListTargetsTargetsGetParams = {
   include_archived?: boolean;
 };
@@ -693,6 +713,47 @@ export const getApiDefinitionMetadataApiDefinitionsApiNameMetadataGet = (apiName
   return customInstance<GetApiDefinitionMetadataApiDefinitionsApiNameMetadataGet200>({
     url: `/api/definitions/${apiName}/metadata`,
     method: 'GET',
+  });
+};
+
+/**
+ * Add a custom action to the API definition
+ * @summary Add Custom Action
+ */
+export const addCustomActionApiDefinitionsApiNameCustomActionsPost = (
+  apiName: string,
+  customAction: CustomAction,
+) => {
+  return customInstance<AddCustomActionApiDefinitionsApiNameCustomActionsPost200>({
+    url: `/api/definitions/${apiName}/custom_actions`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: customAction,
+  });
+};
+
+/**
+ * List custom actions for the latest version of an API definition.
+ * @summary List Custom Actions
+ */
+export const listCustomActionsApiDefinitionsApiNameCustomActionsGet = (apiName: string) => {
+  return customInstance<ListCustomActionsApiDefinitionsApiNameCustomActionsGet200>({
+    url: `/api/definitions/${apiName}/custom_actions`,
+    method: 'GET',
+  });
+};
+
+/**
+ * Delete a custom action by name from the latest version of an API definition.
+ * @summary Delete Custom Action
+ */
+export const deleteCustomActionApiDefinitionsApiNameCustomActionsActionNameDelete = (
+  apiName: string,
+  actionName: string,
+) => {
+  return customInstance<DeleteCustomActionApiDefinitionsApiNameCustomActionsActionNameDelete200>({
+    url: `/api/definitions/${apiName}/custom_actions/${actionName}`,
+    method: 'DELETE',
   });
 };
 
@@ -1111,6 +1172,22 @@ export const getOpenapiSpecsSpecsOpenapiJsonGet = () => {
 };
 
 /**
+ * Get all tools for a given group.
+ * @summary Get Tools Group
+ */
+export const getToolsGroupToolsGroupGroupNameGet = (groupName: string) => {
+  return customInstance<unknown>({ url: `/tools/group/${groupName}`, method: 'GET' });
+};
+
+/**
+ * Get all keys.
+ * @summary Get Keys
+ */
+export const getKeysToolsKeysGet = () => {
+  return customInstance<unknown>({ url: `/tools/keys`, method: 'GET' });
+};
+
+/**
  * Root endpoint.
  * @summary Root
  */
@@ -1148,6 +1225,16 @@ export type UnarchiveApiDefinitionApiDefinitionsApiNameUnarchivePostResult = Non
 export type GetApiDefinitionMetadataApiDefinitionsApiNameMetadataGetResult = NonNullable<
   Awaited<ReturnType<typeof getApiDefinitionMetadataApiDefinitionsApiNameMetadataGet>>
 >;
+export type AddCustomActionApiDefinitionsApiNameCustomActionsPostResult = NonNullable<
+  Awaited<ReturnType<typeof addCustomActionApiDefinitionsApiNameCustomActionsPost>>
+>;
+export type ListCustomActionsApiDefinitionsApiNameCustomActionsGetResult = NonNullable<
+  Awaited<ReturnType<typeof listCustomActionsApiDefinitionsApiNameCustomActionsGet>>
+>;
+export type DeleteCustomActionApiDefinitionsApiNameCustomActionsActionNameDeleteResult =
+  NonNullable<
+    Awaited<ReturnType<typeof deleteCustomActionApiDefinitionsApiNameCustomActionsActionNameDelete>>
+  >;
 export type AnalyzeVideoTeachingModeAnalyzeVideoPostResult = NonNullable<
   Awaited<ReturnType<typeof analyzeVideoTeachingModeAnalyzeVideoPost>>
 >;
@@ -1248,5 +1335,11 @@ export type UpdateProviderSettingsSettingsProvidersPostResult = NonNullable<
 export type ScalarHtmlSpecsGetResult = NonNullable<Awaited<ReturnType<typeof scalarHtmlSpecsGet>>>;
 export type GetOpenapiSpecsSpecsOpenapiJsonGetResult = NonNullable<
   Awaited<ReturnType<typeof getOpenapiSpecsSpecsOpenapiJsonGet>>
+>;
+export type GetToolsGroupToolsGroupGroupNameGetResult = NonNullable<
+  Awaited<ReturnType<typeof getToolsGroupToolsGroupGroupNameGet>>
+>;
+export type GetKeysToolsKeysGetResult = NonNullable<
+  Awaited<ReturnType<typeof getKeysToolsKeysGet>>
 >;
 export type RootGetResult = NonNullable<Awaited<ReturnType<typeof rootGet>>>;

@@ -20,6 +20,7 @@ from server.routes import (
     specs_router,
     target_router,
     teaching_mode_router,
+    tools_router,
 )
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
@@ -295,6 +296,9 @@ app.include_router(settings_router, prefix=api_prefix)
 
 # Include specs router
 app.include_router(specs_router, prefix=api_prefix)
+
+# Include tools router
+app.include_router(tools_router, prefix=api_prefix)
 
 
 # Root endpoint

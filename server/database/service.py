@@ -8,7 +8,7 @@ from sqlalchemy import Integer, cast, func, or_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import text
 
-from server.models.base import JobStatus, JobTerminalStates
+from server.models.base import CustomAction, JobStatus, JobTerminalStates
 
 from .models import (
     APIDefinition,
@@ -960,6 +960,7 @@ class DatabaseService:
         prompt_cleanup,
         recovery_prompt,
         response_example,
+        custom_actions: Dict[str, CustomAction] = {},
         is_active=True,
     ):
         """Create a new API definition version."""
@@ -972,6 +973,19 @@ class DatabaseService:
                     APIDefinitionVersion.is_active,
                 ).update({APIDefinitionVersion.is_active: False})
 
+            def _serialize_custom_actions(actions):
+                if not actions:
+                    return {}
+                result = {}
+                for k, v in actions.items():
+                    if isinstance(v, dict):
+                        result[k] = v
+                    elif hasattr(v, 'model_dump'):
+                        result[k] = v.model_dump()
+                    else:
+                        result[k] = dict(v)
+                return result
+
             api_definition_version = APIDefinitionVersion(
                 api_definition_id=api_definition_id,
                 version_number=version_number,
@@ -981,6 +995,7 @@ class DatabaseService:
                 recovery_prompt=recovery_prompt,
                 response_example=response_example,
                 is_active=is_active,
+                custom_actions=_serialize_custom_actions(custom_actions),
             )
             session.add(api_definition_version)
             session.commit()
@@ -1366,5 +1381,136 @@ class DatabaseService:
                 exc_info=True,
             )
             return {'has_active_session': False, 'session': None}
+        finally:
+            session.close()
+
+    # Custom Actions Methods
+    def get_custom_actions(self, version_id: str) -> Dict[str, Dict[str, CustomAction]]:
+        """Get custom actions for an API definition version with validation.
+
+        Args:
+            version_id: The ID of the API definition version
+
+        Returns:
+            Dict of validated custom actions where keys are action names
+        """
+        session = self.Session()
+        try:
+            api_version = (
+                session.query(APIDefinitionVersion)
+                .filter(APIDefinitionVersion.id == version_id)
+                .first()
+            )
+
+            if not api_version:
+                print(f'No API version found for version id: {version_id}')
+                return {}
+
+            actions_data = getattr(api_version, 'custom_actions', None) or {}
+            # Normalize to dict shape keyed by action name
+            if isinstance(actions_data, list):
+                normalized_actions: Dict[str, Dict[str, Any]] = {}
+                for item in actions_data:
+                    if isinstance(item, dict) and 'name' in item:
+                        normalized_actions[item['name']] = item
+                actions_data = normalized_actions
+            elif not isinstance(actions_data, dict):
+                actions_data = {}
+            validated_actions = {}
+
+            for action_name, action_data in actions_data.items():
+                try:
+                    action = CustomAction(**action_data)
+                    validated_actions[action_name] = action.model_dump()
+                except Exception as e:
+                    # Log validation error but don't fail
+                    logging.warning(
+                        f"Invalid custom action data for '{action_name}': {action_data}, error: {e}"
+                    )
+                    continue
+            return validated_actions
+        finally:
+            session.close()
+
+    def set_custom_actions(
+        self, version_id: str, actions: Dict[str, Dict[str, CustomAction]]
+    ) -> bool:
+        """Set custom actions for an API definition version with validation.
+
+        Args:
+            version_id: The ID of the API definition version
+            actions: Dict of action dictionaries to validate and store, keyed by action name
+
+        Returns:
+            True if successful, False otherwise
+
+        Raises:
+            ValueError: If actions don't match the expected format
+        """
+        session = self.Session()
+        try:
+            api_version = (
+                session.query(APIDefinitionVersion)
+                .filter(APIDefinitionVersion.id == version_id)
+                .first()
+            )
+
+            if not api_version:
+                return False
+
+            if not actions:
+                setattr(api_version, 'custom_actions', {})
+                session.commit()
+                return True
+
+            try:
+                # Validate each action
+                validated_actions = {}
+                for action_name, action_data in actions.items():
+                    validated_action = CustomAction(**action_data)
+                    validated_actions[action_name] = validated_action.model_dump()
+
+                setattr(api_version, 'custom_actions', validated_actions)
+                session.commit()
+                return True
+            except Exception as e:
+                raise ValueError(f'Invalid custom actions format: {e}')
+        finally:
+            session.close()
+
+    def append_custom_action(self, version_id: str, action: CustomAction) -> bool:
+        """Append a custom action to an API definition version."""
+        session = self.Session()
+        try:
+            api_version = (
+                session.query(APIDefinitionVersion)
+                .filter(APIDefinitionVersion.id == version_id)
+                .first()
+            )
+
+            if not api_version:
+                print(f'No API version found for version id: {version_id}')
+                return False
+
+            existing = getattr(api_version, 'custom_actions', None)
+            # Normalize existing to dict keyed by action name
+            # TODO simplify this
+            if existing is None:
+                normalized: Dict[str, Dict[str, Any]] = {}
+            elif isinstance(existing, list):
+                normalized = {}
+                for item in existing:
+                    if isinstance(item, dict) and 'name' in item:
+                        normalized[item['name']] = item
+            elif isinstance(existing, dict):
+                normalized = dict(existing)
+            else:
+                normalized = {}
+
+            # Upsert
+            normalized[action.name] = action.model_dump()
+            setattr(api_version, 'custom_actions', normalized)
+            session.commit()
+            return True
         finally:
             session.close()

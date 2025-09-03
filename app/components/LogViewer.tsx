@@ -327,6 +327,11 @@ const LogViewer = ({ logs }) => {
           return `UI Discrepancy: ${log.content.input?.reasoning || 'No reason provided'}`;
         }
 
+        // Handle custom action tool
+        if (log.content.name === 'custom_action') {
+          return `Custom action: "${log.content.input?.action_name}"`;
+        }
+
         // Check for extraction tool result in combined log entry
         if (log.tool_result?.content && log.content.name === 'extraction') {
           try {

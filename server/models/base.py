@@ -17,6 +17,24 @@ class Parameter(BaseModel):
     default: Optional[Union[str, List[Any]]] = None
 
 
+class CustomActionTool(BaseModel):
+    """A single tool that can be used in a custom action."""
+
+    name: str = Field(..., description='The tool name to execute (e.g., "computer")')
+    parameters: Dict[str, Any] = Field(
+        ..., description='Parameters specific to the tool (e.g., "coordinate")'
+    )
+
+
+class CustomAction(BaseModel):
+    """A single custom action with name and a chain of tools to execute."""
+
+    name: str = Field(
+        ..., description="The custom action name to execute (e.g., 'computer')"
+    )
+    tools: List[CustomActionTool] = Field(..., description='Chain of tools to execute')
+
+
 class APIDefinition(BaseModel):
     name: str
     description: str
@@ -32,6 +50,7 @@ class APIDefinitionRuntime:
         self.name = data['name']
         self.description = data['description']
         self.parameters = data.get('parameters', [])
+        self.custom_actions = data.get('custom_actions', {})
         self.prompt = data.get('prompt', '')
         self.prompt_cleanup = data.get('prompt_cleanup', '')
         self.recovery_prompt = data.get('recovery_prompt')

@@ -1,4 +1,4 @@
-.PHONY: server frontend server-tests docker-start docker-linux-vm dev-docker prod stop logs ensure-env docker-build-backend docker-build-frontend docker-build-linux-machine docker-build-demo-db docker-build-target docker-build-all
+.PHONY: server frontend test server-tests docker-start docker-linux-vm dev-docker prod stop logs ensure-env docker-build-backend docker-build-frontend docker-build-linux-machine docker-build-demo-db docker-build-target docker-build-all
 
 ensure-env:
 	@if [ ! -f .env ]; then \
@@ -19,6 +19,7 @@ server:
 frontend:
 	pnpm run start
 
+test: server-tests
 server-tests:
 	uv run pytest
 
