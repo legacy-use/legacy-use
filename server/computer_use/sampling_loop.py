@@ -161,7 +161,8 @@ async def sampling_loop(
                 logger.info(
                     f'Dropping {messages_cutoff} messages before messages_cutoff; total messages: {len(db_messages)}'
                 )
-                db_messages = db_messages[:1] + db_messages[messages_cutoff:]
+                # db_messages = db_messages[:1] + db_messages[messages_cutoff:]
+                db_messages = db_messages[messages_cutoff:]
                 logger.info(f'After dropping, total messages: {len(db_messages)}')
             current_messages_for_api = [
                 _job_message_to_beta_message_param(msg) for msg in db_messages

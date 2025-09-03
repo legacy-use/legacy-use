@@ -329,10 +329,12 @@ class APIGatewayCore:
             from server.routes.jobs import add_job_log as route_add_log
 
             # Add context to recovery prompt
-            recovery_prompt = (
-                'The inital request of the user failed! You have entered recovery mode and need to clean up the situation, following the following recovery instructions:\n'
-                + recovery_prompt
-            )
+            # recovery_prompt = (
+            #     'The inital request of the user failed! You have entered recovery mode and need to clean up the situation, following the following recovery instructions:\n'
+            #     + recovery_prompt
+            # )
+
+            recovery_prompt = 'RECOVERY INSTRUCTIONS:\n' + recovery_prompt
 
             # get the current message history
             db_messages = self.db_tenant.get_job_messages(job_id)
@@ -351,15 +353,19 @@ class APIGatewayCore:
             except Exception:
                 pass
 
+            # TODO: Include the initial message in the recovery prompt, to give context about the initial task. Unfortunately, we have to include the in the same user message as the recovery prompt, since claude would otherwise ignore it.
+
             # Build recovery message and run a minimal sampling to execute recovery steps
             recovery_messages = [BetaMessageParam(role='user', content=recovery_prompt)]
             try:
+                # We have to include this in the highest level, since claude does not support mid conversation system prompts. (OpenAI does)
+                system_prompt_suffix = 'You are in recovery mode! You should drop any tasks you were following before and only execute the given Recovery Instructions. When you have successfully recovered, return success.'
                 _recovery_result, _ = await sampling_loop(
                     job_id=job_id,
                     db_tenant=self.db_tenant,
                     model=self.model,
                     provider=self.provider,
-                    system_prompt_suffix='',
+                    system_prompt_suffix=system_prompt_suffix,
                     messages=recovery_messages,
                     output_callback=output_callback or (lambda x: None),
                     tool_output_callback=tool_callback or (lambda x, y: None),
