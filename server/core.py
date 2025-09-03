@@ -328,6 +328,10 @@ class APIGatewayCore:
         if recovery_prompt:
             from server.routes.jobs import add_job_log as route_add_log
 
+            # get the current message history
+            db_messages = self.db_tenant.get_job_messages(job_id)
+            messages_cutoff = len(db_messages)
+
             route_add_log(job_id, 'system', 'Recovery initiated', self.tenant_schema)
             # Mark job as RECOVERY (non-terminal) before running recovery
             try:
@@ -360,6 +364,8 @@ class APIGatewayCore:
                     session_id=session_id,
                     tool_version=self.tool_version,
                     tenant_schema=self.tenant_schema,
+                    job_data=job_data,
+                    messages_cutoff=messages_cutoff,
                 )
                 # Recovery run completed; mark job as FAILED as per spec
                 self.db_tenant.update_job(

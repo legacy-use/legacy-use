@@ -71,6 +71,7 @@ async def sampling_loop(
     session_id: str,
     tenant_schema: str,
     job_data: dict[str, Any],
+    messages_cutoff: int = 0,
     # Remove job_id from here as it's now a primary parameter
     # job_id: Optional[str] = None,
 ) -> tuple[Any, list[dict[str, Any]]]:  # Return format remains the same
@@ -154,6 +155,14 @@ async def sampling_loop(
         # --- Fetch current history from DB --- START
         try:
             db_messages = db_tenant.get_job_messages(job_id)
+            if messages_cutoff > 0:
+                # drop any message before messages_cutoff, but keep the fist one (inital instructions)
+                # e.g. cutoff = 3, ['message0', 'message1', 'message2', 'message3', 'message4'] -> ['message0', 'message3', 'message4']
+                logger.info(
+                    f'Dropping {messages_cutoff} messages before messages_cutoff; total messages: {len(db_messages)}'
+                )
+                db_messages = db_messages[:1] + db_messages[messages_cutoff:]
+                logger.info(f'After dropping, total messages: {len(db_messages)}')
             current_messages_for_api = [
                 _job_message_to_beta_message_param(msg) for msg in db_messages
             ]
