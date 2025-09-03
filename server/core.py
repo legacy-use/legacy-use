@@ -383,9 +383,10 @@ class APIGatewayCore:
                     job_data=job_data,
                     messages_cutoff=messages_cutoff,
                 )
-                if _recovery_result.get('success'):
+                if 'success' in str(_recovery_result).lower():
                     final_status = JobStatus.FAILED
                 else:
+                    logger.error(f'Recovery was not successful: {_recovery_result}')
                     final_status = JobStatus.ERROR
                 # Recovery run completed; mark job as FAILED as per spec
                 self.db_tenant.update_job(
@@ -407,14 +408,14 @@ class APIGatewayCore:
                     job_id,
                     {
                         'status': JobStatus.ERROR.value,
-                        'error': f'Recovery failed: {str(rec_err)}',
+                        'error': f'Recovery was not successful: {str(rec_err)}',
                         'updated_at': datetime.now(),
                     },
                 )
                 route_add_log(
                     job_id,
                     'error',
-                    f'Recovery failed: {str(rec_err)}',
+                    f'Recovery was not successful: {str(rec_err)}',
                     self.tenant_schema,
                 )
                 final_status = JobStatus.ERROR
