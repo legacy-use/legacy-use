@@ -10,7 +10,7 @@ const JOB_STATUS_TO_CHIP_COLOR: Record<string, JobStatusColor> = {
   recovery: 'warning',
   paused: 'secondary',
   success: 'success',
-  failed: 'error',
+  failed: 'warning', // failed same color as warning recovery, for more differentiation from error
   error: 'error',
   canceled: 'default',
   interrupted: 'error',
