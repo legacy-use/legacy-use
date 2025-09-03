@@ -156,13 +156,15 @@ async def sampling_loop(
         try:
             db_messages = db_tenant.get_job_messages(job_id)
             if messages_cutoff > 0:
-                # drop any message before messages_cutoff, but keep the fist one (inital instructions)
-                # e.g. cutoff = 3, ['message0', 'message1', 'message2', 'message3', 'message4'] -> ['message0', 'message3', 'message4']
+                # drop any message before messages_cutoff
                 logger.info(
                     f'Dropping {messages_cutoff} messages before messages_cutoff; total messages: {len(db_messages)}'
                 )
-                # db_messages = db_messages[:1] + db_messages[messages_cutoff:]
+
                 db_messages = db_messages[messages_cutoff:]
+                # Ideally, we would keep the first message (initial instructions), but Claude tends to ignore our recovery prompt and instead continues with the initial instructions.
+                # -> db_messages = db_messages[:1] + db_messages[messages_cutoff:]
+
                 logger.info(f'After dropping, total messages: {len(db_messages)}')
             current_messages_for_api = [
                 _job_message_to_beta_message_param(msg) for msg in db_messages
