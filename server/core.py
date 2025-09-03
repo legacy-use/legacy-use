@@ -328,6 +328,12 @@ class APIGatewayCore:
         if recovery_prompt:
             from server.routes.jobs import add_job_log as route_add_log
 
+            # Add context to recovery prompt
+            recovery_prompt = (
+                'The inital request of the user failed! You have entered recovery mode and need to clean up the situation, following the following recovery instructions:\n'
+                + recovery_prompt
+            )
+
             # get the current message history
             db_messages = self.db_tenant.get_job_messages(job_id)
             messages_cutoff = len(db_messages)
