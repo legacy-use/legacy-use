@@ -332,14 +332,6 @@ class APIGatewayCore:
         if recovery_prompt:
             from server.routes.jobs import add_job_log as route_add_log
 
-            # Add context to recovery prompt
-            # recovery_prompt = (
-            #     'The inital request of the user failed! You have entered recovery mode and need to clean up the situation, following the following recovery instructions:\n'
-            #     + recovery_prompt
-            # )
-
-            recovery_prompt = 'RECOVERY INSTRUCTIONS:\n' + recovery_prompt
-
             # get the current message history
             db_messages = self.db_tenant.get_job_messages(job_id)
             messages_cutoff = len(db_messages)
@@ -351,6 +343,8 @@ class APIGatewayCore:
                 'Recovery prompt: ' + recovery_prompt,
                 self.tenant_schema,
             )
+
+            recovery_prompt = 'RECOVERY INSTRUCTIONS:\n' + recovery_prompt
 
             # Mark job as RECOVERY (non-terminal) before running recovery
             try:
@@ -374,9 +368,12 @@ class APIGatewayCore:
 You are in recovery mode. Ignore all previous tasks.  
 1. Execute only the provided Recovery Instructions.  
 2. If a choice is required, select the least invasive option that does not modify or persist state.  
-3. If no clear solution exists, or information is insufficient, or the same step has been attempted twice without success, stop.  
-4. On success return "success" using the extraction tool.  
-5. On failure return "no recovery possible" using the extraction tool.  
+3. If no clear execution exists, stop.  
+4. If information is insufficient to continue, stop.
+5. If the same or a similar step has been attempted twice without success, stop.
+6. If you make no progress for 3 turns, stop.
+6. On success return "success" using the extraction tool.  
+7. On failure return "no recovery possible" using the extraction tool.  
 """
                 _recovery_result, _ = await sampling_loop(
                     job_id=job_id,
