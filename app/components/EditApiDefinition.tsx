@@ -28,6 +28,7 @@ import {
   updateApiDefinition,
 } from '../services/apiService';
 import ApiCustomActions from './ApiCustomActions';
+import ApiRecoveryPrompt from './ApiRecoveryPrompt';
 
 // Local types for editor state (permissive to keep edits minimal)
 interface ApiParamState {
@@ -45,6 +46,7 @@ interface ApiDefState {
   parameters: ApiParamState[];
   prompt: string;
   prompt_cleanup: string;
+  recovery_prompt?: string;
   response_example: any;
   is_archived: boolean;
 }
@@ -65,6 +67,7 @@ const EditApiDefinition = () => {
     parameters: [],
     prompt: '',
     prompt_cleanup: '',
+    recovery_prompt: '',
     response_example: {},
     is_archived: false,
   });
@@ -93,10 +96,20 @@ const EditApiDefinition = () => {
           parameters: data.parameters || [],
           prompt: data.prompt || '',
           prompt_cleanup: data.prompt_cleanup || '',
+          recovery_prompt: data.recovery_prompt || '',
           response_example: data.response_example || {},
           is_archived: data.is_archived || false,
         });
-        setOriginalApiDefinition(data);
+        setOriginalApiDefinition({
+          name: data.name || '',
+          description: data.description || '',
+          parameters: data.parameters || [],
+          prompt: data.prompt || '',
+          prompt_cleanup: data.prompt_cleanup || '',
+          recovery_prompt: data.recovery_prompt || '',
+          response_example: data.response_example || {},
+          is_archived: data.is_archived || false,
+        });
         setLoading(false);
       } catch (err: any) {
         console.error('Error fetching API definition:', err);
@@ -129,6 +142,7 @@ const EditApiDefinition = () => {
               parameters: selectedVersion.parameters || [],
               prompt: selectedVersion.prompt || '',
               prompt_cleanup: selectedVersion.prompt_cleanup || '',
+              recovery_prompt: selectedVersion.recovery_prompt || '',
               response_example: selectedVersion.response_example || {},
             }));
             setOriginalApiDefinition((prevState: any) => ({
@@ -139,11 +153,13 @@ const EditApiDefinition = () => {
                 parameters: [],
                 prompt: '',
                 prompt_cleanup: '',
+                recovery_prompt: '',
                 response_example: {},
               }),
               parameters: selectedVersion.parameters,
               prompt: selectedVersion.prompt,
               prompt_cleanup: selectedVersion.prompt_cleanup,
+              recovery_prompt: selectedVersion.recovery_prompt || '',
               response_example: selectedVersion.response_example,
             }));
           }
@@ -170,6 +186,7 @@ const EditApiDefinition = () => {
         apiDefinition.prompt_cleanup !== originalApiDefinition.prompt_cleanup ||
         JSON.stringify(apiDefinition.response_example) !==
           JSON.stringify(originalApiDefinition.response_example) ||
+        apiDefinition.recovery_prompt !== originalApiDefinition.recovery_prompt ||
         apiDefinition.name !== originalApiDefinition.name ||
         apiDefinition.description !== originalApiDefinition.description;
 
@@ -272,6 +289,7 @@ const EditApiDefinition = () => {
           parameters: selectedVersion.parameters,
           prompt: selectedVersion.prompt,
           prompt_cleanup: selectedVersion.prompt_cleanup,
+          recovery_prompt: selectedVersion.recovery_prompt || '',
           response_example: selectedVersion.response_example,
         }));
         setOriginalApiDefinition(_prevState => ({
@@ -281,6 +299,7 @@ const EditApiDefinition = () => {
           parameters: selectedVersion.parameters || [],
           prompt: selectedVersion.prompt || '',
           prompt_cleanup: selectedVersion.prompt_cleanup || '',
+          recovery_prompt: selectedVersion.recovery_prompt || '',
           response_example: selectedVersion.response_example || {},
         }));
 
@@ -297,6 +316,7 @@ const EditApiDefinition = () => {
           parameters: activeVersion.parameters,
           prompt: activeVersion.prompt,
           prompt_cleanup: activeVersion.prompt_cleanup,
+          recovery_prompt: activeVersion.recovery_prompt || '',
           response_example: activeVersion.response_example,
         }));
         setOriginalApiDefinition(prevState => ({
@@ -306,6 +326,7 @@ const EditApiDefinition = () => {
           parameters: activeVersion.parameters,
           prompt: activeVersion.prompt,
           prompt_cleanup: activeVersion.prompt_cleanup,
+          recovery_prompt: activeVersion.recovery_prompt || '',
           response_example: activeVersion.response_example,
         }));
       }
@@ -631,6 +652,13 @@ const EditApiDefinition = () => {
       {/* Custom Actions */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <ApiCustomActions apiName={apiName as string} isArchived={apiDefinition.is_archived} />
+      </Paper>
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <ApiRecoveryPrompt
+          recoveryPrompt={apiDefinition.recovery_prompt || ''}
+          onChange={handleChange('recovery_prompt')}
+          isArchived={apiDefinition.is_archived}
+        />
       </Paper>
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
