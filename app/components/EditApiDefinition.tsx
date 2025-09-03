@@ -72,16 +72,17 @@ const EditApiDefinition = () => {
     is_archived: false,
   });
 
-  const [versions, setVersions] = useState<any[]>([]);
-  const [loadingVersions, setLoadingVersions] = useState<boolean>(false);
-  const [selectedVersionId, setSelectedVersionId] = useState<string>('');
-  const [originalApiDefinition, setOriginalApiDefinition] = useState<ApiDefState | null>(null);
-  const [isVersionModified, setIsVersionModified] = useState<boolean>(false);
+    const [versions, setVersions] = useState<any[]>([]);
+    const [loadingVersions, setLoadingVersions] = useState<boolean>(false);
+    const [selectedVersionId, setSelectedVersionId] = useState<string>('');
+    const [originalApiDefinition, setOriginalApiDefinition] = useState<ApiDefState | null>(null);
+    const [isVersionModified, setIsVersionModified] = useState<boolean>(false);
+    const [showAdvancedFields, setShowAdvancedFields] = useState<boolean>(false);
 
-  const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
-  const [snackbarMessage, setSnackbarMessage] = useState<string>('');
-  const [snackbarSeverity, setSnackbarSeverity] = useState<
-    'success' | 'error' | 'warning' | 'info'
+    const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
+    const [snackbarMessage, setSnackbarMessage] = useState<string>('');
+    const [snackbarSeverity, setSnackbarSeverity] = useState<
+      'success' | 'error' | 'warning' | 'info'
   >('success');
 
   // Load API definition details
@@ -649,17 +650,32 @@ const EditApiDefinition = () => {
           </Button>
         )}
       </Paper>
-      {/* Custom Actions */}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <ApiCustomActions apiName={apiName as string} isArchived={apiDefinition.is_archived} />
-      </Paper>
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <ApiRecoveryPrompt
-          recoveryPrompt={apiDefinition.recovery_prompt || ''}
-          onChange={handleChange('recovery_prompt')}
-          isArchived={apiDefinition.is_archived}
-        />
-      </Paper>
+      {/* Advanced options */}
+      <Button
+        size="small"
+        variant="text"
+        onClick={() => setShowAdvancedFields(prev => !prev)}
+        sx={{ mb: 2 }}
+      >
+        {showAdvancedFields ? 'Hide advanced' : 'Show advanced'}
+      </Button>
+      {showAdvancedFields && (
+        <>
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <ApiCustomActions
+              apiName={apiName as string}
+              isArchived={apiDefinition.is_archived}
+            />
+          </Paper>
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <ApiRecoveryPrompt
+              recoveryPrompt={apiDefinition.recovery_prompt || ''}
+              onChange={handleChange('recovery_prompt')}
+              isArchived={apiDefinition.is_archived}
+            />
+          </Paper>
+        </>
+      )}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           Prompt Configuration
