@@ -363,7 +363,14 @@ class APIGatewayCore:
             recovery_messages = [BetaMessageParam(role='user', content=recovery_prompt)]
             try:
                 # We have to include this in the highest level, since claude does not support mid conversation system prompts. (OpenAI does)
-                system_prompt_suffix = 'You are in recovery mode! You should drop any tasks you were following before and only execute the given Recovery Instructions. When you have successfully recovered, return success using the extraction tool.'
+                system_prompt_suffix = """
+You are in recovery mode. Ignore all previous tasks.  
+1. Execute only the provided Recovery Instructions.  
+2. If a choice is required, select the least invasive option that does not modify or persist state.  
+3. If no clear solution exists, or information is insufficient, or the same step has been attempted twice without success, stop.  
+4. On success return "success" using the extraction tool.  
+5. On failure return "not successful" using the extraction tool.  
+"""
                 _recovery_result, _ = await sampling_loop(
                     job_id=job_id,
                     db_tenant=self.db_tenant,
