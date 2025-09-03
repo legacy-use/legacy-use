@@ -16,7 +16,7 @@ from server.migrations.tenant import for_each_tenant_schema
 
 # revision identifiers, used by Alembic.
 revision: str = '32f7863ea65d'
-down_revision: Union[str, None] = 'f2b2b0c1c9ab'
+down_revision: Union[str, None] = '6d173f57c620'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
