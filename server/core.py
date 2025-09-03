@@ -358,8 +358,6 @@ class APIGatewayCore:
             except Exception:
                 pass
 
-            # TODO: Include the initial message in the recovery prompt, to give context about the initial task. Unfortunately, we have to include the in the same user message as the recovery prompt, since claude would otherwise ignore it.
-
             # Build recovery message and run a minimal sampling to execute recovery steps
             recovery_messages = [BetaMessageParam(role='user', content=recovery_prompt)]
             try:
