@@ -345,6 +345,13 @@ class APIGatewayCore:
             messages_cutoff = len(db_messages)
 
             route_add_log(job_id, 'system', 'Recovery initiated', self.tenant_schema)
+            route_add_log(
+                job_id,
+                'system',
+                'Recovery prompt: ' + recovery_prompt,
+                self.tenant_schema,
+            )
+
             # Mark job as RECOVERY (non-terminal) before running recovery
             try:
                 self.db_tenant.update_job(
@@ -369,7 +376,7 @@ You are in recovery mode. Ignore all previous tasks.
 2. If a choice is required, select the least invasive option that does not modify or persist state.  
 3. If no clear solution exists, or information is insufficient, or the same step has been attempted twice without success, stop.  
 4. On success return "success" using the extraction tool.  
-5. On failure return "not successful" using the extraction tool.  
+5. On failure return "no recovery possible" using the extraction tool.  
 """
                 _recovery_result, _ = await sampling_loop(
                     job_id=job_id,
