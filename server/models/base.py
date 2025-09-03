@@ -233,15 +233,15 @@ class SessionUpdate(BaseModel):
 
 
 class JobStatus(str, Enum):
-    PENDING = 'pending'
-    QUEUED = 'queued'
-    RUNNING = 'running'
-    RECOVERY = 'recovery'
-    PAUSED = 'paused'
-    SUCCESS = 'success'
-    FAILED = 'failed'
-    ERROR = 'error'
-    CANCELED = 'canceled'
+    PENDING = 'pending'  # Pending means the job was created but not yet queued
+    QUEUED = 'queued'  # Queued means the job is waiting in the queue
+    RUNNING = 'running'  # Running means the job is being executed
+    RECOVERY = 'recovery'  # Recovery means is being executed, had an error and is now trying to recover the system to the initial state
+    PAUSED = 'paused'  # Paused means the job is paused due to, UI_NOT_AS_EXPECTED or human intervention
+    SUCCESS = 'success'  # Success means the job completed successfully
+    FAILED = 'failed'  # Failed means the job was not able to complete, but recovery was successful
+    ERROR = 'error'  # Error means the job completed with an error and no recovery was possible
+    CANCELED = 'canceled'  # Canceled means the job was canceled by the user
 
 
 JobTerminalStates = [
