@@ -45,11 +45,8 @@ def with_db(tenant_schema: Optional[str]):
         schema_translate_map=schema_translate_map
     )
 
-    try:
-        db = Session(autocommit=False, autoflush=False, bind=connectable)
+    with Session(autocommit=False, autoflush=False, bind=connectable) as db:
         yield db
-    finally:
-        db.close()
 
 
 def tenant_create(name: str, schema: str, host: str) -> None:
@@ -92,17 +89,11 @@ def tenant_delete(schema: str) -> None:
 
 def get_tenant_by_host(host: str) -> Optional[Tenant]:
     """Get tenant by host."""
-    session = db_session.Session()
-    try:
+    with db_session.Session() as session:
         return session.query(Tenant).filter(Tenant.host == host).first()
-    finally:
-        session.close()
 
 
 def get_tenant_by_schema(schema: str) -> Optional[Tenant]:
     """Get tenant by schema."""
-    session = db_session.Session()
-    try:
+    with db_session.Session() as session:
         return session.query(Tenant).filter(Tenant.schema == schema).first()
-    finally:
-        session.close()

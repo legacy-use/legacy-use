@@ -42,37 +42,27 @@ class DatabaseService:
 
     # Target methods
     def create_target(self, target_data):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             target = Target(**target_data)
             session.add(target)
             session.commit()
             return self._to_dict(target)
-        finally:
-            session.close()
 
     def get_target(self, target_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             target = session.query(Target).filter(Target.id == target_id).first()
             return self._to_dict(target) if target else None
-        finally:
-            session.close()
 
     def list_targets(self, include_archived=False):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             query = session.query(Target)
             if not include_archived:
                 query = query.filter(Target.is_archived.is_(False))
             targets = query.all()
             return [self._to_dict(t) for t in targets]
-        finally:
-            session.close()
 
     def update_target(self, target_id, target_data):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             target = session.query(Target).filter(Target.id == target_id).first()
             if not target:
                 return None
@@ -83,12 +73,9 @@ class DatabaseService:
 
             session.commit()
             return self._to_dict(target)
-        finally:
-            session.close()
 
     def delete_target(self, target_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             target = session.query(Target).filter(Target.id == target_id).first()
             if target:
                 target.is_archived = True
@@ -96,24 +83,18 @@ class DatabaseService:
                 session.commit()
                 return True
             return False
-        finally:
-            session.close()
 
     def hard_delete_target(self, target_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             target = session.query(Target).filter(Target.id == target_id).first()
             if target:
                 session.delete(target)
                 session.commit()
                 return True
             return False
-        finally:
-            session.close()
 
     def unarchive_target(self, target_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             target = session.query(Target).filter(Target.id == target_id).first()
             if target:
                 target.is_archived = False
@@ -121,8 +102,6 @@ class DatabaseService:
                 session.commit()
                 return True
             return False
-        finally:
-            session.close()
 
     def is_target_queue_paused(self, target_id):
         """Check if a target's queue should be paused by looking for jobs in ERROR or PAUSED state.
@@ -162,49 +141,36 @@ class DatabaseService:
 
     # Session methods
     def create_session(self, session_data):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             new_session = Session(**session_data)
             session.add(new_session)
             session.commit()
             return self._to_dict(new_session)
-        finally:
-            session.close()
 
     def get_session(self, session_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             db_session = session.query(Session).filter(Session.id == session_id).first()
             return self._to_dict(db_session) if db_session else None
-        finally:
-            session.close()
 
     def list_sessions(self, include_archived=False):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             query = session.query(Session)
             if not include_archived:
                 query = query.filter(Session.is_archived.is_(False))
             sessions = query.all()
             return [self._to_dict(s) for s in sessions]
-        finally:
-            session.close()
 
     def list_target_sessions(self, target_id, include_archived=False):
         """List all sessions for a specific target."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             query = session.query(Session).filter(Session.target_id == target_id)
             if not include_archived:
                 query = query.filter(Session.is_archived.is_(False))
             sessions = query.all()
             return [self._to_dict(s) for s in sessions]
-        finally:
-            session.close()
 
     def update_session(self, session_id, session_data):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             db_session = session.query(Session).filter(Session.id == session_id).first()
             if not db_session:
                 return None
@@ -215,12 +181,9 @@ class DatabaseService:
 
             session.commit()
             return self._to_dict(db_session)
-        finally:
-            session.close()
 
     def delete_session(self, session_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             db_session = session.query(Session).filter(Session.id == session_id).first()
             if db_session:
                 db_session.is_archived = True
@@ -228,31 +191,23 @@ class DatabaseService:
                 session.commit()
                 return True
             return False
-        finally:
-            session.close()
 
     def hard_delete_session(self, session_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             db_session = session.query(Session).filter(Session.id == session_id).first()
             if db_session:
                 session.delete(db_session)
                 session.commit()
                 return True
             return False
-        finally:
-            session.close()
 
     # Job methods
     def create_job(self, job_data):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             job = Job(**job_data)
             session.add(job)
             session.commit()
             return self._to_dict(job)
-        finally:
-            session.close()
 
     def claim_next_job(
         self,
@@ -269,8 +224,7 @@ class DatabaseService:
 
         Returns a job dict or None if nothing claimable.
         """
-        session = self.Session()
-        try:
+        with self.Session() as session:
             now = datetime.utcnow()
             lease_exp = now + timedelta(seconds=lease_seconds)
 
@@ -332,16 +286,13 @@ class DatabaseService:
             except Exception:
                 trans.rollback()
                 raise
-        finally:
-            session.close()
 
     def expire_stale_running_jobs(self) -> list[dict]:
         """Mark RUNNING jobs with expired or missing leases as ERROR.
 
         Returns a list of affected job dicts.
         """
-        session = self.Session()
-        try:
+        with self.Session() as session:
             now = datetime.utcnow()
             stale_jobs = (
                 session.query(Job)
@@ -366,15 +317,12 @@ class DatabaseService:
             # Committing with no changes is a no-op and safely ends the transaction.
             session.commit()
             return affected
-        finally:
-            session.close()
 
     def renew_job_lease(
         self, job_id: UUID, lease_owner: str, lease_seconds: int = 60
     ) -> bool:
         """Extend the lease for a RUNNING job if owned by this worker."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             now = datetime.utcnow()
             lease_exp = now + timedelta(seconds=lease_seconds)
             job = (
@@ -392,12 +340,9 @@ class DatabaseService:
             job.updated_at = now
             session.commit()
             return True
-        finally:
-            session.close()
 
     def get_job(self, job_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             job = session.query(Job).filter(Job.id == job_id).first()
             if not job:
                 return None
@@ -411,8 +356,6 @@ class DatabaseService:
                 )
 
             return job_dict
-        finally:
-            session.close()
 
     def list_jobs(
         self,
@@ -421,8 +364,7 @@ class DatabaseService:
         filters: dict = None,
         include_http_exchanges: bool = False,
     ):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             query = session.query(Job).order_by(Job.created_at.desc())
 
             # Apply filters if provided
@@ -478,8 +420,6 @@ class DatabaseService:
                     )
 
             return job_dicts
-        finally:
-            session.close()
 
     def list_session_jobs(
         self,
@@ -497,8 +437,7 @@ class DatabaseService:
             offset: Number of jobs to skip
             status: Optional status filter (e.g., 'running', 'success', 'error')
         """
-        session = self.Session()
-        try:
+        with self.Session() as session:
             query = session.query(Job).filter(Job.session_id == session_id)
 
             # Apply status filter if provided
@@ -519,15 +458,12 @@ class DatabaseService:
                     )
                 job_dicts.append(job_dict)
             return job_dicts
-        finally:
-            session.close()
 
     def list_jobs_by_status_and_target(
         self, target_id, statuses, limit: int = 100, offset: int = 0
     ):
         """List jobs by status and target."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             query = session.query(Job).filter(Job.target_id == target_id)
 
             # Convert status strings to list if needed
@@ -554,12 +490,9 @@ class DatabaseService:
                     )
                 job_dicts.append(job_dict)
             return job_dicts
-        finally:
-            session.close()
 
     def get_target_job(self, target_id, job_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             job = (
                 session.query(Job)
                 .filter(Job.target_id == target_id, Job.id == job_id)
@@ -577,19 +510,13 @@ class DatabaseService:
                 )
 
             return job_dict
-        finally:
-            session.close()
 
     def count_target_jobs(self, target_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             return session.query(Job).filter(Job.target_id == target_id).count()
-        finally:
-            session.close()
 
     def count_jobs(self, filters: dict = None):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             query = session.query(Job)
 
             # Apply filters if provided
@@ -602,8 +529,6 @@ class DatabaseService:
                     query = query.filter(Job.api_name == filters['api_name'])
 
             return query.count()
-        finally:
-            session.close()
 
     def update_job(self, job_id, job_data, update_session=True):
         """
@@ -615,8 +540,7 @@ class DatabaseService:
             update_session: Whether to update session's last_job_time for terminal states (default: True)
         """
 
-        session = self.Session()
-        try:
+        with self.Session() as session:
             job = session.query(Job).filter(Job.id == job_id).first()
             if not job:
                 return None
@@ -638,8 +562,6 @@ class DatabaseService:
                     )
 
             return job_dict
-        finally:
-            session.close()
 
     def update_job_status(self, job_id, status):
         """Update job status (convenience method that uses update_job)."""
@@ -651,8 +573,7 @@ class DatabaseService:
 
     def request_job_cancel(self, job_id: UUID) -> bool:
         """Set cancel_requested=true for a job regardless of which worker owns it."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             job = session.query(Job).filter(Job.id == job_id).first()
             if not job:
                 return False
@@ -660,40 +581,29 @@ class DatabaseService:
             job.updated_at = datetime.utcnow()
             session.commit()
             return True
-        finally:
-            session.close()
 
     def is_job_cancel_requested(self, job_id: UUID) -> bool:
-        session = self.Session()
-        try:
+        with self.Session() as session:
             value = (
                 session.query(Job.cancel_requested).filter(Job.id == job_id).scalar()
             )
             return bool(value)
-        finally:
-            session.close()
 
     # Job Log methods
     def create_job_log(self, log_data):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             log = JobLog(**log_data)
             session.add(log)
             session.commit()
             return self._to_dict(log)
-        finally:
-            session.close()
 
     def list_job_logs(self, job_id, exclude_http_exchanges=True):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             query = session.query(JobLog).filter(JobLog.job_id == job_id)
             if exclude_http_exchanges:
                 query = query.filter(JobLog.log_type != 'http_exchange')
             logs = query.order_by(JobLog.timestamp).all()
             return [self._to_dict(log) for log in logs]
-        finally:
-            session.close()
 
     def list_job_http_exchanges(self, job_id, use_trimmed=True):
         """
@@ -707,8 +617,7 @@ class DatabaseService:
         Returns:
             List of HTTP exchange logs
         """
-        session = self.Session()
-        try:
+        with self.Session() as session:
             if use_trimmed:
                 # Only load necessary columns when using trimmed content
                 # We explicitly don't select the 'content' column which can be large
@@ -737,27 +646,21 @@ class DatabaseService:
                     .all()
                 )
                 return [self._to_dict(log) for log in logs]
-        finally:
-            session.close()
 
     def prune_old_logs(self, days=7):
         """Delete logs older than the specified number of days."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             cutoff_date = datetime.now() - timedelta(days=days)
             deleted_count = (
                 session.query(JobLog).filter(JobLog.timestamp < cutoff_date).delete()
             )
             session.commit()
             return deleted_count
-        finally:
-            session.close()
 
     # API Definition Services
     async def get_api_definitions(self, include_archived=False):
         """Get all API definitions."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             # Use ORM query instead of raw SQL
             query = session.query(APIDefinition)
             if not include_archived:
@@ -766,13 +669,10 @@ class DatabaseService:
             # Execute the query
             api_defs = query.all()
             return api_defs
-        finally:
-            session.close()
 
     async def get_api_definitions_with_versions(self, include_archived=False):
         """Get all API definitions with their versions eagerly loaded."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             # Use ORM query with eager loading of versions
             query = session.query(APIDefinition).options(
                 joinedload(APIDefinition.versions)
@@ -783,13 +683,10 @@ class DatabaseService:
             # Execute the query
             api_defs = query.all()
             return api_defs
-        finally:
-            session.close()
 
     async def get_api_definition(self, api_definition_id=None, name=None):
         """Get an API definition by ID or name."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             if api_definition_id:
                 return (
                     session.query(APIDefinition)
@@ -803,19 +700,14 @@ class DatabaseService:
                     .first()
                 )
             return None
-        finally:
-            session.close()
 
     async def create_api_definition(self, name, description):
         """Create a new API definition."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             api_definition = APIDefinition(name=name, description=description)
             session.add(api_definition)
             session.commit()
             return self._to_dict(api_definition)
-        finally:
-            session.close()
 
     async def update_api_definition(self, api_definition_id, **kwargs):
         """Update an API definition."""
@@ -823,8 +715,7 @@ class DatabaseService:
         logger.info(f'Updating API definition with ID: {api_definition_id}')
         logger.info(f'Update parameters: {kwargs}')
 
-        session = self.Session()
-        try:
+        with self.Session() as session:
             # Get the API definition using ORM
             api_definition = (
                 session.query(APIDefinition)
@@ -849,16 +740,13 @@ class DatabaseService:
 
             # Return the updated object as a dictionary
             return self._to_dict(api_definition)
-        finally:
-            session.close()
 
     async def archive_api_definition(self, api_definition_id):
         """Archive an API definition."""
         logger = logging.getLogger(__name__)
 
         # Use ORM instead of direct SQL queries
-        session = self.Session()
-        try:
+        with self.Session() as session:
             # Get the API definition
             api_definition = (
                 session.query(APIDefinition)
@@ -876,41 +764,32 @@ class DatabaseService:
 
             # Return the updated object as a dictionary
             return self._to_dict(api_definition)
-        finally:
-            session.close()
 
     # API Definition Version Services
     async def get_api_definition_versions(
         self, api_definition_id, include_inactive=False
     ):
         """Get all versions of an API definition."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             query = session.query(APIDefinitionVersion).filter(
                 APIDefinitionVersion.api_definition_id == api_definition_id
             )
             if not include_inactive:
                 query = query.filter(APIDefinitionVersion.is_active)
             return query.all()
-        finally:
-            session.close()
 
     async def get_api_definition_version(self, version_id):
         """Get an API definition version by ID."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             return (
                 session.query(APIDefinitionVersion)
                 .filter(APIDefinitionVersion.id == version_id)
                 .first()
             )
-        finally:
-            session.close()
 
     async def get_active_api_definition_version(self, api_definition_id):
         """Get the active version of an API definition."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             return (
                 session.query(APIDefinitionVersion)
                 .filter(
@@ -919,13 +798,10 @@ class DatabaseService:
                 )
                 .first()
             )
-        finally:
-            session.close()
 
     async def get_latest_api_definition_version(self, api_definition_id):
         """Get the latest version of an API definition, regardless of active status."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             # Get all versions for this API definition
             versions = (
                 session.query(APIDefinitionVersion)
@@ -949,8 +825,6 @@ class DatabaseService:
 
             # Return the latest version
             return versions[0]
-        finally:
-            session.close()
 
     async def create_api_definition_version(
         self,
@@ -964,8 +838,7 @@ class DatabaseService:
         is_active=True,
     ):
         """Create a new API definition version."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             # If this is active, deactivate all other versions
             if is_active:
                 session.query(APIDefinitionVersion).filter(
@@ -999,14 +872,15 @@ class DatabaseService:
             session.add(api_definition_version)
             session.commit()
             return self._to_dict(api_definition_version)
-        finally:
-            session.close()
 
     async def update_api_definition_version(self, version_id, **kwargs):
         """Update an API definition version."""
-        session = self.Session()
-        try:
-            api_definition_version = await self.get_api_definition_version(version_id)
+        with self.Session() as session:
+            api_definition_version = (
+                session.query(APIDefinitionVersion)
+                .filter(APIDefinitionVersion.id == version_id)
+                .one_or_none()
+            )
             if not api_definition_version:
                 return None
 
@@ -1025,36 +899,26 @@ class DatabaseService:
             api_definition_version.updated_at = datetime.now()
             session.commit()
             return self._to_dict(api_definition_version)
-        finally:
-            session.close()
 
     async def get_api_definition_by_name(self, name):
         """Get an API definition by name."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             # Include archived APIs in the search
             return (
                 session.query(APIDefinition).filter(APIDefinition.name == name).first()
             )
-        finally:
-            session.close()
 
     async def get_active_api_definition_version_by_name(self, name):
         """Get the active version of an API definition by name."""
-        session = self.Session()
-        try:
-            api_definition = await self.get_api_definition_by_name(name)
-            if not api_definition:
-                return None
+        api_definition = await self.get_api_definition_by_name(name)
+        if not api_definition:
+            return None
 
-            return await self.get_active_api_definition_version(api_definition.id)
-        finally:
-            session.close()
+        return await self.get_active_api_definition_version(api_definition.id)
 
     async def get_next_version_number(self, api_definition_id):
         """Get the next version number for an API definition."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             # Get the highest version number for this API definition
             # Use SQLAlchemy's proper syntax for ordering with a cast
             highest_version = (
@@ -1076,8 +940,6 @@ class DatabaseService:
             except ValueError:
                 # If it can't be converted to an integer, just return 1
                 return 1
-        finally:
-            session.close()
 
     def _to_dict(self, obj):
         if obj is None:
@@ -1108,8 +970,7 @@ class DatabaseService:
         }
 
     def get_session_job(self, session_id, job_id):
-        session = self.Session()
-        try:
+        with self.Session() as session:
             job = (
                 session.query(Job)
                 .filter(Job.session_id == session_id, Job.id == job_id)
@@ -1127,60 +988,52 @@ class DatabaseService:
                 )
 
             return job_dict
-        finally:
-            session.close()
 
     # --- Job Message Methods (New) ---
     def get_next_message_sequence(self, job_id: UUID) -> int:
         """Get the next sequence number for a job's messages."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             max_sequence = (
                 session.query(func.max(JobMessage.sequence))
                 .filter(JobMessage.job_id == job_id)
                 .scalar()
             )
             return (max_sequence or 0) + 1
-        finally:
-            session.close()
 
     def add_job_message(
         self, job_id: UUID, sequence: int, role: str, content: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Add a new message to a job's history."""
-        session = self.Session()
-        try:
-            # Validate role if necessary (e.g., ensure it's 'user' or 'assistant')
-            allowed_roles = ['user', 'assistant']
-            if role not in allowed_roles:
-                # Log warning or raise error? For now, log and proceed
-                logging.warning(
-                    f"Attempted to add job message with invalid role '{role}' for job {job_id}"
-                )
-                # raise ValueError(f"Invalid role: {role}. Must be one of {allowed_roles}")
+        with self.Session() as session:
+            try:
+                # Validate role if necessary (e.g., ensure it's 'user' or 'assistant')
+                allowed_roles = ['user', 'assistant']
+                if role not in allowed_roles:
+                    # Log warning or raise error? For now, log and proceed
+                    logging.warning(
+                        f"Attempted to add job message with invalid role '{role}' for job {job_id}"
+                    )
+                    # raise ValueError(f"Invalid role: {role}. Must be one of {allowed_roles}")
 
-            new_message = JobMessage(
-                job_id=job_id,
-                sequence=sequence,
-                role=role,
-                message_content=content,  # Assuming content is already serialized dict/list
-            )
-            session.add(new_message)
-            session.commit()
-            # Refresh to get default values like ID and created_at
-            session.refresh(new_message)
-            return self._to_dict(new_message)  # Use existing helper if available
-        except Exception as e:
-            session.rollback()  # Rollback on error
-            logging.error(f'Error adding job message for job {job_id}: {e}')
-            raise  # Re-raise the exception after logging
-        finally:
-            session.close()
+                new_message = JobMessage(
+                    job_id=job_id,
+                    sequence=sequence,
+                    role=role,
+                    message_content=content,  # Assuming content is already serialized dict/list
+                )
+                session.add(new_message)
+                session.commit()
+                # Refresh to get default values like ID and created_at
+                session.refresh(new_message)
+                return self._to_dict(new_message)  # Use existing helper if available
+            except Exception as e:
+                session.rollback()  # Rollback on error
+                logging.error(f'Error adding job message for job {job_id}: {e}')
+                raise  # Re-raise the exception after logging
 
     def get_job_messages(self, job_id: UUID) -> List[Dict[str, Any]]:
         """Get all messages for a specific job, ordered by sequence."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             messages = (
                 session.query(JobMessage)
                 .filter(JobMessage.job_id == job_id)
@@ -1188,79 +1041,58 @@ class DatabaseService:
                 .all()
             )
             return [self._to_dict(msg) for msg in messages]
-        finally:
-            session.close()
 
     def count_job_messages(self, job_id: UUID) -> int:
         """Count the number of messages for a specific job."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             count = (
                 session.query(func.count(JobMessage.id))
                 .filter(JobMessage.job_id == job_id)
                 .scalar()
             )
             return count or 0  # Return 0 if count is None (no messages)
-        finally:
-            session.close()
 
     # --- End Job Message Methods ---
 
     # --- Tenant Methods ---
     def create_tenant(self, tenant_data):
         """Create a new tenant."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             tenant = Tenant(**tenant_data)
             session.add(tenant)
             session.commit()
             return self._to_dict(tenant)
-        finally:
-            session.close()
 
     def get_tenant(self, tenant_id):
         """Get a tenant by ID."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             tenant = session.query(Tenant).filter(Tenant.id == tenant_id).first()
             return self._to_dict(tenant) if tenant else None
-        finally:
-            session.close()
 
     def get_tenant_by_host(self, host):
         """Get a tenant by host."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             tenant = session.query(Tenant).filter(Tenant.host == host).first()
             return self._to_dict(tenant) if tenant else None
-        finally:
-            session.close()
 
     def get_tenant_by_schema(self, schema):
         """Get a tenant by schema name."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             tenant = session.query(Tenant).filter(Tenant.schema == schema).first()
             return self._to_dict(tenant) if tenant else None
-        finally:
-            session.close()
 
     def list_tenants(self, include_inactive=False):
         """List all tenants."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             query = session.query(Tenant)
             if not include_inactive:
                 query = query.filter(Tenant.is_active.is_(True))
             tenants = query.all()
             return [self._to_dict(t) for t in tenants]
-        finally:
-            session.close()
 
     def update_tenant(self, tenant_id, tenant_data):
         """Update a tenant."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             tenant = session.query(Tenant).filter(Tenant.id == tenant_id).first()
             if not tenant:
                 return None
@@ -1271,13 +1103,10 @@ class DatabaseService:
 
             session.commit()
             return self._to_dict(tenant)
-        finally:
-            session.close()
 
     def delete_tenant(self, tenant_id):
         """Soft delete a tenant by setting is_active to False."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             tenant = session.query(Tenant).filter(Tenant.id == tenant_id).first()
             if tenant:
                 tenant.is_active = False
@@ -1285,103 +1114,92 @@ class DatabaseService:
                 session.commit()
                 return True
             return False
-        finally:
-            session.close()
 
     def hard_delete_tenant(self, tenant_id):
         """Hard delete a tenant."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             tenant = session.query(Tenant).filter(Tenant.id == tenant_id).first()
             if tenant:
                 session.delete(tenant)
                 session.commit()
                 return True
             return False
-        finally:
-            session.close()
 
     # --- End Tenant Methods ---
 
     def find_ready_session_for_target(self, target_id: UUID) -> Dict[str, Any] | None:
         """Find an available 'ready' and not archived session for the target."""
-        session = self.Session()
-        try:
-            # Find a session that is ready and not archived
-            available_session = (
-                session.query(Session)
-                .filter(
-                    Session.target_id == target_id,
-                    Session.state == 'ready',
-                    Session.is_archived.is_(False),
+        with self.Session() as session:
+            try:
+                # Find a session that is ready and not archived
+                available_session = (
+                    session.query(Session)
+                    .filter(
+                        Session.target_id == target_id,
+                        Session.state == 'ready',
+                        Session.is_archived.is_(False),
+                    )
+                    .first()
                 )
-                .first()
-            )
 
-            if available_session:
-                return self._to_dict(available_session)
-            return None
-        except Exception as e:
-            logging.error(  # Use logging instead of logger for class methods
-                f'Error finding available session for target {target_id}: {e}',
-                exc_info=True,
-            )
-            return None
-        finally:
-            session.close()
+                if available_session:
+                    return self._to_dict(available_session)
+                return None
+            except Exception as e:
+                logging.error(  # Use logging instead of logger for class methods
+                    f'Error finding available session for target {target_id}: {e}',
+                    exc_info=True,
+                )
+                return None
 
     def has_initializing_session_for_target(self, target_id: UUID) -> bool:
         """Check if there's any session in 'initializing' state for this target."""
-        session = self.Session()
-        try:
-            # Find any session that is initializing and not archived
-            initializing_session = (
-                session.query(Session.id)  # Query for id only for efficiency
-                .filter(
-                    Session.target_id == target_id,
-                    Session.state == 'initializing',
-                    Session.is_archived.is_(False),
+        with self.Session() as session:
+            try:
+                # Find any session that is initializing and not archived
+                initializing_session = (
+                    session.query(Session.id)  # Query for id only for efficiency
+                    .filter(
+                        Session.target_id == target_id,
+                        Session.state == 'initializing',
+                        Session.is_archived.is_(False),
+                    )
+                    .first()
                 )
-                .first()
-            )
-            return initializing_session is not None
-        except Exception as e:
-            logging.error(  # Use logging instead of logger for class methods
-                f'Error checking initializing session for target {target_id}: {e}',
-                exc_info=True,
-            )
-            return False  # Assume not initializing if error occurs
-        finally:
-            session.close()
+                return initializing_session is not None
+            except Exception as e:
+                logging.error(  # Use logging instead of logger for class methods
+                    f'Error checking initializing session for target {target_id}: {e}',
+                    exc_info=True,
+                )
+                return False  # Assume not initializing if error occurs
 
     def has_active_session_for_target(self, target_id: UUID) -> Dict[str, Any]:
         """Check if there's any active (non-archived) session for this target."""
-        session = self.Session()
-        try:
-            # Find any session that is not archived for this target
-            active_session = (
-                session.query(Session)
-                .filter(
-                    Session.target_id == target_id,
-                    Session.is_archived.is_(False),
+        with self.Session() as session:
+            try:
+                # Find any session that is not archived for this target
+                active_session = (
+                    session.query(Session)
+                    .filter(
+                        Session.target_id == target_id,
+                        Session.is_archived.is_(False),
+                    )
+                    .first()
                 )
-                .first()
-            )
 
-            if active_session:
-                return {
-                    'has_active_session': True,
-                    'session': self._to_dict(active_session),
-                }
-            return {'has_active_session': False, 'session': None}
-        except Exception as e:
-            logging.error(  # Use logging instead of logger for class methods
-                f'Error checking active session for target {target_id}: {e}',
-                exc_info=True,
-            )
-            return {'has_active_session': False, 'session': None}
-        finally:
-            session.close()
+                if active_session:
+                    return {
+                        'has_active_session': True,
+                        'session': self._to_dict(active_session),
+                    }
+                return {'has_active_session': False, 'session': None}
+            except Exception as e:
+                logging.error(  # Use logging instead of logger for class methods
+                    f'Error checking active session for target {target_id}: {e}',
+                    exc_info=True,
+                )
+                return {'has_active_session': False, 'session': None}
 
     # Custom Actions Methods
     def get_custom_actions(self, version_id: str) -> Dict[str, Dict[str, CustomAction]]:
@@ -1393,8 +1211,7 @@ class DatabaseService:
         Returns:
             Dict of validated custom actions where keys are action names
         """
-        session = self.Session()
-        try:
+        with self.Session() as session:
             api_version = (
                 session.query(APIDefinitionVersion)
                 .filter(APIDefinitionVersion.id == version_id)
@@ -1422,8 +1239,6 @@ class DatabaseService:
                     )
                     continue
             return validated_actions
-        finally:
-            session.close()
 
     def set_custom_actions(
         self, version_id: str, actions: Dict[str, Dict[str, CustomAction]]
@@ -1440,8 +1255,7 @@ class DatabaseService:
         Raises:
             ValueError: If actions don't match the expected format
         """
-        session = self.Session()
-        try:
+        with self.Session() as session:
             api_version = (
                 session.query(APIDefinitionVersion)
                 .filter(APIDefinitionVersion.id == version_id)
@@ -1475,13 +1289,10 @@ class DatabaseService:
                 return True
             except Exception as e:
                 raise ValueError(f'Invalid custom actions format: {e}')
-        finally:
-            session.close()
 
     def append_custom_action(self, version_id: str, action: CustomAction) -> bool:
         """Append a custom action to an API definition version."""
-        session = self.Session()
-        try:
+        with self.Session() as session:
             api_version = (
                 session.query(APIDefinitionVersion)
                 .filter(APIDefinitionVersion.id == version_id)
@@ -1502,5 +1313,3 @@ class DatabaseService:
             existing_dict[action.name] = action.model_dump()
             session.commit()
             return True
-        finally:
-            session.close()
