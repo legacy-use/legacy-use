@@ -73,6 +73,8 @@ const ApiCustomActions = ({ apiName, isArchived }: ApiCustomActionsProps) => {
   const [existingCustomActions, setExistingCustomActions] = useState<Record<string, any>>({});
   const [loadingExistingActions, setLoadingExistingActions] = useState<boolean>(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState<string | null>(null);
+  const [editingActionName, setEditingActionName] = useState<string | null>(null);
+  const [editingConfiguredIndex, setEditingConfiguredIndex] = useState<number | null>(null);
 
   // Available keys for key action
   const [availableKeys, setAvailableKeys] = useState<string[]>([]);
@@ -239,16 +241,47 @@ const ApiCustomActions = ({ apiName, isArchived }: ApiCustomActionsProps) => {
       builtParams.action = selectedAction.name;
     }
     const newAction = { name: selectedTool.name, parameters: builtParams };
-    setCustomActions(prev => [...prev, newAction]);
+    setCustomActions(prev => {
+      if (editingConfiguredIndex !== null) {
+        const copy = [...prev];
+        copy[editingConfiguredIndex] = newAction;
+        return copy;
+      }
+      return [...prev, newAction];
+    });
     setParamValues({});
     setSelectedActionName('');
-    setSnackbarMessage('Action added');
+    setSnackbarMessage(editingConfiguredIndex !== null ? 'Action updated' : 'Action added');
     setSnackbarSeverity('success');
     setSnackbarOpen(true);
+    setEditingConfiguredIndex(null);
   };
 
   const handleRemoveConfiguredAction = (index: number) => {
     setCustomActions(prev => prev.filter((_, i) => i !== index));
+    if (editingConfiguredIndex !== null) {
+      if (index === editingConfiguredIndex) {
+        cancelEditConfiguredAction();
+      } else if (index < editingConfiguredIndex) {
+        setEditingConfiguredIndex(prev => (prev as number) - 1);
+      }
+    }
+  };
+
+  const handleEditConfiguredAction = (index: number) => {
+    const act = customActions[index];
+    if (!act) return;
+    setSelectedToolName(act.name);
+    const { action, ...params } = act.parameters || {};
+    setSelectedActionName((action as string) || '');
+    setParamValues(params as Record<string, any>);
+    setEditingConfiguredIndex(index);
+  };
+
+  const cancelEditConfiguredAction = () => {
+    setParamValues({});
+    setSelectedActionName('');
+    setEditingConfiguredIndex(null);
   };
 
   const handleSaveCustomAction = async () => {
@@ -271,12 +304,21 @@ const ApiCustomActions = ({ apiName, isArchived }: ApiCustomActionsProps) => {
         name: customActionName.trim(),
         tools: customActions,
       };
+      // If renaming an existing action, remove the old one first
+      if (editingActionName && editingActionName !== customActionName.trim()) {
+        try {
+          await deleteCustomAction(apiName, editingActionName);
+        } catch (err) {
+          console.error('Error deleting old custom action during rename:', err);
+        }
+      }
       await addCustomActionToApi(apiName, payload);
       setSnackbarMessage('Custom action saved');
       setSnackbarSeverity('success');
       setSnackbarOpen(true);
       setCustomActions([]);
       setCustomActionName('');
+      setEditingActionName(null);
     } catch (err: any) {
       setSnackbarMessage(`Failed to save custom action: ${err?.message || 'Unknown error'}`);
       setSnackbarSeverity('error');
@@ -312,6 +354,27 @@ const ApiCustomActions = ({ apiName, isArchived }: ApiCustomActionsProps) => {
       await handleDeleteExistingCustomAction(deleteConfirmName);
     }
     closeDeleteConfirm();
+  };
+
+  const handleEditExistingCustomAction = (name: string) => {
+    const action = existingCustomActions[name];
+    if (!action) return;
+    const tools = (action as any).tools || (action as any).actions || [];
+    setCustomActions(Array.isArray(tools) ? tools : []);
+    setCustomActionName(name);
+    setEditingActionName(name);
+    setParamValues({});
+    setSelectedActionName('');
+    setEditingConfiguredIndex(null);
+  };
+
+  const cancelEditing = () => {
+    setCustomActions([]);
+    setCustomActionName('');
+    setEditingActionName(null);
+    setParamValues({});
+    setSelectedActionName('');
+    setEditingConfiguredIndex(null);
   };
 
   const handleSnackbarClose = () => setSnackbarOpen(false);
@@ -511,7 +574,7 @@ const ApiCustomActions = ({ apiName, isArchived }: ApiCustomActionsProps) => {
         )}
 
         {canConfigureSelectedAction && (
-          <Grid size={12}>
+          <Grid size={12} sx={{ display: 'flex', gap: 1 }}>
             <Button
               variant="outlined"
               startIcon={<AddIcon />}
@@ -519,8 +582,18 @@ const ApiCustomActions = ({ apiName, isArchived }: ApiCustomActionsProps) => {
               sx={{ mt: 1 }}
               disabled={isArchived}
             >
-              Add Action To List
+              {editingConfiguredIndex !== null ? 'Update Action' : 'Add Action To List'}
             </Button>
+            {editingConfiguredIndex !== null && (
+              <Button
+                variant="text"
+                onClick={cancelEditConfiguredAction}
+                sx={{ mt: 1 }}
+                disabled={isArchived}
+              >
+                Cancel
+              </Button>
+            )}
           </Grid>
         )}
       </Grid>
@@ -552,13 +625,18 @@ const ApiCustomActions = ({ apiName, isArchived }: ApiCustomActionsProps) => {
                       </Typography>
                     </Box>
                     {!isArchived && (
-                      <Button
-                        color="error"
-                        variant="outlined"
-                        onClick={() => handleRemoveConfiguredAction(idx)}
-                      >
-                        Remove
-                      </Button>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button variant="outlined" onClick={() => handleEditConfiguredAction(idx)}>
+                          Edit
+                        </Button>
+                        <Button
+                          color="error"
+                          variant="outlined"
+                          onClick={() => handleRemoveConfiguredAction(idx)}
+                        >
+                          Remove
+                        </Button>
+                      </Box>
                     )}
                   </Box>
                 </Card>
@@ -579,9 +657,19 @@ const ApiCustomActions = ({ apiName, isArchived }: ApiCustomActionsProps) => {
                 variant="contained"
                 onClick={handleSaveCustomAction}
                 disabled={isArchived || savingCustomAction}
+                sx={{ mr: 2 }}
               >
-                {savingCustomAction ? 'Saving…' : 'Save Custom Action'}
+                {savingCustomAction
+                  ? 'Saving…'
+                  : editingActionName
+                    ? 'Update Custom Action'
+                    : 'Save Custom Action'}
               </Button>
+              {editingActionName && !isArchived && (
+                <Button variant="text" onClick={cancelEditing} disabled={savingCustomAction}>
+                  Cancel
+                </Button>
+              )}
             </Grid>
           </Grid>
         </Box>
@@ -619,13 +707,21 @@ const ApiCustomActions = ({ apiName, isArchived }: ApiCustomActionsProps) => {
                       </Typography>
                     </Box>
                     {!isArchived && (
-                      <Button
-                        color="error"
-                        variant="outlined"
-                        onClick={() => openDeleteConfirm(name)}
-                      >
-                        Delete
-                      </Button>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                          variant="outlined"
+                          onClick={() => handleEditExistingCustomAction(name)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          color="error"
+                          variant="outlined"
+                          onClick={() => openDeleteConfirm(name)}
+                        >
+                          Delete
+                        </Button>
+                      </Box>
                     )}
                   </Box>
                 </Card>
