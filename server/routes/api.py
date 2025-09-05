@@ -133,6 +133,7 @@ async def export_api_definition(
                 'parameters': version.parameters,
                 'prompt': version.prompt,
                 'prompt_cleanup': version.prompt_cleanup,
+                'recovery_prompt': getattr(version, 'recovery_prompt', None),
                 'response_example': version.response_example,
             }
         }
@@ -160,6 +161,7 @@ async def export_api_definition(
             'parameters': api.parameters,
             'prompt': api.prompt,
             'prompt_cleanup': api.prompt_cleanup,
+            'recovery_prompt': getattr(api, 'recovery_prompt', None),
             'response_example': api.response_example,
         }
     }
@@ -195,6 +197,7 @@ async def get_api_definition_versions(api_name: str, db_tenant=Depends(get_tenan
             'parameters': version.parameters,
             'prompt': version.prompt,
             'prompt_cleanup': version.prompt_cleanup,
+            'recovery_prompt': getattr(version, 'recovery_prompt', None),
             'response_example': version.response_example,
             'created_at': version.created_at.isoformat(),
             'is_active': version.is_active,
@@ -253,6 +256,7 @@ async def get_api_definition_version(
         'parameters': version.parameters,
         'prompt': version.prompt,
         'prompt_cleanup': version.prompt_cleanup,
+        'recovery_prompt': getattr(version, 'recovery_prompt', None),
         'response_example': version.response_example,
         'created_at': version.created_at.isoformat(),
         'is_active': version.is_active,
@@ -267,6 +271,7 @@ class ImportApiDefinitionBody(BaseModel):
     parameters: List[Parameter]
     prompt: str
     prompt_cleanup: str
+    recovery_prompt: str | None = None
     response_example: Dict[str, Any]
     custom_actions: Optional[Dict[str, CustomAction]] = None
 
@@ -303,6 +308,7 @@ async def import_api_definition(
                 custom_actions=api_def.custom_actions,
                 prompt=api_def.prompt,
                 prompt_cleanup=api_def.prompt_cleanup,
+                recovery_prompt=api_def.recovery_prompt,
                 response_example=api_def.response_example,
                 is_active=True,  # Make this the active version
             )
@@ -323,6 +329,7 @@ async def import_api_definition(
                 custom_actions=api_def.custom_actions,
                 prompt=api_def.prompt,
                 prompt_cleanup=api_def.prompt_cleanup,
+                recovery_prompt=api_def.recovery_prompt,
                 response_example=api_def.response_example,
                 is_active=True,
             )
@@ -405,6 +412,7 @@ async def update_api_definition(
             parameters=[param.model_dump() for param in api_def.parameters],
             prompt=api_def.prompt,
             prompt_cleanup=api_def.prompt_cleanup,
+            recovery_prompt=api_def.recovery_prompt,
             response_example=api_def.response_example,
             is_active=True,  # Make this the active version
             custom_actions=existing_custom_actions,

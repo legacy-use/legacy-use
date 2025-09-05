@@ -72,7 +72,8 @@ const JobStatusCard = ({
   const isInterruptible =
     normalizedJobStatus === 'running' ||
     normalizedJobStatus === 'queued' ||
-    normalizedJobStatus === 'pending';
+    normalizedJobStatus === 'pending' ||
+    normalizedJobStatus === 'recovery';
   const isCancelable = normalizedJobStatus === 'queued' || normalizedJobStatus === 'pending';
   const isResumable = normalizedJobStatus === 'paused' || normalizedJobStatus === 'error';
   const isResolvable = normalizedJobStatus === 'paused' || normalizedJobStatus === 'error';

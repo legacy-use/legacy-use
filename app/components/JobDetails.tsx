@@ -283,7 +283,7 @@ const JobDetails = () => {
   useEffect(() => {
     // Only set up polling if we have job data and it's in RUNNING or QUEUED state
     // Stop polling if job is COMPLETED, FAILED, CANCELED, INTERRUPTED, or PAUSED
-    const activePollingStates = ['running', 'queued'];
+    const activePollingStates = ['running', 'queued', 'recovery'];
     if (!job || !activePollingStates.includes((job.status || '').toLowerCase())) {
       // console.log(`[${new Date().toISOString()}] Job status is ${job?.status}, not setting up polling`);
       return; // Stop polling if not running or queued

@@ -130,6 +130,7 @@ class APIDefinitionVersion(Base):
     parameters = Column(JSONB, nullable=False, default=[])
     prompt = Column(String, nullable=False)
     prompt_cleanup = Column(String, nullable=False)
+    recovery_prompt = Column(String, nullable=True)
     response_example = Column(JSONB, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
     is_active = Column(

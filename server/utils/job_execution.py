@@ -356,6 +356,7 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
                     output_callback=output_callback,
                     session_id=(str(job.session_id) if job.session_id else None),
                 )
+                logger.info(f'API response with status: {api_response.status.value}')
 
             # Update job with result and API exchanges using tenant-aware database service
             with with_db(tenant_schema) as db_session:
