@@ -706,6 +706,24 @@ class DatabaseService:
         finally:
             session.close()
 
+    def get_all_tool_invocations_for_job(self, job_id):
+        # return log_type="message" and content->>'type'='tool_use'
+        session = self.Session()
+        try:
+            job_logs = (
+                session.query(JobLog)
+                .filter(
+                    JobLog.job_id == job_id,
+                    JobLog.log_type == 'message',
+                    JobLog.content.op('->>')('type') == 'tool_use',
+                )
+                .order_by(JobLog.timestamp.asc())
+                .all()
+            )
+            return [self._to_dict(log) for log in job_logs]
+        finally:
+            session.close()
+
     # Job Log methods
     def create_job_log(self, log_data):
         session = self.Session()

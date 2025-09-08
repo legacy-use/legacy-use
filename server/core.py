@@ -284,6 +284,13 @@ class APIGatewayCore:
                 # Wrap non-dict extraction data in a dictionary
                 extraction_data = {'data': extraction_data}
 
+            # get all tool_calls of this job and print them
+            tool_calls = self.db_tenant.get_all_tool_invocations_for_job(job_id)
+            for tool_call in tool_calls:
+                if tool_call.get('content').get('type') == 'tool_use':
+                    content = tool_call.get('content')
+                    print(f'Job {job_id}: Tool call: {content}')
+
             # Construct APIResponse based on determined status
             return APIResponse(
                 status=final_status,
