@@ -172,3 +172,48 @@ if __name__ == '__main__':
 
     result = same_window_state(img_a, img_b)
     print('\nResult:', result)
+
+
+def same_state_with_ground_truths_per_score(gt_a, gt_b, cand, margin=0.05):
+    # scores between ground truths
+    ab = same_window_state(gt_a, gt_b)
+
+    # scores between candidate and each reference
+    ac = same_window_state(gt_a, cand)
+    bc = same_window_state(gt_b, cand)
+
+    result = {}
+    decision = False
+
+    for key in ['dhash_similarity', 'histogram_similarity', 'text_similarity']:
+        if ab[key] is None:  # skip if text_similarity is None
+            result[key] = {
+                'ref_sim': None,
+                'candA': None,
+                'candB': None,
+                'required': None,
+                'pass': None,
+            }
+            continue
+
+        ref_sim = ab[key]
+        candA = ac[key]
+        candB = bc[key]
+
+        # required threshold = ref similarity - (margin * (1 - ref similarity))
+        # interpret margin as a percentage of the gap to a perfect match
+        required = max(0.0, ref_sim - (margin * (1.0 - ref_sim)))
+        passed = (candA >= required) or (candB >= required)
+
+        result[key] = {
+            'ref_sim': ref_sim,
+            'candA': candA,
+            'candB': candB,
+            'required': required,
+            'pass': passed,
+        }
+
+        if passed:
+            decision = True  # accept if any component passes
+
+    return {'per_score': result, 'decision': decision}

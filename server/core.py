@@ -2,11 +2,13 @@
 Core functionality for AI chat processing, shared between FastAPI and Streamlit interfaces.
 """
 
+import base64
 import logging
 from datetime import datetime
 from io import BytesIO
 from typing import Any, Callable, Optional
 
+import httpx
 from anthropic.types.beta import BetaMessageParam
 from PIL import Image
 
@@ -17,7 +19,7 @@ from server.computer_use import (
     sampling_loop,
 )
 from server.computer_use.tools import ToolResult
-from server.img_utils import same_window_state
+from server.img_utils import same_state_with_ground_truths_per_score, same_window_state
 from server.models.base import (
     APIDefinitionRuntime,
     APIResponse,
@@ -185,7 +187,6 @@ class APIGatewayCore:
                 print(f'Job {job_id}: First tool use job log has image')
                 base64_image = content.get('base64_image')
                 # convert to Image.Image
-                import base64
 
                 try:
                     img_bytes = base64.b64decode(base64_image)
@@ -199,6 +200,36 @@ class APIGatewayCore:
             print(f'Job {job_id}: Two images found, comparing with current job')
             result = same_window_state(images[0], images[1])
             print(f'Job {job_id}: Result: {result}')
+            # take screenshot of current job
+
+            current_job_screenshot = None
+
+            session_details = self.db_tenant.get_session(session_id)
+            container_ip = session_details['container_ip']
+
+            timeout = httpx.Timeout(60.0, connect=10.0)
+            payload = {
+                'api_type': 'computer_20250124',
+            }
+
+            api_url = f'http://{container_ip}:8088/tool_use/screenshot'
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(api_url, json=payload)
+                if not response.is_success:
+                    print(f'Job {job_id}: Failed to take screenshot: {response.text}')
+                else:
+                    result = response.json()
+                    base64_image = result.get('base64_image')
+                    img_bytes = base64.b64decode(base64_image)
+                    current_job_screenshot = Image.open(BytesIO(img_bytes))
+
+            if current_job_screenshot:
+                result = same_state_with_ground_truths_per_score(
+                    images[0], images[1], current_job_screenshot
+                )
+                print(f'Job {job_id}: Result with ground truths: {result}')
+            else:
+                print(f'Job {job_id}: Current job screenshot not found')
 
         try:
             # Execute the API call - sampling_loop will handle saving the messages if it receives any
