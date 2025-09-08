@@ -4,9 +4,11 @@ Core functionality for AI chat processing, shared between FastAPI and Streamlit 
 
 import logging
 from datetime import datetime
+from io import BytesIO
 from typing import Any, Callable, Optional
 
 from anthropic.types.beta import BetaMessageParam
+from PIL import Image
 
 from server.computer_use import (
     ApiResponseCallback,
@@ -15,6 +17,7 @@ from server.computer_use import (
     sampling_loop,
 )
 from server.computer_use.tools import ToolResult
+from server.img_utils import same_window_state
 from server.models.base import (
     APIDefinitionRuntime,
     APIResponse,
@@ -160,6 +163,42 @@ class APIGatewayCore:
             #    logger.info(f"Job {job_id}: Resuming with API version {api_version}")
 
         # The 'messages' list is now correctly populated (either with initial prompt or empty)
+
+        # get last two jobs
+        print(f'Job {job_id}: Getting last two jobs')
+        print(f'Job {job_id}: Job data: {job_data}')
+        current_version_id = job_data.get('api_definition_version_id')
+        last_two_jobs = self.db_tenant.get_last_two_success_jobs(current_version_id)
+        print(f'Job {job_id}: Last two jobs: {last_two_jobs}')
+
+        images = []
+        # 3d1d796f-84f3-4a9f-967a-df914f0bec3c
+        for old_job in last_two_jobs:
+            print(
+                f'Job {job_id}: Getting first tool use job log for job {old_job.get("id")}'
+            )
+            first_tool_use_job_log = self.db_tenant.get_first_tool_use_job_log(
+                old_job.get('id')
+            )
+            content = first_tool_use_job_log.get('content')
+            if content.get('has_image') and content.get('base64_image'):
+                print(f'Job {job_id}: First tool use job log has image')
+                base64_image = content.get('base64_image')
+                # convert to Image.Image
+                import base64
+
+                try:
+                    img_bytes = base64.b64decode(base64_image)
+                    images.append(Image.open(BytesIO(img_bytes)))
+                except Exception as e:
+                    print(f'Job {job_id}: Failed to decode or open image: {e}')
+            else:
+                print(f'Job {job_id}: First tool use job log does not have image')
+
+        if len(images) == 2:
+            print(f'Job {job_id}: Two images found, comparing with current job')
+            result = same_window_state(images[0], images[1])
+            print(f'Job {job_id}: Result: {result}')
 
         try:
             # Execute the API call - sampling_loop will handle saving the messages if it receives any

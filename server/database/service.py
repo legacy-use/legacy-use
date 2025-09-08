@@ -673,6 +673,39 @@ class DatabaseService:
         finally:
             session.close()
 
+    def get_last_two_success_jobs(self, api_definition_version_id):
+        # Include target_id ?
+        session = self.Session()
+        try:
+            limit = 2
+            jobs = (
+                session.query(Job)
+                .filter(
+                    Job.api_definition_version_id == api_definition_version_id,
+                    Job.status == JobStatus.SUCCESS.value,
+                    Job.error.is_(None),
+                )
+                .order_by(Job.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            return [self._to_dict(job) for job in jobs]
+        finally:
+            session.close()
+
+    def get_first_tool_use_job_log(self, job_id):
+        session = self.Session()
+        try:
+            job_log = (
+                session.query(JobLog)
+                .filter(JobLog.job_id == job_id, JobLog.log_type == 'tool_use')
+                .order_by(JobLog.timestamp.asc())
+                .first()
+            )
+            return self._to_dict(job_log)
+        finally:
+            session.close()
+
     # Job Log methods
     def create_job_log(self, log_data):
         session = self.Session()

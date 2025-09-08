@@ -25,6 +25,9 @@ RUN apt-get update && \
     usermod -aG docker $USERNAME && \
     mkdir -p $HOME/.cache && \
     chown -R $USERNAME:$USERNAME $HOME/.cache && \
+    # Install Tesseract
+    apt-get install -y tesseract-ocr && \
+    apt-get install -y libtesseract-dev && \
     # Clean up to reduce image size
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
