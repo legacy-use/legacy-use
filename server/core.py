@@ -196,6 +196,7 @@ class APIGatewayCore:
             else:
                 print(f'Job {job_id}: First tool use job log does not have image')
 
+        matching_state = False
         if len(images) == 2:
             print(f'Job {job_id}: Two images found, comparing with current job')
             result = same_window_state(images[0], images[1])
@@ -228,9 +229,17 @@ class APIGatewayCore:
                     images[0], images[1], current_job_screenshot
                 )
                 print(f'Job {job_id}: Result with ground truths: {result}')
+                matching_state = result.get('decision')
             else:
                 print(f'Job {job_id}: Current job screenshot not found')
 
+        if matching_state:
+            pass
+            # TODO: Get the tool calls of the last two jobs,
+            # make sure that they are similar enough to each other and
+            # if so, execute them, while checking after each tool call if the state is still matching
+            # if not escelate to the model
+            # also escelate to the model if the tool call is extraction
         try:
             # Execute the API call - sampling_loop will handle saving the messages if it receives any
             result, exchanges = await sampling_loop(

@@ -178,12 +178,29 @@ def same_state_with_ground_truths_per_score(gt_a, gt_b, cand, margin=0.05):
     # scores between ground truths
     ab = same_window_state(gt_a, gt_b)
 
+    # return false if the diff between the two ground truths is greater than the margin
+    if abs(ab['dhash_similarity']) > margin:
+        print(
+            f'Diff between dhash_similarity is greater than the margin: {abs(ab["dhash_similarity"])}'
+        )
+        return {'per_score': ab, 'decision': False}
+    if abs(ab['histogram_similarity']) > margin:
+        print(
+            f'Diff between histogram_similarity is greater than the margin: {abs(ab["histogram_similarity"])}'
+        )
+        return {'per_score': ab, 'decision': False}
+    if abs(ab['text_similarity']) > margin:
+        print(
+            f'Diff between text_similarity is greater than the margin: {abs(ab["text_similarity"])}'
+        )
+        return {'per_score': ab, 'decision': False}
+
     # scores between candidate and each reference
     ac = same_window_state(gt_a, cand)
     bc = same_window_state(gt_b, cand)
 
     result = {}
-    decision = False
+    decision = True
 
     for key in ['dhash_similarity', 'histogram_similarity', 'text_similarity']:
         if ab[key] is None:  # skip if text_similarity is None
@@ -213,7 +230,9 @@ def same_state_with_ground_truths_per_score(gt_a, gt_b, cand, margin=0.05):
             'pass': passed,
         }
 
-        if passed:
-            decision = True  # accept if any component passes
+        if not passed:
+            # break and return False if any component fails
+            decision = False
+            break
 
     return {'per_score': result, 'decision': decision}
