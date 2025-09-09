@@ -73,31 +73,31 @@ def get_next_tool_use(
     # atm this is only UI_NOT_AS_EXPECTED, EXTRACTION and CUSTOM_ACTION
     # UI_NOT_AS_EXPECTED and EXTRACTION shouldn't be autonomously invoked
     # TODO: CUSTOM_ACTION should be able to be invoked autonomously
+    # TODO: How to handle parameters in the tool_use invocation?
     if not _is_computer_use_tool_request(tool_invocation):
         print(
             f'Current tool invocation is not a computer_use tool request: {tool_invocation.get("content").get("name")}'
         )
-        return None, None, offset + 2
+        return None, None, offset
 
-    # if the tool_invocation is a screenshot, we return the screenshot and the next tool_use
+    # if the tool_invocation is a screenshot, we return direct
     if _is_tool_request_of_type(tool_invocation, 'screenshot'):
         print(
             f'Current tool invocation is a screenshot: {tool_invocation.get("content")}'
         )
-        tool_use_invocation, prev_screenshot_response, offset = get_next_tool_use(
-            tool_invocations, offset + 2
-        )
+        tool_use_invocation = tool_invocation.get('content')
+        prev_screenshot_response = tool_invocation.get('content').get('base64_image')
         return tool_use_invocation, prev_screenshot_response, offset
 
     # if the invoced tool is not a screenshot, the offset must be >= 2, since we always have to start with a screenshot
     if offset < 2:
         print('Current tool invocation is not a screenshot, but offset is less than 2')
-        return None, None, offset + 2
+        return None, None, offset
 
     # make sure the current tool invocation is a tool_use invocation
     if not _is_tool_request_of_type(tool_invocation):
         print('Current tool invocation is not a tool_use invocation')
-        return None, None, offset + 2
+        return None, None, offset
 
     # get the type of the tool_use invocation
     tool_use_type = tool_invocation.get('content').get('input').get('action')
@@ -107,7 +107,7 @@ def get_next_tool_use(
     # check if the tool_use reponse from before has an image
     if not _is_tool_response(prev_tool_use_response, True):
         print('Tool use response from before does not have an image')
-        return None, None, offset + 2
+        return None, None, offset
 
     # we have in tool_invocation a tool request and in prev_tool_use_response a screenshot of the inital state, before the tool_use was invoked
     # we return the tool_invocation and the prev_tool_use_response
@@ -120,7 +120,7 @@ def get_next_tool_use(
             15  # we add 15s, to account for the AI inference time
         )
 
-    return tool_use_invocation, prev_screenshot_response, offset + 2
+    return tool_use_invocation, prev_screenshot_response, offset
 
 
 async def check_and_compare_state(
@@ -154,6 +154,8 @@ async def check_and_compare_state(
     if last_screenshot_b is None:
         print('Last screenshot b is not given')
         return None, tool_use_count
+
+    # TODO: handle the problem that when we are for multiple tool_uses on the same screen, but we might be some steps behind with the current run, so we might invoke a tool_use that is actually the (e.g.) the second next and not the first next tool_use
 
     # TODO: check if the two tool_uses are similar enough to continue
 
