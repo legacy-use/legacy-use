@@ -177,7 +177,9 @@ if __name__ == '__main__':
     print('\nResult:', result)
 
 
-def same_state_with_ground_truths_per_score(gt_a, gt_b, cand, margin=0.05):
+def same_state_with_ground_truths_per_score(
+    gt_a: Image.Image, gt_b: Image.Image, cand: Image.Image, margin=0.05
+):
     # scores between ground truths
     ab = same_window_state(gt_a, gt_b)
 
@@ -238,6 +240,11 @@ def same_state_with_ground_truths_per_score(gt_a, gt_b, cand, margin=0.05):
     return {'per_score': result, 'decision': decision}
 
 
+def base64_to_image(base64_image: str) -> Image.Image:
+    img_bytes = base64.b64decode(base64_image)
+    return Image.open(BytesIO(img_bytes))
+
+
 async def get_screenshot_from_job(container_ip):
     timeout = httpx.Timeout(60.0, connect=10.0)
     payload = {
@@ -252,5 +259,5 @@ async def get_screenshot_from_job(container_ip):
         else:
             result = response.json()
             base64_image = result.get('base64_image')
-            img_bytes = base64.b64decode(base64_image)
-            return Image.open(BytesIO(img_bytes))
+
+            return base64_to_image(base64_image)
