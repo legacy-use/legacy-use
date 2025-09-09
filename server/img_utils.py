@@ -121,8 +121,6 @@ def same_window_state(
     *,
     hash_size: int = 16,
     hist_bins: int = 64,
-    center_crop: float = 0.95,
-    threshold: float = 0.75,
 ):
     """
     Returns a dict with component scores, combined score, and boolean 'same_state'.
@@ -133,39 +131,25 @@ def same_window_state(
     imgA.show()
     imgB.show()
 
-    # Focus on the center to reduce cursor/OS chrome noise
-    A = _center_crop(imgA, center_crop)
-    B = _center_crop(imgB, center_crop)
-
     # Perceptual hash similarity
-    hA = _dhash(A, hash_size=hash_size)
-    hB = _dhash(B, hash_size=hash_size)
+    hA = _dhash(imgA, hash_size=hash_size)
+    hB = _dhash(imgB, hash_size=hash_size)
     dh_bits = hash_size * hash_size
     dh_dist = _hamming(hA, hB)
     dh_sim = 1.0 - (dh_dist / dh_bits)
 
     # Color histogram similarity
-    hist_sim = _hist_cosine_sim(A, B, bins=hist_bins)
+    hist_sim = _hist_cosine_sim(imgA, imgB, bins=hist_bins)
 
     # OCR text overlap (optional)
-    tA = _ocr_wordset(A)
-    tB = _ocr_wordset(B)
+    tA = _ocr_wordset(imgA)
+    tB = _ocr_wordset(imgB)
     text_sim = _jaccard(tA, tB)
-
-    # Combine with weights; renormalize if OCR missing
-    w_phash, w_hist, w_text = 0.5, 0.3, 0.2
-    if text_sim is None:
-        w_sum = w_phash + w_hist
-        combined = (w_phash * dh_sim + w_hist * hist_sim) / w_sum
-    else:
-        combined = w_phash * dh_sim + w_hist * hist_sim + w_text * text_sim
 
     return {
         'dhash_similarity': dh_sim,  # 1.0 = identical by pHash
         'histogram_similarity': hist_sim,  # 1.0 = identical color distribution
         'text_similarity': text_sim,  # None if OCR unavailable
-        'combined_score': combined,  # 0..1
-        'same_state': combined >= threshold,  # boolean decision
     }
 
 
