@@ -1,27 +1,15 @@
-# def is_matching_state(last_two_jobs, container_ip):
-#     if len(last_two_jobs) != 2:
-#         print('Last two jobs not found')
-#         return False
+import os
 
-#     if not container_ip:
-#         print('Container IP not found')
-#         return False
-
-#     images = []
-#     for old_job in last_two_jobs:
-#         if not old_job:
-#             print('Old job is None')
-#             continue
-#         print(f'Getting first tool use job log for job {old_job.get("id")}')
-#         first_tool_use_job_log = db_tenant.get_first_tool_use_job_log(old_job.get('id'))
-#         content = first_tool_use_job_log.get('content')
-#         if content and content.get('has_image') and content.get('base64_image'):
-#             print('First tool use job log has image')
+from server.img_utils import (
+    base64_to_image,
+    get_screenshot_from_job,
+    same_state_with_ground_truths_per_score,
+)
 
 
 def _is_computer_use_tool_request(tool_invocation):
     is_message = tool_invocation.get('log_type') == 'message'
-    is_computer_use = tool_invocation.get('content').get('name') == 'computer_use'
+    is_computer_use = tool_invocation.get('content').get('name') == 'computer'
     return is_message and is_computer_use
 
 
@@ -63,8 +51,14 @@ def get_next_tool_use(
         return None, None, offset
 
     # make sure the first element invoces a screenshot
-    if tool_invocations[0].get('content').get('type') != 'screenshot':
-        print('First element does not invoke a screenshot')
+    first_element_content = tool_invocations[0].get('content')
+    if (
+        first_element_content.get('name') != 'computer'
+        or first_element_content.get('input').get('action') != 'screenshot'
+    ):
+        print(
+            f'First element does not invoke a screenshot: {tool_invocations[0].get("content")}'
+        )
         return None, None, offset
 
     # make sure the offset is even, since, we are only allowed to have tool_request with a tool_response
@@ -80,15 +74,20 @@ def get_next_tool_use(
     # UI_NOT_AS_EXPECTED and EXTRACTION shouldn't be autonomously invoked
     # TODO: CUSTOM_ACTION should be able to be invoked autonomously
     if not _is_computer_use_tool_request(tool_invocation):
-        print('Current tool invocation is not a computer_use tool request')
+        print(
+            f'Current tool invocation is not a computer_use tool request: {tool_invocation.get("content").get("name")}'
+        )
         return None, None, offset + 2
 
     # if the tool_invocation is a screenshot, we return the screenshot and the next tool_use
     if _is_tool_request_of_type(tool_invocation, 'screenshot'):
+        print(
+            f'Current tool invocation is a screenshot: {tool_invocation.get("content")}'
+        )
         tool_use_invocation, prev_screenshot_response, offset = get_next_tool_use(
             tool_invocations, offset + 2
         )
-        return tool_use_invocation, prev_screenshot_response, offset + 2
+        return tool_use_invocation, prev_screenshot_response, offset
 
     # if the invoced tool is not a screenshot, the offset must be >= 2, since we always have to start with a screenshot
     if offset < 2:
@@ -122,3 +121,67 @@ def get_next_tool_use(
         )
 
     return tool_use_invocation, prev_screenshot_response, offset + 2
+
+
+async def check_and_compare_state(
+    tool_invocations_a, tool_invocations_b, tool_use_count, container_ip
+) -> tuple[dict | None, int]:
+    """
+    Return the next tool use and the tool use count, if the states are similar enough to continue.
+    """
+    next_tool_use_a, last_screenshot_a, offset_a = get_next_tool_use(
+        tool_invocations_a, tool_use_count
+    )
+    next_tool_use_b, last_screenshot_b, offset_b = get_next_tool_use(
+        tool_invocations_b, tool_use_count
+    )
+    print(f'Next tool use a: {next_tool_use_a}, next tool use b: {next_tool_use_b}')
+
+    if offset_a != offset_b:
+        print('Offsets are not equal')
+        return None, tool_use_count
+
+    tool_use_count = offset_a
+
+    if next_tool_use_a is None or next_tool_use_b is None:
+        print('Next tool uses are not equal')
+        return None, tool_use_count
+
+    if last_screenshot_a is None:
+        print('Last screenshot a is not given')
+        return None, tool_use_count
+
+    if last_screenshot_b is None:
+        print('Last screenshot b is not given')
+        return None, tool_use_count
+
+    # TODO: check if the two tool_uses are similar enough to continue
+
+    last_screenshot_a = base64_to_image(last_screenshot_a)
+    last_screenshot_b = base64_to_image(last_screenshot_b)
+    current_job_screenshot = await get_screenshot_from_job(container_ip)
+
+    if not current_job_screenshot:
+        print('Current job screenshot is not given')
+        return None, tool_use_count
+
+    # save the three screenshots in dir
+    temp_dir = f'./screenshots/{tool_use_count}'
+    print(f'Saving screenshots to dir: {temp_dir}')
+    # create dir if not exists
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+    last_screenshot_a.save(os.path.join(temp_dir, 'last_screenshot_a.png'))
+    last_screenshot_b.save(os.path.join(temp_dir, 'last_screenshot_b.png'))
+    current_job_screenshot.save(os.path.join(temp_dir, 'current_job_screenshot.png'))
+
+    result = same_state_with_ground_truths_per_score(
+        last_screenshot_a, last_screenshot_b, current_job_screenshot
+    )
+    print(f'Result with ground truths: {result}')
+    if result.get('decision'):
+        print('States are similar enough to continue')
+        return next_tool_use_a, tool_use_count
+    else:
+        print('States are not similar enough to continue')
+        return None, tool_use_count
