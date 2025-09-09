@@ -188,12 +188,12 @@ def same_state_with_ground_truths_per_score(
         print(
             f'Diff between dhash_similarity is greater than the margin: {abs(ab["dhash_similarity"])}'
         )
-        return {'per_score': ab, 'decision': False}
+        return {'per_score': None, 'decision': False}
     if abs(1 - ab['histogram_similarity']) > margin:
         print(
             f'Diff between histogram_similarity is greater than the margin: {abs(ab["histogram_similarity"])}'
         )
-        return {'per_score': ab, 'decision': False}
+        return {'per_score': None, 'decision': False}
 
     # not checking text_similarity because it is not that reliable
 
@@ -219,9 +219,8 @@ def same_state_with_ground_truths_per_score(
         candA = ac[key]
         candB = bc[key]
 
-        # required threshold = ref similarity - (margin * (1 - ref similarity))
-        # interpret margin as a percentage of the gap to a perfect match
-        required = min(ref_sim, max(0.0, ref_sim - (margin * (1.0 - ref_sim))))
+        # required threshold = ref similarity - margin: TODO: think of a good way to calculate the margin -> allow a little bit more difference with very small errors, and get much stricter with larger errors
+        required = max(0.0, ref_sim - margin)
         passed = (candA >= required) or (candB >= required)
 
         result[key] = {
