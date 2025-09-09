@@ -72,6 +72,7 @@ async def sampling_loop(
     session_id: str,
     tenant_schema: str,
     job_data: dict[str, Any],
+    allow_state_based_tool_use: bool = True,
     # Remove job_id from here as it's now a primary parameter
     # job_id: Optional[str] = None,
 ) -> tuple[Any, list[dict[str, Any]]]:  # Return format remains the same
@@ -209,6 +210,7 @@ async def sampling_loop(
             tool_invocations_a
             and tool_invocations_b
             and tool_use_count < len(tool_invocations_a)
+            and allow_state_based_tool_use
         ):
             next_tool_use, tool_use_count = await check_and_compare_state(
                 tool_invocations_a, tool_invocations_b, tool_use_count, container_ip
@@ -216,7 +218,6 @@ async def sampling_loop(
         else:
             logger.error(f'Job {job_id}: Tool invocations a or b are not given')
             next_tool_use = None
-            tool_use_count = tool_use_count
 
         if next_tool_use:
             logger.info(
@@ -224,7 +225,11 @@ async def sampling_loop(
             )
 
             # mock response_params, stop_reason
-            response_params = [next_tool_use]
+            text_context = {
+                'text': 'Automatically invoked tool call!',
+                'type': 'text',
+            }
+            response_params = [text_context, next_tool_use]
             stop_reason = 'tool_use'
 
             # mock request
@@ -417,6 +422,8 @@ async def sampling_loop(
                     session_id=session_id,
                     session=session_obj,
                 )
+                # if content_block.get('name') == 'computer' and content_block.get('input').get('action') != 'screenshot':
+                #     tool_use_count += 2
 
                 # --- Save Tool Result Message to DB --- START
                 try:
