@@ -26,6 +26,7 @@ from anthropic.types.beta import (
 from server.computer_use.config import APIProvider
 from server.computer_use.handlers.registry import get_handler
 from server.computer_use.logging import logger
+from server.computer_use.state_utils import check_and_compare_state
 from server.computer_use.tools import (
     TOOL_GROUPS_BY_VERSION,
     ToolCollection,
@@ -149,6 +150,38 @@ async def sampling_loop(
         logger.info(f'Added initial message seq {current_sequence} for job {job_id}')
         current_sequence += 1
 
+    # TODO move to a seperate function
+    # get the last two jobs: TODO: think if it makes sense to have the logic adjustable, by comparing to the last "n" ideal jobs. this could be useful to increase the accuracy of the matching state
+    last_two_jobs = db_tenant.get_two_ideal_jobs(job_data['api_definition_version_id'])
+    print(f'Job {job_id}: Last two jobs: {last_two_jobs}')
+
+    if len(last_two_jobs) == 2:
+        tool_invocations_a = db_tenant.get_all_tool_invocations_and_results_for_job(
+            last_two_jobs[0].get('id')
+        )
+        tool_invocations_b = db_tenant.get_all_tool_invocations_and_results_for_job(
+            last_two_jobs[1].get('id')
+        )
+        tool_invocations_a_trimmed = [
+            (t.get('log_type'), t.get('timestamp')) for t in tool_invocations_a
+        ]
+        tool_invocations_b_trimmed = [
+            (t.get('log_type'), t.get('timestamp')) for t in tool_invocations_b
+        ]
+        print(
+            f'Job {job_id}: Tool invocations a trimmed: {tool_invocations_a_trimmed}, tool invocations b trimmed: {tool_invocations_b_trimmed}'
+        )
+        print(
+            f'Job {job_id}: Tool invocations a: {len(tool_invocations_a)}, tool invocations b: {len(tool_invocations_b)}'
+        )
+    else:
+        tool_invocations_a = None
+        tool_invocations_b = None
+        logger.error(f'Job {job_id}: Last two jobs are not equal to 2')
+
+    container_ip = db_tenant.get_session(session_id)['container_ip']
+    tool_use_count = 0
+
     # TODO: Split up this very long loop into smaller functions
     while True:
         # --- Fetch current history from DB --- START
@@ -168,78 +201,111 @@ async def sampling_loop(
             raise ValueError(f'Failed to load message history for job {job_id}') from e
         # --- Fetch current history from DB --- END
 
-        # --- Initialize client ---
+        # Check if we have a matching state -> tool_call, otherwise, AI
 
-        client = await handler.initialize_client(api_key=api_key)
+        # get the screenshot before the tool_use
+        # TODO; think if we acutally need two runs
+        if (
+            tool_invocations_a
+            and tool_invocations_b
+            and tool_use_count < len(tool_invocations_a)
+        ):
+            next_tool_use, tool_use_count = await check_and_compare_state(
+                tool_invocations_a, tool_invocations_b, tool_use_count, container_ip
+            )
+        else:
+            logger.error(f'Job {job_id}: Tool invocations a or b are not given')
+            next_tool_use = None
+            tool_use_count = tool_use_count
 
-        # Check for cancellation before API call
-        try:
-            await asyncio.sleep(0)
-            # If we get here, the task hasn't been cancelled
-        except asyncio.CancelledError:
-            logger.info('Sampling loop cancelled before API call')
-            raise
-
-        try:
-            # Make API call via handler
-            (
-                response_params,
-                stop_reason,
-                request,
-                raw_response,
-            ) = await handler.execute(
-                client=client,
-                messages=current_messages_for_api,  # Pass raw Anthropic format
-                system=system_prompt,  # type: ignore[arg-type]  # Pass raw string
-                tools=tool_collection,  # type: ignore[arg-type]  # Pass raw ToolCollection
-                model=model,
-                max_tokens=max_tokens,
-                temperature=0.0,
+        if next_tool_use:
+            logger.info(
+                f'Job {job_id}: Matching state found, continuing with tool call: {next_tool_use}'
             )
 
-            if api_response_callback:
-                api_response_callback(request, raw_response, None)
+            # mock response_params, stop_reason
+            response_params = [next_tool_use]
+            stop_reason = 'tool_use'
 
-            # Add exchange to the list
-            exchanges.append(
-                {
-                    'request': request,
-                    'response': raw_response,
-                }
-            )
+            # mock request
+            request = None
 
-        except (APIStatusError, APIResponseValidationError) as e:
-            if e.response.status_code == 403 and 'API Credits Exceeded' in str(e):
-                logger.error(f'Job {job_id}: API Credits Exceeded')
-                return {
-                    'success': False,
-                    'error': 'API Credits Exceeded',
-                    'error_description': str(e),
-                }, exchanges
-            # For other API errors, handle as before
-            if api_response_callback:
-                api_response_callback(e.request, e.response, e)
-            logger.error(f'Job {job_id}: API call failed with error: {e.message}')
-            raise ValueError(e.message) from e
+            # TODO: include some text context for the user and the model
 
-        except APIError as e:
-            if api_response_callback:
-                api_response_callback(e.request, e.body, e)
-            # Return extractions if we have them, otherwise raise an error
-            raise ValueError(e.message) from e
+        else:
+            logger.info(f'Job {job_id}: No matching state found, continuing with model')
 
-        except asyncio.CancelledError:
-            logger.info('API call cancelled')
-            raise
+            # --- Initialize client ---
+            client = await handler.initialize_client(api_key=api_key)
 
-        # Check for cancellation after API call
-        try:
-            # Use asyncio.sleep(0) to allow cancellation to be processed
-            await asyncio.sleep(0)
-            # If we get here, the task hasn't been cancelled
-        except asyncio.CancelledError:
-            logger.info('Sampling loop cancelled after API call')
-            raise
+            # Check for cancellation before API call
+            try:
+                await asyncio.sleep(0)
+                # If we get here, the task hasn't been cancelled
+            except asyncio.CancelledError:
+                logger.info('Sampling loop cancelled before API call')
+                raise
+
+            try:
+                # Make API call via handler
+                (
+                    response_params,
+                    stop_reason,
+                    request,
+                    raw_response,
+                ) = await handler.execute(
+                    client=client,
+                    messages=current_messages_for_api,  # Pass raw Anthropic format
+                    system=system_prompt,  # type: ignore[arg-type]  # Pass raw string
+                    tools=tool_collection,  # type: ignore[arg-type]  # Pass raw ToolCollection
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=0.0,
+                )
+
+                if api_response_callback:
+                    api_response_callback(request, raw_response, None)
+
+                # Add exchange to the list
+                exchanges.append(
+                    {
+                        'request': request,
+                        'response': raw_response,
+                    }
+                )
+
+            except (APIStatusError, APIResponseValidationError) as e:
+                if e.response.status_code == 403 and 'API Credits Exceeded' in str(e):
+                    logger.error(f'Job {job_id}: API Credits Exceeded')
+                    return {
+                        'success': False,
+                        'error': 'API Credits Exceeded',
+                        'error_description': str(e),
+                    }, exchanges
+                # For other API errors, handle as before
+                if api_response_callback:
+                    api_response_callback(e.request, e.response, e)
+                logger.error(f'Job {job_id}: API call failed with error: {e.message}')
+                raise ValueError(e.message) from e
+
+            except APIError as e:
+                if api_response_callback:
+                    api_response_callback(e.request, e.body, e)
+                # Return extractions if we have them, otherwise raise an error
+                raise ValueError(e.message) from e
+
+            except asyncio.CancelledError:
+                logger.info('API call cancelled')
+                raise
+
+            # Check for cancellation after API call
+            try:
+                # Use asyncio.sleep(0) to allow cancellation to be processed
+                await asyncio.sleep(0)
+                # If we get here, the task hasn't been cancelled
+            except asyncio.CancelledError:
+                logger.info('Sampling loop cancelled after API call')
+                raise
 
         # --- Save Assistant Message to DB --- START
         try:
