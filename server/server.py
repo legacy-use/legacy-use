@@ -16,6 +16,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from server.computer_use import APIProvider
 from server.routes import (
     api_router,
+    health_router,
     job_router,
     specs_router,
     target_router,
@@ -299,6 +300,9 @@ app.include_router(specs_router, prefix=api_prefix)
 
 # Include tools router
 app.include_router(tools_router, prefix=api_prefix)
+
+# Include monitoring router
+app.include_router(health_router, prefix=api_prefix)
 
 
 # Root endpoint

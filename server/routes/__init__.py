@@ -3,6 +3,7 @@ Routes package for the API Gateway.
 """
 
 from .api import api_router
+from .health import health_router
 from .jobs import job_router
 from .sessions import session_router, websocket_router
 from .settings import settings_router
@@ -21,4 +22,5 @@ __all__ = [
     'settings_router',
     'specs_router',
     'tools_router',
+    'health_router',
 ]

@@ -33,6 +33,13 @@ class TenantAwareDatabaseService(DatabaseService):
                 def __getattr__(self, name):
                     return getattr(self._session, name)
 
+                def __enter__(self):
+                    return self._session
+
+                def __exit__(self, exc_type, exc, tb):
+                    # Session lifecycle is managed externally; don't close
+                    pass
+
                 def close(self):
                     # Don't actually close the session since it's managed by context
                     pass
