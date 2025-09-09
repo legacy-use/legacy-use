@@ -693,6 +693,82 @@ class DatabaseService:
         finally:
             session.close()
 
+    def get_two_ideal_jobs(self, api_definition_version_id):
+        """
+        Get the two most ideal jobs for a given API definition version ID.
+        Defined as the shortest pair of successful jobs that share the same
+        number of messages (length). Within that length, break ties by
+        earliest completion/creation time.
+        """
+        # Include target_id ?
+        session = self.Session()
+        try:
+            limit = 2
+            # Subquery to count number of relevant logs per job (length)
+            # Includes logs of type 'message' and 'tool_use'
+            message_counts_subq = (
+                session.query(
+                    JobLog.job_id.label('job_id'),
+                    func.count(JobLog.id).label('message_count'),
+                )
+                .filter(JobLog.log_type.in_(['message', 'tool_use']))
+                .group_by(JobLog.job_id)
+                .subquery()
+            )
+
+            # Base filtered set of successful jobs for the provided version
+            base_filtered = (
+                session.query(
+                    Job.id.label('job_id'),
+                    func.coalesce(message_counts_subq.c.message_count, 0).label(
+                        'message_count'
+                    ),
+                )
+                .outerjoin(message_counts_subq, Job.id == message_counts_subq.c.job_id)
+                .filter(
+                    Job.api_definition_version_id == api_definition_version_id,
+                    Job.status == JobStatus.SUCCESS.value,
+                    Job.error.is_(None),
+                )
+                .subquery()
+            )
+
+            # Find the minimal message_count that has at least two jobs (shortest pair)
+            shortest_pair_length = (
+                session.query(base_filtered.c.message_count)
+                .group_by(base_filtered.c.message_count)
+                .having(func.count(base_filtered.c.job_id) >= 2)
+                .order_by(base_filtered.c.message_count.asc())
+                .limit(1)
+                .scalar()
+            )
+
+            if shortest_pair_length is None:
+                # Fallback: no pair with the same length exists; return empty list
+                return []
+
+            # Select successful jobs at the shortest length
+            jobs = (
+                session.query(Job)
+                .outerjoin(message_counts_subq, Job.id == message_counts_subq.c.job_id)
+                .filter(
+                    Job.api_definition_version_id == api_definition_version_id,
+                    Job.status == JobStatus.SUCCESS.value,
+                    Job.error.is_(None),
+                    func.coalesce(message_counts_subq.c.message_count, 0)
+                    == shortest_pair_length,
+                )
+                .order_by(
+                    Job.completed_at.asc(),
+                    Job.created_at.asc(),
+                )
+                .limit(limit)
+                .all()
+            )
+            return [self._to_dict(job) for job in jobs]
+        finally:
+            session.close()
+
     def get_first_tool_use_job_log(self, job_id):
         session = self.Session()
         try:
