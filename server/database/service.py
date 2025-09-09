@@ -611,117 +611,84 @@ class DatabaseService:
 
     def get_two_ideal_jobs(self, api_definition_version_id):
         """
-        Get the two most ideal jobs for a given API definition version ID.
-        Defined as the shortest pair of successful jobs that share the same
-        number of messages (length). Within that length, break ties by
-        earliest completion/creation time.
+        Two successful jobs with:
+        - same, minimal message_count among pairs
+        - first tool_use action == 'screenshot'
+        Tie-break: completed_at, then created_at.
         """
+        from sqlalchemy import and_, func, select
+        from sqlalchemy.orm import aliased
 
-        # TODO: this has be be improved, its way to heavy (and blocking?)
-        # Include target_id ?
-        session = self.Session()
-        try:
-            limit = 2
-            # Subquery to count number of messages per job (job length)
-            message_counts_subq = (
-                session.query(
-                    JobMessage.job_id.label('job_id'),
-                    func.count(JobMessage.id).label('message_count'),
-                )
-                .group_by(JobMessage.job_id)
-                .subquery()
+        j = aliased(Job)
+        jm = aliased(JobMessage)
+        jl = aliased(JobLog)
+
+        # First tool_use per job via window function
+        first_tool = (
+            select(
+                jl.job_id.label('job_id'),
+                (jl.content.op('->')('input').op('->>')('action')).label(
+                    'first_action'
+                ),
+                func.row_number()
+                .over(partition_by=jl.job_id, order_by=jl.timestamp.asc())
+                .label('rn'),
             )
-
-            # Subquery to get the earliest tool_use message timestamp per job
-            earliest_tool_ts_subq = (
-                session.query(
-                    JobLog.job_id.label('job_id'),
-                    func.min(JobLog.timestamp).label('first_tool_ts'),
-                )
-                .filter(
-                    JobLog.log_type == 'message',
-                    JobLog.content.op('->>')('type') == 'tool_use',
-                )
-                .group_by(JobLog.job_id)
-                .subquery()
+            .where(
+                jl.log_type == 'message',
+                jl.content.op('->>')('type') == 'tool_use',
             )
+            .cte('first_tool')
+        )
 
-            # Subquery to fetch the first tool_use message row per job
-            first_tool_log_subq = (
-                session.query(
-                    JobLog.job_id.label('job_id'),
-                    JobLog.content.label('content'),
-                )
-                .join(
-                    earliest_tool_ts_subq,
-                    and_(
-                        JobLog.job_id == earliest_tool_ts_subq.c.job_id,
-                        JobLog.timestamp == earliest_tool_ts_subq.c.first_tool_ts,
-                    ),
-                )
-                .subquery()
+        # Message counts per job
+        msg_counts = (
+            select(jm.job_id.label('job_id'), func.count(jm.id).label('message_count'))
+            .group_by(jm.job_id)
+            .cte('msg_counts')
+        )
+
+        # Base filtered set
+        base = (
+            select(
+                j.id.label('job_id'),
+                func.coalesce(msg_counts.c.message_count, 0).label('message_count'),
+                j.completed_at,
+                j.created_at,
             )
-
-            # Base filtered set of successful jobs for the provided version
-            base_filtered = (
-                session.query(
-                    Job.id.label('job_id'),
-                    func.coalesce(message_counts_subq.c.message_count, 0).label(
-                        'message_count'
-                    ),
-                )
-                .outerjoin(message_counts_subq, Job.id == message_counts_subq.c.job_id)
-                .join(first_tool_log_subq, Job.id == first_tool_log_subq.c.job_id)
-                .filter(
-                    Job.api_definition_version_id == api_definition_version_id,
-                    Job.status == JobStatus.SUCCESS.value,
-                    Job.error.is_(None),
-                    # First tool_use message must request a screenshot
-                    first_tool_log_subq.c.content.op('->')('input').op('->>')('action')
-                    == 'screenshot',
-                )
-                .subquery()
+            .join(first_tool, and_(first_tool.c.job_id == j.id, first_tool.c.rn == 1))
+            .outerjoin(msg_counts, msg_counts.c.job_id == j.id)
+            .where(
+                j.api_definition_version_id == api_definition_version_id,
+                j.status == JobStatus.SUCCESS.value,
+                j.error.is_(None),
+                first_tool.c.first_action == 'screenshot',
             )
+            .cte('base')
+        )
 
-            # Find the minimal message_count that has at least two jobs (shortest pair)
-            shortest_pair_length = (
-                session.query(base_filtered.c.message_count)
-                .group_by(base_filtered.c.message_count)
-                .having(func.count(base_filtered.c.job_id) >= 2)
-                .order_by(base_filtered.c.message_count.asc())
-                .limit(1)
-                .scalar()
-            )
+        # Minimal length that has at least two jobs
+        shortest = (
+            select(base.c.message_count)
+            .group_by(base.c.message_count)
+            .having(func.count(base.c.job_id) >= 2)
+            .order_by(base.c.message_count.asc())
+            .limit(1)
+            .cte('shortest')
+        )
 
-            if shortest_pair_length is None:
-                # Fallback: no pair with the same length exists; return empty list
-                return []
+        # Final selection
+        final_q = (
+            select(j)
+            .join(base, base.c.job_id == j.id)
+            .join(shortest, shortest.c.message_count == base.c.message_count)
+            .order_by(j.completed_at.asc(), j.created_at.asc())
+            .limit(2)
+        )
 
-            # Select successful jobs at the shortest length
-            jobs = (
-                session.query(Job)
-                .outerjoin(message_counts_subq, Job.id == message_counts_subq.c.job_id)
-                .join(first_tool_log_subq, Job.id == first_tool_log_subq.c.job_id)
-                .filter(
-                    Job.api_definition_version_id == api_definition_version_id,
-                    Job.status == JobStatus.SUCCESS.value,
-                    Job.error.is_(None),
-                    func.coalesce(message_counts_subq.c.message_count, 0)
-                    == shortest_pair_length,
-                    # Enforce the first tool_use screenshot condition again for safety
-                    first_tool_log_subq.c.content.op('->')('input').op('->>')('action')
-                    == 'screenshot',
-                )
-                .order_by(
-                    Job.completed_at.asc(),
-                    Job.created_at.asc(),
-                )
-                .limit(limit)
-                .all()
-            )
+        with self.Session() as session:
+            jobs = session.execute(final_q).scalars().all()
             return [self._to_dict(job) for job in jobs]
-        finally:
-            session.close()
 
     def get_first_tool_use_job_log(self, job_id):
         session = self.Session()
