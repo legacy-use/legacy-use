@@ -700,19 +700,49 @@ class DatabaseService:
         number of messages (length). Within that length, break ties by
         earliest completion/creation time.
         """
+
+        # TODO: this has be be improved, its way to heavy (and blocking?)
         # Include target_id ?
         session = self.Session()
         try:
             limit = 2
-            # Subquery to count number of relevant logs per job (length)
-            # Includes logs of type 'message' and 'tool_use'
+            # Subquery to count number of messages per job (job length)
             message_counts_subq = (
                 session.query(
-                    JobLog.job_id.label('job_id'),
-                    func.count(JobLog.id).label('message_count'),
+                    JobMessage.job_id.label('job_id'),
+                    func.count(JobMessage.id).label('message_count'),
                 )
-                .filter(JobLog.log_type.in_(['message', 'tool_use']))
+                .group_by(JobMessage.job_id)
+                .subquery()
+            )
+
+            # Subquery to get the earliest tool_use message timestamp per job
+            earliest_tool_ts_subq = (
+                session.query(
+                    JobLog.job_id.label('job_id'),
+                    func.min(JobLog.timestamp).label('first_tool_ts'),
+                )
+                .filter(
+                    JobLog.log_type == 'message',
+                    JobLog.content.op('->>')('type') == 'tool_use',
+                )
                 .group_by(JobLog.job_id)
+                .subquery()
+            )
+
+            # Subquery to fetch the first tool_use message row per job
+            first_tool_log_subq = (
+                session.query(
+                    JobLog.job_id.label('job_id'),
+                    JobLog.content.label('content'),
+                )
+                .join(
+                    earliest_tool_ts_subq,
+                    and_(
+                        JobLog.job_id == earliest_tool_ts_subq.c.job_id,
+                        JobLog.timestamp == earliest_tool_ts_subq.c.first_tool_ts,
+                    ),
+                )
                 .subquery()
             )
 
@@ -725,10 +755,14 @@ class DatabaseService:
                     ),
                 )
                 .outerjoin(message_counts_subq, Job.id == message_counts_subq.c.job_id)
+                .join(first_tool_log_subq, Job.id == first_tool_log_subq.c.job_id)
                 .filter(
                     Job.api_definition_version_id == api_definition_version_id,
                     Job.status == JobStatus.SUCCESS.value,
                     Job.error.is_(None),
+                    # First tool_use message must request a screenshot
+                    first_tool_log_subq.c.content.op('->')('input').op('->>')('action')
+                    == 'screenshot',
                 )
                 .subquery()
             )
@@ -751,12 +785,16 @@ class DatabaseService:
             jobs = (
                 session.query(Job)
                 .outerjoin(message_counts_subq, Job.id == message_counts_subq.c.job_id)
+                .join(first_tool_log_subq, Job.id == first_tool_log_subq.c.job_id)
                 .filter(
                     Job.api_definition_version_id == api_definition_version_id,
                     Job.status == JobStatus.SUCCESS.value,
                     Job.error.is_(None),
                     func.coalesce(message_counts_subq.c.message_count, 0)
                     == shortest_pair_length,
+                    # Enforce the first tool_use screenshot condition again for safety
+                    first_tool_log_subq.c.content.op('->')('input').op('->>')('action')
+                    == 'screenshot',
                 )
                 .order_by(
                     Job.completed_at.asc(),
