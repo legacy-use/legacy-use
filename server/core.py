@@ -8,7 +8,6 @@ from datetime import datetime
 from io import BytesIO
 from typing import Any, Callable, Optional
 
-import httpx
 from anthropic.types.beta import BetaMessageParam
 from PIL import Image
 
@@ -19,7 +18,11 @@ from server.computer_use import (
     sampling_loop,
 )
 from server.computer_use.tools import ToolResult
-from server.img_utils import same_state_with_ground_truths_per_score, same_window_state
+from server.img_utils import (
+    get_screenshot_from_job,
+    same_state_with_ground_truths_per_score,
+    same_window_state,
+)
 from server.models.base import (
     APIDefinitionRuntime,
     APIResponse,
@@ -170,6 +173,7 @@ class APIGatewayCore:
         print(f'Job {job_id}: Getting last two jobs')
         print(f'Job {job_id}: Job data: {job_data}')
         current_version_id = job_data.get('api_definition_version_id')
+        # TODO: how to select the two most "similar" jobs? Maybe by taking the shortest ones?
         last_two_jobs = self.db_tenant.get_last_two_success_jobs(current_version_id)
         print(f'Job {job_id}: Last two jobs: {last_two_jobs}')
 
@@ -196,6 +200,8 @@ class APIGatewayCore:
             else:
                 print(f'Job {job_id}: First tool use job log does not have image')
 
+        session_details = self.db_tenant.get_session(session_id)
+        container_ip = session_details['container_ip']
         matching_state = False
         if len(images) == 2:
             print(f'Job {job_id}: Two images found, comparing with current job')
@@ -205,24 +211,7 @@ class APIGatewayCore:
 
             current_job_screenshot = None
 
-            session_details = self.db_tenant.get_session(session_id)
-            container_ip = session_details['container_ip']
-
-            timeout = httpx.Timeout(60.0, connect=10.0)
-            payload = {
-                'api_type': 'computer_20250124',
-            }
-
-            api_url = f'http://{container_ip}:8088/tool_use/screenshot'
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(api_url, json=payload)
-                if not response.is_success:
-                    print(f'Job {job_id}: Failed to take screenshot: {response.text}')
-                else:
-                    result = response.json()
-                    base64_image = result.get('base64_image')
-                    img_bytes = base64.b64decode(base64_image)
-                    current_job_screenshot = Image.open(BytesIO(img_bytes))
+            current_job_screenshot = await get_screenshot_from_job(container_ip)
 
             if current_job_screenshot:
                 result = same_state_with_ground_truths_per_score(
@@ -234,12 +223,62 @@ class APIGatewayCore:
                 print(f'Job {job_id}: Current job screenshot not found')
 
         if matching_state:
-            pass
             # TODO: Get the tool calls of the last two jobs,
             # make sure that they are similar enough to each other and
             # if so, execute them, while checking after each tool call if the state is still matching
             # if not escelate to the model
             # also escelate to the model if the tool call is extraction
+            tool_invocations_a = (
+                self.db_tenant.get_all_tool_invocations_and_results_for_job(
+                    last_two_jobs[0].get('id')
+                )
+            )
+            tool_invocations_b = (
+                self.db_tenant.get_all_tool_invocations_and_results_for_job(
+                    last_two_jobs[1].get('id')
+                )
+            )
+            last_iterration_was_a_tool_call = False
+            for tool_a, tool_b in zip(tool_invocations_a, tool_invocations_b):
+                print('#########################')
+                print('NEW ITERATION')
+                print('#########################')
+                is_a_tool_call = tool_a.get('content').get('type') == 'tool_use'
+                is_b_tool_call = tool_b.get('content').get('type') == 'tool_use'
+                if is_a_tool_call != is_b_tool_call:
+                    print(f'Job {job_id}: Tool calls are not similar')
+                    matching_state = False
+                    break
+
+                if is_a_tool_call:
+                    # TODO: check if the two tool calls are similar enough to each other
+                    # TODO: execute the tool call
+                    pass
+                else:
+                    # check images
+                    new_image_a = tool_a.get('content').get('base64_image')
+                    new_image_b = tool_b.get('content').get('base64_image')
+                    # get new images from current job
+                    current_job_screenshot = await get_screenshot_from_job(container_ip)
+                    result = same_state_with_ground_truths_per_score(
+                        new_image_a, new_image_b, current_job_screenshot
+                    )
+                    print(f'Job {job_id}: Result with ground truths: {result}')
+                    matching_state = result.get('decision')
+                    if not matching_state:
+                        break
+
+                if is_a_tool_call:
+                    print(f'Job {job_id}: Next iteration will be a tool call')
+                    last_iterration_was_a_tool_call = True
+                else:
+                    print(f'Job {job_id}: Next iteration will be a text response')
+                    last_iterration_was_a_tool_call = False
+            if last_iterration_was_a_tool_call:
+                print(f'Job {job_id}: Last iteration was a tool call')
+            else:
+                print(f'Job {job_id}: Last iteration was a text response')
+
         try:
             # Execute the API call - sampling_loop will handle saving the messages if it receives any
             result, exchanges = await sampling_loop(

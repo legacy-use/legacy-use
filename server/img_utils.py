@@ -1,6 +1,9 @@
+import base64
 import re
+from io import BytesIO
 from typing import Any
 
+import httpx
 import numpy as np
 from PIL import Image, ImageOps
 
@@ -179,21 +182,18 @@ def same_state_with_ground_truths_per_score(gt_a, gt_b, cand, margin=0.05):
     ab = same_window_state(gt_a, gt_b)
 
     # return false if the diff between the two ground truths is greater than the margin
-    if abs(ab['dhash_similarity']) > margin:
+    if abs(1 - ab['dhash_similarity']) > margin:
         print(
             f'Diff between dhash_similarity is greater than the margin: {abs(ab["dhash_similarity"])}'
         )
         return {'per_score': ab, 'decision': False}
-    if abs(ab['histogram_similarity']) > margin:
+    if abs(1 - ab['histogram_similarity']) > margin:
         print(
             f'Diff between histogram_similarity is greater than the margin: {abs(ab["histogram_similarity"])}'
         )
         return {'per_score': ab, 'decision': False}
-    if abs(ab['text_similarity']) > margin:
-        print(
-            f'Diff between text_similarity is greater than the margin: {abs(ab["text_similarity"])}'
-        )
-        return {'per_score': ab, 'decision': False}
+
+    # not checking text_similarity because it is not that reliable
 
     # scores between candidate and each reference
     ac = same_window_state(gt_a, cand)
@@ -219,7 +219,7 @@ def same_state_with_ground_truths_per_score(gt_a, gt_b, cand, margin=0.05):
 
         # required threshold = ref similarity - (margin * (1 - ref similarity))
         # interpret margin as a percentage of the gap to a perfect match
-        required = max(0.0, ref_sim - (margin * (1.0 - ref_sim)))
+        required = min(ref_sim, max(0.0, ref_sim - (margin * (1.0 - ref_sim))))
         passed = (candA >= required) or (candB >= required)
 
         result[key] = {
@@ -236,3 +236,21 @@ def same_state_with_ground_truths_per_score(gt_a, gt_b, cand, margin=0.05):
             break
 
     return {'per_score': result, 'decision': decision}
+
+
+async def get_screenshot_from_job(container_ip):
+    timeout = httpx.Timeout(60.0, connect=10.0)
+    payload = {
+        'api_type': 'computer_20250124',
+    }
+
+    api_url = f'http://{container_ip}:8088/tool_use/screenshot'
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(api_url, json=payload)
+        if not response.is_success:
+            print(f'Failed to take screenshot: {response.text}')
+        else:
+            result = response.json()
+            base64_image = result.get('base64_image')
+            img_bytes = base64.b64decode(base64_image)
+            return Image.open(BytesIO(img_bytes))

@@ -5,7 +5,7 @@ from typing import Any, Dict, List, MutableMapping, Optional
 from uuid import UUID
 
 import sqlalchemy as sa
-from sqlalchemy import Integer, cast, func, or_
+from sqlalchemy import Integer, and_, cast, func, or_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import text
 
@@ -716,6 +716,31 @@ class DatabaseService:
                     JobLog.job_id == job_id,
                     JobLog.log_type == 'message',
                     JobLog.content.op('->>')('type') == 'tool_use',
+                )
+                .order_by(JobLog.timestamp.asc())
+                .all()
+            )
+            return [self._to_dict(log) for log in job_logs]
+        finally:
+            session.close()
+
+    def get_all_tool_invocations_and_results_for_job(self, job_id):
+        # log_type="message" and content->>'type'='tool_use'
+        # +
+        # log_type="tool_use"
+        session = self.Session()
+        try:
+            job_logs = (
+                session.query(JobLog)
+                .filter(
+                    JobLog.job_id == job_id,
+                    or_(
+                        and_(
+                            JobLog.log_type == 'message',
+                            JobLog.content.op('->>')('type') == 'tool_use',
+                        ),
+                        JobLog.log_type == 'tool_use',
+                    ),
                 )
                 .order_by(JobLog.timestamp.asc())
                 .all()
