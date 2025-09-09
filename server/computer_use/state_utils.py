@@ -45,6 +45,8 @@ def get_next_tool_use(
     # when the last message, calls screenshot, we can safely return the following tool_use response (screenshot) and the following message (the comming tool_use)
     # when the last message was something different, we need to return the screenshot before that tool_use
 
+    # TODO: remove offset, since it's not returned with any change anymore
+
     # make sure the first element is a message
     if tool_invocations[0].get('log_type') != 'message':
         print('First element is not a message')
@@ -86,8 +88,12 @@ def get_next_tool_use(
             f'Current tool invocation is a screenshot: {tool_invocation.get("content")}'
         )
         tool_use_invocation = tool_invocation.get('content')
-        prev_screenshot_response = tool_invocation.get('content').get('base64_image')
-        return tool_use_invocation, prev_screenshot_response, offset
+        next_response = tool_invocations[offset + 1]
+        if not _is_tool_response(next_response, True):
+            print('Next tool response is not a tool response')
+            return None, None, offset
+        next_response_image = next_response.get('content').get('base64_image')
+        return tool_use_invocation, next_response_image, offset
 
     # if the invoced tool is not a screenshot, the offset must be >= 2, since we always have to start with a screenshot
     if offset < 2:

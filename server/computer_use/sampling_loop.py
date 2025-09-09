@@ -235,7 +235,7 @@ async def sampling_loop(
             # mock request
             request = None
 
-            # TODO: include some text context for the user and the model
+            # TODO: should we mark the job as state_based_tool_use, so we don't use it for future references? Would it be a problem?
 
         else:
             logger.info(f'Job {job_id}: No matching state found, continuing with model')
@@ -422,8 +422,8 @@ async def sampling_loop(
                     session_id=session_id,
                     session=session_obj,
                 )
-                # if content_block.get('name') == 'computer' and content_block.get('input').get('action') != 'screenshot':
-                #     tool_use_count += 2
+
+                tool_use_count += 2  # 2, because we have request and response # TODO: just multiple by two when forwarding
 
                 # --- Save Tool Result Message to DB --- START
                 try:
