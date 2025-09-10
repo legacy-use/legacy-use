@@ -212,7 +212,7 @@ async def sampling_loop(
             and tool_use_count < len(tool_invocations_a)
             and allow_state_based_tool_use
         ):
-            next_tool_use, tool_use_count = await check_and_compare_state(
+            next_tool_use = await check_and_compare_state(
                 tool_invocations_a, tool_invocations_b, tool_use_count, container_ip
             )
         else:

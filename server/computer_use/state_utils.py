@@ -38,9 +38,7 @@ def _is_tool_response(tool_invocation, with_image):
     return is_tool_use_response and has_no_error and includes_image
 
 
-def get_next_tool_use(
-    tool_invocations, offset=0
-) -> tuple[dict | None, str | None, int]:
+def get_next_tool_use(tool_invocations, offset=0) -> tuple[dict | None, str | None]:
     """
     Get the next tool_use from the tool_invocations.
     Returns the tool_use, the screenshot before the tool_use, and the offset to the next tool_use.
@@ -48,12 +46,10 @@ def get_next_tool_use(
     # when the last message, calls screenshot, we can safely return the following tool_use response (screenshot) and the following message (the comming tool_use)
     # when the last message was something different, we need to return the screenshot before that tool_use
 
-    # TODO: remove offset, since it's not returned with any change anymore
-
     # make sure the first element is a message
     if tool_invocations[0].get('log_type') != 'message':
         print('First element is not a message')
-        return None, None, offset
+        return None, None
 
     # make sure the first element invoces a screenshot
     first_element_content = tool_invocations[0].get('content')
@@ -64,12 +60,12 @@ def get_next_tool_use(
         print(
             f'First element does not invoke a screenshot: {tool_invocations[0].get("content")}'
         )
-        return None, None, offset
+        return None, None
 
     # make sure the offset is even, since, we are only allowed to have tool_request with a tool_response
     if offset % 2 != 0:
         print('Offset is not even')
-        return None, None, offset
+        return None, None
 
     # get the next tool_invocations, while dropping the first offset elements
     tool_invocation = tool_invocations[offset]
@@ -83,7 +79,7 @@ def get_next_tool_use(
         print(
             f'Current tool invocation is not a computer_use tool request: {tool_invocation.get("content").get("name")}'
         )
-        return None, None, offset
+        return None, None
 
     # if the tool_invocation is a screenshot, we return direct
     if _is_tool_request_of_type(tool_invocation, 'screenshot'):
@@ -94,19 +90,19 @@ def get_next_tool_use(
         next_response = tool_invocations[offset + 1]
         if not _is_tool_response(next_response, True):
             print('Next tool response is not a tool response')
-            return None, None, offset
+            return None, None
         next_response_image = next_response.get('content').get('base64_image')
-        return tool_use_invocation, next_response_image, offset
+        return tool_use_invocation, next_response_image
 
     # if the invoced tool is not a screenshot, the offset must be >= 2, since we always have to start with a screenshot
     if offset < 2:
         print('Current tool invocation is not a screenshot, but offset is less than 2')
-        return None, None, offset
+        return None, None
 
     # make sure the current tool invocation is a tool_use invocation
     if not _is_tool_request_of_type(tool_invocation):
         print('Current tool invocation is not a tool_use invocation')
-        return None, None, offset
+        return None, None
 
     # get the type of the tool_use invocation
     tool_use_type = tool_invocation.get('content').get('input').get('action')
@@ -116,7 +112,7 @@ def get_next_tool_use(
     # check if the tool_use reponse from before has an image
     if not _is_tool_response(prev_tool_use_response, True):
         print('Tool use response from before does not have an image')
-        return None, None, offset
+        return None, None
 
     # we have in tool_invocation a tool request and in prev_tool_use_response a screenshot of the inital state, before the tool_use was invoked
     # we return the tool_invocation and the prev_tool_use_response
@@ -129,40 +125,34 @@ def get_next_tool_use(
             15  # we add 15s, to account for the AI inference time
         )
 
-    return tool_use_invocation, prev_screenshot_response, offset
+    return tool_use_invocation, prev_screenshot_response
 
 
 async def check_and_compare_state(
     tool_invocations_a, tool_invocations_b, tool_use_count, container_ip
-) -> tuple[dict | None, int]:
+) -> dict | None:
     """
     Return the next tool use and the tool use count, if the states are similar enough to continue.
     """
-    next_tool_use_a, last_screenshot_a, offset_a = get_next_tool_use(
+    next_tool_use_a, last_screenshot_a = get_next_tool_use(
         tool_invocations_a, tool_use_count
     )
-    next_tool_use_b, last_screenshot_b, offset_b = get_next_tool_use(
+    next_tool_use_b, last_screenshot_b = get_next_tool_use(
         tool_invocations_b, tool_use_count
     )
     print(f'Next tool use a: {next_tool_use_a}, next tool use b: {next_tool_use_b}')
 
-    if offset_a != offset_b:
-        print('Offsets are not equal')
-        return None, tool_use_count
-
-    tool_use_count = offset_a
-
     if next_tool_use_a is None or next_tool_use_b is None:
         print('Next tool uses are not equal')
-        return None, tool_use_count
+        return None
 
     if last_screenshot_a is None:
         print('Last screenshot a is not given')
-        return None, tool_use_count
+        return None
 
     if last_screenshot_b is None:
         print('Last screenshot b is not given')
-        return None, tool_use_count
+        return None
 
     # TODO: handle the problem that when we are for multiple tool_uses on the same screen, but we might be some steps behind with the current run, so we might invoke a tool_use that is actually the (e.g.) the second next and not the first next tool_use
 
@@ -174,7 +164,7 @@ async def check_and_compare_state(
 
     if not current_job_screenshot:
         print('Current job screenshot is not given')
-        return None, tool_use_count
+        return None
 
     # save the three screenshots in dir
     temp_dir = f'./screenshots/{tool_use_count}'
@@ -192,7 +182,7 @@ async def check_and_compare_state(
     print(f'Result with ground truths: {result}')
     if result.get('decision'):
         print('States are similar enough to continue')
-        return next_tool_use_a, tool_use_count
+        return next_tool_use_a
     else:
         print('States are not similar enough to continue')
-        return None, tool_use_count
+        return None
