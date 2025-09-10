@@ -9,7 +9,10 @@ from server.img_utils import (
 
 def _is_computer_use_tool_request(tool_invocation):
     is_message = tool_invocation.get('log_type') == 'message'
-    is_computer_use = tool_invocation.get('content').get('name') == 'computer'
+    is_computer_use = tool_invocation.get('content').get('name') in (
+        'computer',
+        'custom_action',
+    )
     return is_message and is_computer_use
 
 
