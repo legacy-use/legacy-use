@@ -7,13 +7,16 @@ from server.img_utils import (
 )
 
 
-def _is_computer_use_tool_request(tool_invocation):
+def _is_allowed_tool_request(tool_invocation):
     is_message = tool_invocation.get('log_type') == 'message'
     is_computer_use = tool_invocation.get('content').get('name') in (
         'computer',
         'custom_action',
     )
-    return is_message and is_computer_use
+    is_not_type_action = tool_invocation.get('content').get('input').get(
+        'action'
+    ) not in ('type')
+    return is_message and is_computer_use and is_not_type_action
 
 
 def _is_tool_request_of_type(tool_invocation, type=None):
@@ -75,7 +78,7 @@ def get_next_tool_use(tool_invocations, offset=0) -> tuple[dict | None, str | No
     # UI_NOT_AS_EXPECTED and EXTRACTION shouldn't be autonomously invoked
     # TODO: CUSTOM_ACTION should be able to be invoked autonomously
     # TODO: How to handle parameters in the tool_use invocation?
-    if not _is_computer_use_tool_request(tool_invocation):
+    if not _is_allowed_tool_request(tool_invocation):
         print(
             f'Current tool invocation is not a computer_use tool request: {tool_invocation.get("content").get("name")}'
         )
