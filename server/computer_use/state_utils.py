@@ -9,14 +9,17 @@ from server.img_utils import (
 
 def _is_allowed_tool_request(tool_invocation):
     is_message = tool_invocation.get('log_type') == 'message'
-    is_computer_use = tool_invocation.get('content').get('name') in (
+    is_allowed_tool = tool_invocation.get('content').get('name') in (
         'computer',
         'custom_action',
     )
-    is_not_type_action = tool_invocation.get('content').get('input').get(
-        'action'
-    ) not in ('type')
-    return is_message and is_computer_use and is_not_type_action
+    is_not_type_action = True
+    # if has action, check if it's not of 'type' action
+    if tool_invocation.get('content').get('input').get('action'):
+        is_not_type_action = tool_invocation.get('content').get('input').get(
+            'action'
+        ) not in ('type')
+    return is_message and is_allowed_tool and is_not_type_action
 
 
 def _is_tool_request_of_type(tool_invocation, type=None):
