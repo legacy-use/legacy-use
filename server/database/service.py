@@ -619,6 +619,8 @@ class DatabaseService:
         from sqlalchemy import and_, func, select
         from sqlalchemy.orm import aliased
 
+        # TODO: make sure it's the same api_definition_version_id and target_id
+
         j = aliased(Job)
         jm = aliased(JobMessage)
         jl = aliased(JobLog)
