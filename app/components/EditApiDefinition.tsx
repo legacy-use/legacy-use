@@ -81,6 +81,132 @@ const EditApiDefinition = () => {
     'success' | 'error' | 'warning' | 'info'
   >('success');
 
+  // Local input state for response schema shorthand/JSON
+  const [responseSchemaText, setResponseSchemaText] = useState<string>('');
+  const [responseSchemaError, setResponseSchemaError] = useState<string>('');
+
+  // Convert simple shorthand types like "string" or "string[]" to an example JSON value
+  const parseShorthandToExample = (input: string): { parsed?: any; error?: string } => {
+    const trimmed = (input || '').trim();
+    if (!trimmed) return { parsed: {} };
+
+    const getLineCol = (text: string, index: number) => {
+      const upTo = text.slice(0, Math.max(0, index));
+      const lines = upTo.split('\n');
+      const line = lines.length;
+      const col = lines[lines.length - 1].length + 1;
+      return { line, col };
+    };
+
+    const checkBalanced = (text: string, openCh: string, closeCh: string) => {
+      let depth = 0;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === openCh) depth++;
+        if (ch === closeCh) {
+          depth--;
+          if (depth < 0) {
+            const { line, col } = getLineCol(text, i);
+            return `Unmatched '${closeCh}' at line ${line}, col ${col}`;
+          }
+        }
+      }
+      if (depth !== 0) {
+        return `Unbalanced '${openCh}${closeCh}' pairs`;
+      }
+      return undefined;
+    };
+
+    const trailingCommaMatch = trimmed.match(/,(\s*[}\]])/);
+    if (trailingCommaMatch && trailingCommaMatch.index != null) {
+      const { line, col } = getLineCol(trimmed, trailingCommaMatch.index);
+      return { error: `Trailing comma before ${trailingCommaMatch[1].trim()} at line ${line}, col ${col}` };
+    }
+
+    const braceErr = checkBalanced(trimmed, '{', '}');
+    if (braceErr) return { error: braceErr };
+    const bracketErr = checkBalanced(trimmed, '[', ']');
+    if (bracketErr) return { error: bracketErr };
+    const angleErr = checkBalanced(trimmed, '<', '>');
+    if (angleErr) return { error: angleErr };
+
+    // First, try strict JSON
+    try {
+      return { parsed: JSON.parse(trimmed) };
+    } catch (jsonErr: any) {
+      // Provide common JSON guidance
+      if (/'/.test(trimmed)) {
+        return { error: 'Use double quotes for JSON strings and keys' };
+      }
+      const unquotedKey = trimmed.match(/(^|[,{])\s*([A-Za-z_][\w-]*)\s*:/m);
+      if (unquotedKey && unquotedKey.index != null) {
+        const keyStart = unquotedKey.index + (unquotedKey[1] ? unquotedKey[1].length : 0);
+        const { line, col } = getLineCol(trimmed, keyStart);
+        return { error: `Keys must be quoted ("${unquotedKey[2]}") at line ${line}, col ${col}` };
+      }
+    }
+
+    // Try to transform shorthand tokens into valid JSON values
+    // Supported tokens: string, number, integer, boolean, object, any and their [] variants
+    // Example: { "name": string, "tags": string[] }
+    // Validate shorthand tokens before transforming
+    // Capture token from colon to comma/newline/closing brace; allow [] within token
+    const tokenRegex = /:\s*([^,\n}]+)/g;
+    const allowedBase = ['string', 'number', 'integer', 'boolean', 'object', 'any'];
+    const isAllowedToken = (token: string) => {
+      const t = token.trim();
+      if (allowedBase.includes(t)) return true;
+      if (allowedBase.some(b => t === `${b}[]`)) return true;
+      const arrayGeneric = t.match(/^array<\s*(string|number|integer|boolean|object|any)\s*>$/);
+      if (arrayGeneric) return true;
+      return false;
+    };
+
+    let tokenMatch: RegExpExecArray | null;
+    while ((tokenMatch = tokenRegex.exec(trimmed))) {
+      const fullMatch = tokenMatch[0];
+      const token = tokenMatch[1].trim();
+      if (!isAllowedToken(token)) {
+        const groupOffset = fullMatch.indexOf(tokenMatch[1]);
+        const absoluteIndex = tokenMatch.index + (groupOffset >= 0 ? groupOffset : 0);
+        const { line, col } = getLineCol(trimmed, absoluteIndex);
+        return { error: `Unknown shorthand type '${token}' at line ${line}, col ${col}` };
+      }
+      if (/\[\].*\[\]/.test(token)) {
+        const groupOffset = fullMatch.indexOf(tokenMatch[1]);
+        const absoluteIndex = tokenMatch.index + (groupOffset >= 0 ? groupOffset : 0);
+        const { line, col } = getLineCol(trimmed, absoluteIndex);
+        return { error: `Only single '[]' supported for arrays at line ${line}, col ${col}` };
+      }
+    }
+
+    let transformed = trimmed
+      .replace(/:\s*string\[\]/g, ': ["string"]')
+      .replace(/:\s*number\[\]/g, ': [0]')
+      .replace(/:\s*integer\[\]/g, ': [0]')
+      .replace(/:\s*boolean\[\]/g, ': [false]')
+      .replace(/:\s*object\[\]/g, ': [{}]')
+      .replace(/:\s*any\[\]/g, ': [null]')
+      .replace(/:\s*array\s*<\s*string\s*>/g, ': ["string"]')
+      .replace(/:\s*array\s*<\s*number\s*>/g, ': [0]')
+      .replace(/:\s*array\s*<\s*integer\s*>/g, ': [0]')
+      .replace(/:\s*array\s*<\s*boolean\s*>/g, ': [false]')
+      .replace(/:\s*array\s*<\s*object\s*>/g, ': [{}]')
+      .replace(/:\s*array\s*<\s*any\s*>/g, ': [null]')
+      .replace(/:\s*string\b/g, ': "string"')
+      .replace(/:\s*number\b/g, ': 0')
+      .replace(/:\s*integer\b/g, ': 0')
+      .replace(/:\s*boolean\b/g, ': false')
+      .replace(/:\s*object\b/g, ': {}')
+      .replace(/:\s*any\b/g, ': null');
+
+    try {
+      return { parsed: JSON.parse(transformed) };
+    } catch (err: any) {
+      return { error: 'Invalid schema or JSON. Use JSON or shorthand like string, string[]' };
+    }
+  };
+
   // Load API definition details
   useEffect(() => {
     const fetchApiDefinition = async () => {
@@ -97,6 +223,15 @@ const EditApiDefinition = () => {
           is_archived: data.is_archived || false,
         });
         setOriginalApiDefinition(data);
+        try {
+          setResponseSchemaText(
+            typeof (data.response_example || {}) === 'object'
+              ? JSON.stringify(data.response_example || {}, null, 2)
+              : String(data.response_example || '')
+          );
+        } catch {
+          setResponseSchemaText('');
+        }
         setLoading(false);
       } catch (err: any) {
         console.error('Error fetching API definition:', err);
@@ -146,6 +281,15 @@ const EditApiDefinition = () => {
               prompt_cleanup: selectedVersion.prompt_cleanup,
               response_example: selectedVersion.response_example,
             }));
+            try {
+              setResponseSchemaText(
+                typeof (selectedVersion.response_example || {}) === 'object'
+                  ? JSON.stringify(selectedVersion.response_example || {}, null, 2)
+                  : String(selectedVersion.response_example || '')
+              );
+            } catch {
+              setResponseSchemaText('');
+            }
           }
         }
 
@@ -227,21 +371,21 @@ const EditApiDefinition = () => {
     });
   };
 
-  // Handle response example changes
+  // Handle response schema shorthand/JSON changes
   const handleResponseExampleChange = (event: any) => {
-    try {
-      const responseExample = JSON.parse(event.target.value);
-      setApiDefinition({
-        ...apiDefinition,
-        response_example: responseExample,
-      });
-    } catch {
-      // If JSON is invalid, just store the string value for now
-      setApiDefinition({
-        ...apiDefinition,
-        response_example: event.target.value,
-      });
+    const value = event.target.value as string;
+    setResponseSchemaText(value);
+    const { parsed, error } = parseShorthandToExample(value);
+    if (error) {
+      setResponseSchemaError(error);
+      // Keep last valid example in state; do not overwrite on error
+      return;
     }
+    setResponseSchemaError('');
+    setApiDefinition({
+      ...apiDefinition,
+      response_example: parsed,
+    });
   };
 
   // Handle version selection change
@@ -283,6 +427,15 @@ const EditApiDefinition = () => {
           prompt_cleanup: selectedVersion.prompt_cleanup || '',
           response_example: selectedVersion.response_example || {},
         }));
+        try {
+          setResponseSchemaText(
+            typeof (selectedVersion.response_example || {}) === 'object'
+              ? JSON.stringify(selectedVersion.response_example || {}, null, 2)
+              : String(selectedVersion.response_example || '')
+          );
+        } catch {
+          setResponseSchemaText('');
+        }
 
         setSnackbarMessage(`Loaded version ${selectedVersion.version_number}`);
         setSnackbarSeverity('info');
@@ -308,6 +461,15 @@ const EditApiDefinition = () => {
           prompt_cleanup: activeVersion.prompt_cleanup,
           response_example: activeVersion.response_example,
         }));
+        try {
+          setResponseSchemaText(
+            typeof (activeVersion.response_example || {}) === 'object'
+              ? JSON.stringify(activeVersion.response_example || {}, null, 2)
+              : String(activeVersion.response_example || '')
+          );
+        } catch {
+          setResponseSchemaText('');
+        }
       }
     }
   };
@@ -315,17 +477,17 @@ const EditApiDefinition = () => {
   // Save API definition
   const handleSave = async () => {
     try {
-      // Validate response_example is valid JSON
+      // Ensure response_example is a valid object (parse shorthand/JSON if needed)
       let responseExample = apiDefinition.response_example;
-      if (typeof responseExample === 'string') {
-        try {
-          responseExample = JSON.parse(responseExample);
-        } catch {
-          setSnackbarMessage('Response example must be valid JSON');
+      if (typeof responseExample === 'string' || responseSchemaText) {
+        const { parsed, error } = parseShorthandToExample(responseSchemaText || String(responseExample || ''));
+        if (error) {
+          setSnackbarMessage('Response schema is invalid. Use JSON or shorthand like string, string[]');
           setSnackbarSeverity('error');
           setSnackbarOpen(true);
           return;
         }
+        responseExample = parsed;
       }
 
       // Validate required fields
@@ -384,6 +546,9 @@ const EditApiDefinition = () => {
         ...apiDefinition,
         response_example: responseExample,
       });
+      try {
+        setResponseSchemaText(JSON.stringify(responseExample || {}, null, 2));
+      } catch {}
 
       // Reset modified flag
       setIsVersionModified(false);
@@ -666,29 +831,21 @@ const EditApiDefinition = () => {
       </Paper>
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
-          Response Example
+          Response Schema
         </Typography>
 
         <TextField
-          label="Response Example (JSON)"
+          label="Response Schema (JSON or shorthand)"
           fullWidth
           multiline
           rows={10}
-          value={
-            typeof apiDefinition.response_example === 'object'
-              ? JSON.stringify(apiDefinition.response_example, null, 2)
-              : apiDefinition.response_example
-          }
+          value={responseSchemaText}
           onChange={handleResponseExampleChange}
           margin="normal"
-          error={
-            typeof apiDefinition.response_example === 'string' &&
-            (apiDefinition.response_example as string).includes('Error')
-          }
+          error={!!responseSchemaError}
           helperText={
-            typeof apiDefinition.response_example === 'string'
-              ? (apiDefinition.response_example as string)
-              : 'JSON example of the expected response'
+            responseSchemaError ||
+            'Enter JSON or shorthand: { "test": string, "testArray": string[] }'
           }
           disabled={apiDefinition.is_archived}
         />
