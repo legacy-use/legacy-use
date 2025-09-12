@@ -53,6 +53,7 @@ class APIDefinitionRuntime:
         self.custom_actions = data.get('custom_actions', {})
         self.prompt = data.get('prompt', '')
         self.prompt_cleanup = data.get('prompt_cleanup', '')
+        self.recovery_prompt = data.get('recovery_prompt')
         self.response_example = data.get('response_example', {})
         self.version = data.get('version', '1')
         self.version_id = data.get('version_id')
@@ -232,16 +233,23 @@ class SessionUpdate(BaseModel):
 
 
 class JobStatus(str, Enum):
-    PENDING = 'pending'
-    QUEUED = 'queued'
-    RUNNING = 'running'
-    PAUSED = 'paused'
-    SUCCESS = 'success'
-    ERROR = 'error'
-    CANCELED = 'canceled'
+    PENDING = 'pending'  # Pending means the job was created but not yet queued
+    QUEUED = 'queued'  # Queued means the job is waiting in the queue
+    RUNNING = 'running'  # Running means the job is being executed
+    RECOVERY = 'recovery'  # Recovery means is being executed, had an error and is now trying to recover the system to the initial state
+    PAUSED = 'paused'  # Paused means the job is paused due to, UI_NOT_AS_EXPECTED or human intervention
+    SUCCESS = 'success'  # Success means the job completed successfully
+    FAILED = 'failed'  # Failed means the job was not able to complete, but recovery was successful
+    ERROR = 'error'  # Error means the job completed with an error and no recovery was possible
+    CANCELED = 'canceled'  # Canceled means the job was canceled by the user
 
 
-JobTerminalStates = [JobStatus.SUCCESS, JobStatus.ERROR, JobStatus.CANCELED]
+JobTerminalStates = [
+    JobStatus.SUCCESS,
+    JobStatus.FAILED,
+    JobStatus.ERROR,
+    JobStatus.CANCELED,
+]
 
 
 class APIResponse(BaseModel):

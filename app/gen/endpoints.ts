@@ -71,6 +71,8 @@ export interface HttpExchangeLog {
   content: HttpExchangeLogContent;
 }
 
+export type ImportApiDefinitionBodyRecoveryPrompt = string | null;
+
 export type ImportApiDefinitionBodyResponseExample = { [key: string]: unknown };
 
 export interface ImportApiDefinitionBody {
@@ -79,6 +81,7 @@ export interface ImportApiDefinitionBody {
   parameters: Parameter[];
   prompt: string;
   prompt_cleanup: string;
+  recovery_prompt?: ImportApiDefinitionBodyRecoveryPrompt;
   response_example: ImportApiDefinitionBodyResponseExample;
 }
 
@@ -163,8 +166,10 @@ export const JobStatus = {
   pending: 'pending',
   queued: 'queued',
   running: 'running',
+  recovery: 'recovery',
   paused: 'paused',
   success: 'success',
+  failed: 'failed',
   error: 'error',
   canceled: 'canceled',
 } as const;

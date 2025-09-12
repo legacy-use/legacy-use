@@ -236,7 +236,7 @@ class DatabaseService:
                 exists_running = sa.exists(
                     sa.select(1).where(
                         JobAlias.target_id == Job.target_id,
-                        JobAlias.status == 'RUNNING',
+                        JobAlias.status.in_(['RUNNING', 'RECOVERY']),
                     )
                 )
                 exists_blocking = sa.exists(
@@ -288,7 +288,7 @@ class DatabaseService:
                 raise
 
     def expire_stale_running_jobs(self) -> list[dict]:
-        """Mark RUNNING jobs with expired or missing leases as ERROR.
+        """Mark RUNNING/RECOVERY jobs with expired or missing leases as ERROR.
 
         Returns a list of affected job dicts.
         """
@@ -297,7 +297,7 @@ class DatabaseService:
             stale_jobs = (
                 session.query(Job)
                 .filter(
-                    Job.status == 'RUNNING',
+                    Job.status.in_(['RUNNING', 'RECOVERY']),
                     or_(Job.lease_expires_at.is_(None), Job.lease_expires_at < now),
                 )
                 .all()
@@ -329,7 +329,7 @@ class DatabaseService:
                 session.query(Job)
                 .filter(
                     Job.id == job_id,
-                    Job.status == 'RUNNING',
+                    Job.status.in_(['RUNNING', 'RECOVERY']),
                     Job.lease_owner == lease_owner,
                 )
                 .first()
@@ -833,6 +833,7 @@ class DatabaseService:
         parameters,
         prompt,
         prompt_cleanup,
+        recovery_prompt,
         response_example,
         custom_actions: Dict[str, CustomAction] = {},
         is_active=True,
@@ -865,6 +866,7 @@ class DatabaseService:
                 parameters=parameters,
                 prompt=prompt,
                 prompt_cleanup=prompt_cleanup,
+                recovery_prompt=recovery_prompt,
                 response_example=response_example,
                 is_active=is_active,
                 custom_actions=_serialize_custom_actions(custom_actions),
