@@ -26,7 +26,7 @@ from server.utils.job_logging import (
     _create_tool_callback,
     add_job_log,
 )
-from server.utils.telemetry import capture_job_resolved
+from server.utils.telemetry import capture_job_resolved, distinct_id_context
 
 # Add import for session management functions
 
@@ -285,6 +285,14 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
     from server.database.multi_tenancy import with_db
 
     job_id_str = str(job.id)
+
+    # Seed telemetry context with distinct id carried on the job, if present
+    try:
+        di = job.parameters.get('__distinct_id') if job and job.parameters else None
+        if isinstance(di, str):
+            distinct_id_context.set(di)
+    except Exception:
+        pass
 
     # Track token usage for this job - Use a list to allow modification by nonlocal callback
     running_token_total_ref = [0]

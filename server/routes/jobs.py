@@ -189,6 +189,11 @@ async def create_job(
         )
         raise HTTPException(status_code=500, detail='Failed to validate API definition')
 
+    # Forward PostHog distinct id for async telemetry
+    distinct_id = request.headers.get('X-Distinct-ID')
+    if distinct_id:
+        job.parameters = {**job.parameters, '__distinct_id': distinct_id}
+
     job_obj = await create_and_enqueue_job(target_id, job, tenant['schema'])
     capture_job_created(request, job_obj)
     return job_obj
