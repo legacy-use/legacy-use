@@ -10,6 +10,7 @@ DEFAULT_PORTS = {
     'rdp+tailscale': 3389,
     'vnc+wireguard': 5900,
     'teamviewer': 5938,
+    'rustdesk': 21117,
     'generic': 8080,
     'rdp+openvpn': 3389,
 }
