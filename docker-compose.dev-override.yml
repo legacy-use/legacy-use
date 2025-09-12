@@ -17,3 +17,31 @@ services:
       - ./vite.config.js:/web/vite.config.js
       - ./orval.config.ts:/web/orval.config.ts
       - ./index.html:/web/index.html
+
+  # GnuCash App
+  legacy-use-linux-machine:
+    build:
+      context: .
+      dockerfile: infra/docker/linux-machine/Dockerfile
+    image: legacy-use-core-linux-machine:local
+    container_name: legacy-use-linux-machine
+    environment:
+      - VNC_PASSWORD=password123
+      - USER=developer
+      - PASSWORD=developer123
+      - RESOLUTION=1024x768
+    volumes:
+      - linux-home:/home/developer
+      - linux-workspace:/workspace
+      - /dev/shm:/dev/shm
+    working_dir: /workspace
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  linux-home:
+  linux-workspace:
