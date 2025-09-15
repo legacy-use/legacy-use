@@ -291,6 +291,7 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
         di = job.parameters.get('__distinct_id') if job and job.parameters else None
         if isinstance(di, str):
             distinct_id_context.set(di)
+            del job.parameters['__distinct_id']
     except Exception:
         pass
 
