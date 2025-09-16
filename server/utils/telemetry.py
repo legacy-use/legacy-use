@@ -14,15 +14,18 @@ from server.models.base import (
     TargetUpdate,
 )
 from server.settings import settings
+from server.utils.tenant_utils import get_tenant_from_request
 
 logger = logging.getLogger(__name__)
 
 # Context variable to track distinct ID across async calls
 distinct_id_context: ContextVar[str] = ContextVar('distinct_id', default='external')
+tenant_context: ContextVar[dict] = ContextVar('tenant', default={})
 
 posthog = Posthog(
     settings.VITE_PUBLIC_POSTHOG_KEY,
     host=settings.VITE_PUBLIC_POSTHOG_HOST,
+    debug=True,
 )
 
 
@@ -59,6 +62,14 @@ def capture_event(request: Request | None, event_name: str, properties: dict):
                 }
             )
 
+        tenant = tenant_context.get()
+        if tenant:
+            enriched.update(
+                {
+                    'tenant': tenant.get('name'),
+                    'tenant_id': tenant.get('id'),
+                }
+            )
         posthog.capture(
             event_name,
             distinct_id=distinct_id,
@@ -68,14 +79,20 @@ def capture_event(request: Request | None, event_name: str, properties: dict):
         logger.debug(f"Telemetry event '{event_name}' failed: {e}")
 
 
-def get_distinct_id(request: Request | None):
+def get_distinct_id(request: Request | None) -> str:
     """
     Get the distinct ID from the request headers.
     """
     if request is not None:
-        return request.headers.get('X-Distinct-ID', 'external')
-    else:
-        return distinct_id_context.get()
+        distinct_id = request.headers.get('X-Distinct-ID')
+        if distinct_id:
+            return distinct_id
+
+    context_distinct_id = distinct_id_context.get()
+    if context_distinct_id:
+        return context_distinct_id
+
+    return 'external'
 
 
 async def posthog_middleware(request: Request, call_next):
@@ -90,20 +107,15 @@ async def posthog_middleware(request: Request, call_next):
         # Set distinct ID in context for downstream usage
         distinct_id = get_distinct_id(request)
         distinct_id_context.set(distinct_id)
+
+        # Set tenant in context for downstream usage
+        tenant = get_tenant_from_request(request)
+        tenant_context.set(tenant)
     except Exception as e:
         logger.debug(f'Telemetry middleware failed: {e}')
 
     response = await call_next(request)
 
-    # This captures any API request to the backend, but it's too noisy for now
-    # capture_event(
-    #     distinct_id,
-    #     'api_request_backend',
-    #     {
-    #         'url': request.url.path,
-    #         'method': request.method,
-    #     },
-    # )
     return response
 
 
@@ -406,3 +418,91 @@ def capture_job_log_created(job_id: UUID, log: dict):
         )
     except Exception as e:
         logger.debug(f"Telemetry event 'job_log_created' failed: {e}")
+
+
+def capture_ai_trace(ai_trace_id: str, ai_span_name: str, tenant: str):
+    """
+    Integrates manual capture of poshog LLM-analytics events
+    """
+    try:
+        capture_event(
+            None,
+            '$ai_trace',
+            {
+                '$ai_trace_id': ai_trace_id,
+                '$ai_span_name': ai_span_name,
+                # 'tenant': tenant,
+            },
+        )
+    except Exception as e:
+        logger.debug(f"Telemetry event 'ai_trace' failed: {e}")
+
+
+def capture_ai_generation(
+    ai_trace_id: str,
+    ai_span_id: str | None = None,
+    ai_span_name: str | None = None,
+    ai_parent_id: str | None = None,
+    ai_model: str | None = None,
+    ai_provider: str | None = None,
+    ai_input_tokens: int | None = None,
+    ai_output_tokens: int | None = None,
+    ai_cache_read_input_tokens: int | None = None,
+    ai_cache_creation_input_tokens: int | None = None,
+    ai_temperature: float | None = None,
+    ai_max_tokens: int | None = None,
+):
+    """
+    Integrates manual capture of poshog LLM-analytics events
+    """
+    try:
+        capture_event(
+            None,
+            '$ai_generation',
+            {
+                '$ai_trace_id': ai_trace_id,  # like conversation_id
+                '$ai_span_id': ai_span_id,  # Unique identifier for this generation
+                '$ai_span_name': ai_span_name,  # Name given to this generation
+                '$ai_parent_id': ai_parent_id,
+                '$ai_model': ai_model,
+                '$ai_provider': ai_provider,
+                # "$ai_input": properties.get('ai_input'), # removed for now, since it may contain sensitive information; may include redacted content in the future
+                # "$ai_output_choices": properties.get('ai_output_choices', ''), # removed for now, since it may contain sensitive information; may include redacted content in the future
+                '$ai_input_tokens': ai_input_tokens,
+                '$ai_output_tokens': ai_output_tokens,
+                '$ai_cache_read_input_tokens': ai_cache_read_input_tokens,
+                '$ai_cache_creation_input_tokens': ai_cache_creation_input_tokens,
+                '$ai_temperature': ai_temperature,
+                '$ai_max_tokens': ai_max_tokens,
+            },
+        )
+    except Exception as e:
+        logger.debug(f"Telemetry event 'ai_generation' failed: {e}")
+
+
+def capture_ai_span(
+    ai_trace_id: str,
+    ai_span_id: str | None = None,
+    ai_span_name: str | None = None,
+    ai_parent_id: str | None = None,
+    ai_is_error: bool = False,
+    ai_error: str | None = None,
+):
+    """
+    Integrates manual capture of poshog LLM-analytics events
+    """
+    try:
+        capture_event(
+            None,
+            '$ai_span',
+            {
+                '$ai_trace_id': ai_trace_id,
+                '$ai_span_id': ai_span_id,
+                '$ai_span_name': ai_span_name,
+                '$ai_parent_id': ai_parent_id,
+                '$ai_is_error': ai_is_error,
+                '$ai_error': ai_error,
+            },
+        )
+    except Exception as e:
+        logger.debug(f"Telemetry event 'ai_span' failed: {e}")
