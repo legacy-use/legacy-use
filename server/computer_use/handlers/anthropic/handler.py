@@ -28,9 +28,10 @@ from server.computer_use.handlers.base import BaseProviderHandler
 from server.computer_use.logging import logger
 from server.computer_use.tools.collection import ToolCollection
 from server.settings import settings
+from server.utils.telemetry import capture_ai_generation
 
 from .message_converter import inject_prompt_caching
-from .response_converter import convert_from_provider_response
+from .response_converter import convert_anthropic_response
 
 AnthropicClient = (
     AsyncAnthropic | AsyncAnthropicBedrock | AsyncAnthropicVertex | LegacyUseClient
@@ -217,6 +218,8 @@ class AnthropicHandler(BaseProviderHandler):
 
     async def execute(
         self,
+        job_id: str,
+        iteration_count: int,
         client: instructor.AsyncInstructor,
         messages: list[BetaMessageParam],
         system: str,
@@ -250,8 +253,23 @@ class AnthropicHandler(BaseProviderHandler):
             **kwargs,
         )
 
+        capture_ai_generation(
+            ai_trace_id=job_id,
+            ai_parent_id=str(iteration_count),
+            ai_provider=self.provider,
+            ai_model=model,
+            ai_input_tokens=parsed_response.usage.input_tokens,
+            ai_output_tokens=parsed_response.usage.output_tokens,
+            ai_cache_read_input_tokens=parsed_response.usage.cache_read_input_tokens,
+            ai_cache_creation_input_tokens=parsed_response.usage.cache_creation_input_tokens,
+            ai_temperature=temperature,
+            ai_max_tokens=max_tokens,
+        )
+
         # Convert response to standardized format
-        content_blocks, stop_reason = convert_from_provider_response(parsed_response)
+        content_blocks, stop_reason = self.convert_from_provider_response(
+            parsed_response
+        )
 
         return content_blocks, stop_reason, request, raw_response
 
@@ -262,4 +280,4 @@ class AnthropicHandler(BaseProviderHandler):
         Convert Anthropic response to content blocks and stop reason.
         Response is already in Anthropic format.
         """
-        return convert_from_provider_response(response)
+        return convert_anthropic_response(response)

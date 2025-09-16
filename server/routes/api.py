@@ -12,6 +12,11 @@ from pydantic import BaseModel
 from server.core import APIGatewayCore
 from server.models.base import APIDefinition, CustomAction, Parameter
 from server.settings import settings
+from server.utils.api_definitions import (
+    get_api_parameters,
+    get_api_response_example,
+    get_api_response_schema,
+)
 from server.utils.db_dependencies import get_tenant_db
 from server.utils.telemetry import (
     capture_api_created,
@@ -26,8 +31,14 @@ logger = logging.getLogger(__name__)
 api_router = APIRouter(prefix='/api')  # Removed the tags=["API"] to prevent duplication
 
 
+class APIDefinitionWithSchema(APIDefinition):
+    response_schema: dict[str, Any]
+
+
 @api_router.get(
-    '/definitions', response_model=List[APIDefinition], tags=['API Definitions']
+    '/definitions',
+    response_model=List[APIDefinitionWithSchema],
+    tags=['API Definitions'],
 )
 async def get_api_definitions(
     include_archived: bool = False, db_tenant=Depends(get_tenant_db)
@@ -40,31 +51,22 @@ async def get_api_definitions(
 
     # Convert to API definition objects
     return [
-        APIDefinition(
+        APIDefinitionWithSchema(
             name=api_def.name,
             description=api_def.description,
-            parameters=await get_api_parameters(api_def, db_tenant),
-            response_example=await get_api_response_example(api_def, db_tenant),
+            parameters=await get_api_parameters(api_def.id, db_tenant),
+            response_example=await get_api_response_example(api_def.id, db_tenant),
+            response_schema=await get_api_response_schema(api_def.id, db_tenant),
             is_archived=api_def.is_archived,
         )
         for api_def in api_definitions
     ]
 
 
-async def get_api_parameters(api_def, db_tenant):
-    """Get parameters for an API definition."""
-    version = await db_tenant.get_active_api_definition_version(api_def.id)
-    return version.parameters if version else []
-
-
-async def get_api_response_example(api_def, db_tenant):
-    """Get response example for an API definition."""
-    version = await db_tenant.get_active_api_definition_version(api_def.id)
-    return version.response_example if version else {}
-
-
 @api_router.get(
-    '/definitions/{api_name}', response_model=APIDefinition, tags=['API Definitions']
+    '/definitions/{api_name}',
+    response_model=APIDefinitionWithSchema,
+    tags=['API Definitions'],
 )
 async def get_api_definition(
     api_name: str, request: Request, db_tenant=Depends(get_tenant_db)
@@ -87,11 +89,12 @@ async def get_api_definition(
         )
 
     api = api_definitions[api_name]
-    return APIDefinition(
+    return APIDefinitionWithSchema(
         name=api.name,
         description=api.description,
         parameters=[Parameter(**param) for param in api.parameters],
         response_example=api.response_example,
+        response_schema=await get_api_response_schema(api.version_id, db_tenant),
     )
 
 

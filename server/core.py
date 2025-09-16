@@ -21,6 +21,7 @@ from server.models.base import (
     JobStatus,
 )
 from server.settings_tenant import get_tenant_setting
+from server.utils.telemetry import capture_ai_span, capture_ai_trace
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -162,6 +163,12 @@ class APIGatewayCore:
         # The 'messages' list is now correctly populated (either with initial prompt or empty)
 
         try:
+            capture_ai_trace(
+                ai_trace_id=str(job_id),
+                ai_span_name='sampling_loop start',
+                tenant=self.tenant_schema,
+            )
+
             # Execute the API call - sampling_loop will handle saving the messages if it receives any
             result, exchanges = await sampling_loop(
                 job_id=job_id,
@@ -180,6 +187,7 @@ class APIGatewayCore:
                 tenant_schema=self.tenant_schema,
                 job_data=job_data,
             )
+            capture_ai_span(ai_trace_id=str(job_id), ai_span_name='sampling_loop end')
 
             # --- Interpret result and Update DB Status --- START
             final_status = (
@@ -255,6 +263,12 @@ class APIGatewayCore:
             # --- Interpret result and Update DB Status --- END
 
         except Exception as e:
+            capture_ai_span(
+                ai_trace_id=str(job_id),
+                ai_span_name='sampling_loop error',
+                ai_is_error=True,
+                ai_error=str(e),
+            )
             # Handle exceptions raised BY sampling_loop (e.g., ValueError, APIError, RuntimeError)
             error_message = str(e)
             logger.error(f'Job {job_id}: {error_message}', exc_info=True)

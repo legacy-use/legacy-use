@@ -2,9 +2,11 @@
 
 import json
 import logging
-from typing import Any, Dict, Literal
+from typing import Any, Dict, Hashable, Literal
 
 from anthropic.types.beta import BetaToolUnionParam
+from jsonschema import ValidationError
+from openapi_schema_validator import validate
 
 from .base import BaseAnthropicTool, ToolResult
 
@@ -16,7 +18,17 @@ class ExtractionTool(BaseAnthropicTool):
 
     name: Literal['extraction'] = 'extraction'
 
+    def __init__(
+        self, response_schema: Dict[Hashable, Any] | None = None, *args, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        logger.info(
+            f'Extraction tool initialized with response schema: {response_schema}'
+        )
+        self.response_schema = response_schema
+
     def to_params(self) -> BetaToolUnionParam:
+        # TODO: Check if including response_schema improves the tool's performance
         return {
             'name': 'extraction',
             'description': "Use this tool to return the final JSON result when you've found the information requested by the user.",
@@ -53,6 +65,17 @@ class ExtractionTool(BaseAnthropicTool):
 
             # Log the formatted JSON
             logger.info(f'Extraction tool formatted JSON: {serialized_data}')
+
+            # validate the data adheres to the response schema; an empty schema (dict) results in no validation
+            if self.response_schema:
+                try:
+                    validate(extraction_data, self.response_schema)
+                except ValidationError as e:
+                    logger.error(f'Extraction tool data is invalid: {e}')
+                    return ToolResult(error=str(e.message))
+                logger.info('Extraction tool data is valid.')
+            else:
+                logger.info('No response schema provided, skipping validation.')
 
             # Return the properly formatted data
             return ToolResult(

@@ -9,7 +9,7 @@ from anthropic.types.beta import BetaContentBlockParam, BetaMessage
 from server.computer_use.utils import _response_to_params
 
 
-def convert_from_provider_response(
+def convert_anthropic_response(
     response: BetaMessage,
 ) -> tuple[list[BetaContentBlockParam], str]:
     """

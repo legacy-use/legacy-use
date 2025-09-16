@@ -29,7 +29,8 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "uvicorn>=0.27.1",
     "websockets>=12.0.0",
-    "aioboto3>=15.1.0"
+    "aioboto3>=15.1.0",
+    "openapi-schema-validator>=0.6.3"
 ]
 
 [dependency-groups]

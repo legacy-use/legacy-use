@@ -145,8 +145,8 @@ def _make_api_tool_result(
             {
                 'type': 'tool_result',
                 'tool_use_id': tool_use_id,
-                'content': [],
-                'error': _maybe_prepend_system_tool_result(result, result.error),
+                'content': [{'type': 'text', 'text': result.error}],
+                'is_error': True,
             },
         )
 

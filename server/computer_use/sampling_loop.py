@@ -33,6 +33,7 @@ from server.computer_use.tools import (
     ToolVersion,
 )
 from server.computer_use.tools.custom_action import CustomActionTool
+from server.computer_use.tools.extraction import ExtractionTool
 from server.computer_use.utils import (
     _beta_message_param_to_job_message_content,
     _job_message_to_beta_message_param,
@@ -44,7 +45,13 @@ from server.computer_use.utils import (
 from server.database.service import DatabaseService
 
 # Import the centralized health check function
+from server.utils.api_definitions import (
+    get_api_response_schema_by_version_id,
+)
 from server.utils.docker_manager import check_target_container_health
+from server.utils.telemetry import (
+    capture_ai_span,
+)
 
 ApiResponseCallback = Callable[
     [httpx.Request, httpx.Response | object | None, Exception | None], None
@@ -110,6 +117,11 @@ async def sampling_loop(
                 job_data['api_definition_version_id'],
             )
             tools.append(ToolCls(custom_actions, job_data['parameters']))
+        elif ToolCls == ExtractionTool:
+            response_schema = await get_api_response_schema_by_version_id(
+                job_data['api_definition_version_id'], db_tenant
+            )
+            tools.append(ToolCls(response_schema))
         else:
             tools.append(ToolCls())
 
@@ -149,8 +161,17 @@ async def sampling_loop(
         logger.info(f'Added initial message seq {current_sequence} for job {job_id}')
         current_sequence += 1
 
+    iteration_count = -1
+
     # TODO: Split up this very long loop into smaller functions
     while True:
+        iteration_count += 1
+        capture_ai_span(
+            ai_trace_id=str(job_id),
+            ai_parent_id=str(job_id),
+            ai_span_id=str(iteration_count),
+            ai_span_name='iteration',
+        )
         # --- Fetch current history from DB --- START
         try:
             db_messages = db_tenant.get_job_messages(job_id)
@@ -181,6 +202,11 @@ async def sampling_loop(
             raise
 
         try:
+            capture_ai_span(
+                ai_trace_id=str(job_id),
+                ai_parent_id=str(iteration_count),
+                ai_span_name='api call',
+            )
             # Make API call via handler
             (
                 response_params,
@@ -188,10 +214,12 @@ async def sampling_loop(
                 request,
                 raw_response,
             ) = await handler.execute(
+                job_id=str(job_id),
+                iteration_count=iteration_count,
                 client=client,
                 messages=current_messages_for_api,  # Pass raw Anthropic format
-                system=system_prompt,  # type: ignore[arg-type]  # Pass raw string
-                tools=tool_collection,  # type: ignore[arg-type]  # Pass raw ToolCollection
+                system=system_prompt,  # Pass raw string
+                tools=tool_collection,  # Pass raw ToolCollection
                 model=model,
                 max_tokens=max_tokens,
                 temperature=0.0,
@@ -280,6 +308,11 @@ async def sampling_loop(
         for content_block in response_params:
             output_callback(content_block)
             if content_block['type'] == 'tool_use':
+                capture_ai_span(
+                    ai_trace_id=str(job_id),
+                    ai_parent_id=str(iteration_count),
+                    ai_span_name='tool use',
+                )
                 found_tool_use = True
 
                 # --- Target Health Check --- START
@@ -350,6 +383,11 @@ async def sampling_loop(
                     tool_input=cast(dict[str, Any], content_block['input']),
                     session_id=session_id,
                     session=session_obj,
+                )
+                capture_ai_span(
+                    ai_trace_id=str(job_id),
+                    ai_parent_id=str(iteration_count),
+                    ai_span_name='tool used',
                 )
 
                 # --- Save Tool Result Message to DB --- START

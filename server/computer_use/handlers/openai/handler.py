@@ -27,6 +27,7 @@ from server.computer_use.handlers.utils.converter_utils import (
 )
 from server.computer_use.logging import logger
 from server.computer_use.tools.collection import ToolCollection
+from server.utils.telemetry import capture_ai_generation
 
 from .message_converter import convert_anthropic_to_openai_messages
 from .response_converter import convert_openai_to_anthropic_response
@@ -153,8 +154,64 @@ class OpenAIHandler(BaseProviderHandler):
             response.http_response,
         )
 
+    def _total_output_tokens(self, parsed_response: Any) -> int:
+        def _get(obj: Any, path: str):
+            cur = obj
+            for part in path.split('.'):
+                if cur is None:
+                    return None
+                cur = getattr(cur, part, None)
+            return cur
+
+        def _safe_int(value: Any) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return 0
+
+        output_tokens_raw = _get(parsed_response, 'usage.completion_tokens')
+        reasoning_tokens_raw = _get(
+            parsed_response, 'usage.completion_tokens_details.reasoning_tokens'
+        )
+        return _safe_int(output_tokens_raw) + _safe_int(reasoning_tokens_raw)
+
+    def _capture_generation(
+        self,
+        parsed_response: Any,
+        job_id: str,
+        iteration_count: int,
+        temperature: float,
+        max_tokens: int,
+    ) -> None:
+        def _get(obj: Any, path: str):
+            cur = obj
+            for part in path.split('.'):
+                if cur is None:
+                    return None
+                cur = getattr(cur, part, None)
+            return cur
+
+        total_output_tokens = self._total_output_tokens(parsed_response)
+
+        capture_ai_generation(
+            ai_trace_id=job_id,
+            ai_parent_id=str(iteration_count),
+            ai_provider='openai',
+            ai_model=_get(parsed_response, 'model') or self.model,
+            ai_input_tokens=_get(parsed_response, 'usage.prompt_tokens'),
+            ai_output_tokens=total_output_tokens,
+            ai_cache_read_input_tokens=_get(parsed_response, 'usage.prompt_tokens'),
+            ai_cache_creation_input_tokens=_get(
+                parsed_response, 'usage.prompt_tokens_details.cached_tokens'
+            ),
+            ai_temperature=temperature,
+            ai_max_tokens=max_tokens,
+        )
+
     async def execute(
         self,
+        job_id: str,
+        iteration_count: int,
         client: instructor.AsyncInstructor,
         messages: list[BetaMessageParam],
         system: str,
@@ -181,8 +238,16 @@ class OpenAIHandler(BaseProviderHandler):
             **kwargs,
         )
 
+        self._capture_generation(
+            parsed_response=parsed_response,
+            job_id=job_id,
+            iteration_count=iteration_count,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
         # Convert response to standardized format
-        content_blocks, stop_reason = convert_openai_to_anthropic_response(
+        content_blocks, stop_reason = self.convert_from_provider_response(
             parsed_response
         )
 

@@ -17,6 +17,7 @@ from botocore.config import Config
 from server.computer_use.config import APIProvider
 from server.computer_use.handlers.base import BaseProviderHandler
 from server.computer_use.tools.collection import ToolCollection
+from server.utils.telemetry import capture_ai_generation
 
 from .message_converter import convert_to_opencua_messages_and_extract_api_definitions
 from .pyautogui_converter import convert_pyautogui_code_to_tool_use, parse_task
@@ -128,7 +129,13 @@ class OpenCuaHandler(BaseProviderHandler):
         return result, None, response
 
     async def execute(
-        self, client: Any, messages: list[BetaMessageParam], system: str, **kwargs
+        self,
+        job_id: str,
+        iteration_count: int,
+        client: Any,
+        messages: list[BetaMessageParam],
+        system: str,
+        **kwargs,
     ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
         """Make raw API call to OpenCua and return provider-specific response."""
 
@@ -158,6 +165,14 @@ class OpenCuaHandler(BaseProviderHandler):
             )
 
         content_blocks, stop_reason = self.convert_from_provider_response(result)
+
+        capture_ai_generation(
+            ai_trace_id=job_id,
+            ai_parent_id=str(iteration_count),
+            ai_provider=self.provider,
+            ai_model=self.model,
+            # More meaningful metrics are not yet supported by our SageMaker endpoint
+        )
 
         # if the last block is not a tool_use, add a mock screenshot tool use
         if len(content_blocks) == 0 or content_blocks[-1]['type'] != 'tool_use':

@@ -111,6 +111,8 @@ class ProviderHandler(Protocol):
     @abstractmethod
     async def execute(
         self,
+        job_id: str,
+        iteration_count: int,
         client: instructor.AsyncInstructor,
         messages: list[BetaMessageParam],
         system: str,
@@ -124,6 +126,8 @@ class ProviderHandler(Protocol):
         Execute the API call to the provider and return standardized response.
 
         Args:
+            job_id: The job ID
+            iteration_count: The iteration count
             client: The provider client instance
             messages: Messages in global format
             system: System prompt in global format
