@@ -116,12 +116,24 @@ class CustomActionTool(BaseAnthropicTool):
                     return ToolError(result.error)
 
             # screenshot tool to return screenshot as final result
-            return await tool_collection.run(
+            result = await tool_collection.run(
                 name='computer',
                 tool_input={'action': 'screenshot'},
                 session_id=kwargs.get('session_id', None),
                 session=kwargs.get('session', None),
             )
+            # Shorten and convert actions to a string, useful for the model
+            str_actions = '\n'.join(
+                [
+                    f'{tool_action["name"]}: {tool_action["parameters"]}'
+                    for tool_action in action['tools']
+                ]
+            )
+            action_history_result = ToolResult(
+                output=f'The following actions were performed:\n\n{str_actions}',
+            )
+            result = result + action_history_result
+            return result
         except Exception as e:
             error_msg = f'Error processing custom action tool: {str(e)}'
             logger.error(error_msg)
