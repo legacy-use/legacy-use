@@ -5,6 +5,8 @@ This handler manages all Anthropic-specific logic including Claude models
 via direct API, Bedrock, and Vertex AI.
 """
 
+import asyncio
+import random
 from typing import Iterable, Optional, cast
 
 import httpx
@@ -181,6 +183,30 @@ class AnthropicHandler(BaseProviderHandler):
             betas.append(PROMPT_CACHING_BETA_FLAG)
         return betas
 
+    def _should_retry_bedrock_rate_limit(self, exc: Exception) -> bool:
+        """Determine if an error warrants a retry for Bedrock rate limits."""
+        if self.provider != APIProvider.BEDROCK:
+            return False
+
+        status_code = getattr(exc, 'status_code', None)
+        if status_code == 429:
+            return True
+
+        response = getattr(exc, 'response', None)
+        response_status = getattr(response, 'status_code', None)
+        if response_status == 429:
+            return True
+
+        http_response = getattr(exc, 'http_response', None)
+        http_response_status = getattr(http_response, 'status_code', None)
+        return http_response_status == 429
+
+    @staticmethod
+    def _bedrock_retry_delay() -> float:
+        """Compute a randomized delay respecting the Bedrock RPM limits."""
+        base_delay_seconds = 60 / 200  # 200 requests per minute limit
+        return random.uniform(base_delay_seconds, base_delay_seconds * 4)
+
     async def make_ai_request(
         self,
         client: instructor.AsyncInstructor,
@@ -197,24 +223,44 @@ class AnthropicHandler(BaseProviderHandler):
 
         logger.info(f'Messages: {self._truncate_for_debug(messages)}')
 
-        raw_response = await client.beta.messages.with_raw_response.create(
-            max_tokens=max_tokens,
-            messages=messages,
-            model=model,
-            system=system,
-            tools=tools,
-            betas=betas,
-            temperature=temperature,
-            **kwargs,
-        )
+        max_attempts = 3 if self.provider == APIProvider.BEDROCK else 1
 
-        parsed_response = cast(BetaMessage, raw_response.parse())
+        for attempt in range(1, max_attempts + 1):
+            try:
+                raw_response = await client.beta.messages.with_raw_response.create(
+                    max_tokens=max_tokens,
+                    messages=messages,
+                    model=model,
+                    system=system,
+                    tools=tools,
+                    betas=betas,
+                    temperature=temperature,
+                    **kwargs,
+                )
 
-        return (
-            parsed_response,
-            raw_response.http_response.request,
-            raw_response.http_response,
-        )
+                parsed_response = cast(BetaMessage, raw_response.parse())
+
+                return (
+                    parsed_response,
+                    raw_response.http_response.request,
+                    raw_response.http_response,
+                )
+            except Exception as exc:  # noqa: BLE001 - allow inspection of response metadata
+                should_retry = self._should_retry_bedrock_rate_limit(exc)
+                is_last_attempt = attempt == max_attempts
+
+                if not should_retry or is_last_attempt:
+                    raise
+
+                delay_seconds = self._bedrock_retry_delay()
+                logger.warning(
+                    'Bedrock rate limit encountered (attempt %s/%s). '
+                    'Retrying in %.2f seconds.',
+                    attempt,
+                    max_attempts,
+                    delay_seconds,
+                )
+                await asyncio.sleep(delay_seconds)
 
     async def execute(
         self,
