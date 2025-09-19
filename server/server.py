@@ -32,8 +32,8 @@ from server.utils.exceptions import TenantInactiveError, TenantNotFoundError
 from server.utils.job_execution import initiate_graceful_shutdown, start_shared_workers
 from server.utils.log_pruning import scheduled_log_pruning
 from server.utils.maintenance_leader import (
-    acquire_maintenance_leadership,
     release_maintenance_leadership,
+    wait_for_maintenance_leadership,
 )
 from server.utils.session_monitor import start_session_monitor
 from server.utils.telemetry import posthog_middleware
@@ -338,24 +338,20 @@ For more information, please refer to the migration documentation.
     # Start background maintenance tasks only if we are the leader
     leader_key = 'legacy_use_maintenance_v1'
 
-    async def start_maintenance_tasks() -> bool:
-        if acquire_maintenance_leadership(leader_key):
-            asyncio.create_task(scheduled_log_pruning())
-            logger.info('Started background task for pruning old logs (leader)')
+    async def start_maintenance_tasks_when_leader() -> None:
+        logger.info('Waiting to acquire maintenance leadership lock')
+        try:
+            await asyncio.to_thread(wait_for_maintenance_leadership, leader_key)
+        except Exception:
+            logger.exception('Failed while waiting for maintenance leadership')
+            return
+        # Once the blocking call returns we own the lock in this process.
+        asyncio.create_task(scheduled_log_pruning())
+        logger.info('Started background task for pruning old logs (leader)')
+        start_session_monitor()
+        logger.info('Started session state monitor (leader)')
 
-            start_session_monitor()
-            logger.info('Started session state monitor (leader)')
-            return True
-        logger.info('Another process holds maintenance leadership; skipping monitors')
-        return False
-
-    async def ensure_maintenance_leadership() -> None:
-        while True:
-            if await start_maintenance_tasks():
-                break
-            await asyncio.sleep(settings.MAINTENANCE_LEADER_RETRY_INTERVAL)
-
-    asyncio.create_task(ensure_maintenance_leadership())
+    asyncio.create_task(start_maintenance_tasks_when_leader())
 
     # No need to load API definitions on startup anymore
     # They will be loaded on demand when needed

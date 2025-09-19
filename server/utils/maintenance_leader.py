@@ -19,6 +19,45 @@ logger = logging.getLogger(__name__)
 _leader_connection = None  # type: Optional[object]
 
 
+def wait_for_maintenance_leadership(lock_key: str) -> None:
+    """
+    Block until this process holds the advisory lock keyed by ``lock_key``.
+
+    Uses ``pg_advisory_lock`` so we only return once the lock is available and
+    bound to a dedicated connection that lives for the lifetime of the leader.
+    """
+    global _leader_connection
+
+    if _leader_connection is not None:
+        # Already leader in this process; nothing else to do.
+        return
+
+    conn = engine.raw_connection()
+    try:
+        # Keep the session alive without holding an open transaction.
+        conn.autocommit = True  # type: ignore[attr-defined]
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                'SELECT pg_advisory_lock(hashtextextended(%s, 77))',
+                [lock_key],
+            )
+            # ``pg_advisory_lock`` blocks until it acquires the lock; fetching the
+            # single row ensures the command is complete before we proceed.
+            cur.fetchone()
+        finally:
+            cur.close()
+        _leader_connection = conn
+        logger.info(f"Acquired maintenance leadership with key '{lock_key}'")
+    except Exception as e:
+        logger.error(f'Failed to wait for maintenance leadership: {e}')
+        try:
+            conn.close()
+        except Exception:
+            pass
+        raise
+
+
 def acquire_maintenance_leadership(lock_key: str) -> bool:
     """
     Try to acquire a session-level advisory lock keyed by the provided string.
@@ -36,22 +75,24 @@ def acquire_maintenance_leadership(lock_key: str) -> bool:
     # so we can keep it open and hold the advisory lock for the process lifetime.
     conn = engine.raw_connection()
     try:
-        cur = conn.cursor()
         # Use a stable hash for the key and a seed to avoid collisions with other app locks
-        cur.execute(
-            'SELECT pg_try_advisory_lock(hashtextextended(%s, 77))',
-            [lock_key],
-        )
-        locked = bool(cur.fetchone()[0])
+        conn.autocommit = True  # type: ignore[attr-defined]
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                'SELECT pg_try_advisory_lock(hashtextextended(%s, 77))',
+                [lock_key],
+            )
+            row = cur.fetchone()
+            locked = bool(row and row[0])
+        finally:
+            cur.close()
         if not locked:
             # Not leader; close the connection immediately
-            cur.close()
             conn.close()
             return False
 
-        # Keep both cursor and connection open; cursor can be closed, the lock is tied
-        # to the session/connection, not the cursor. Close the cursor for hygiene.
-        cur.close()
+        # Keep the connection open to hold the session-level advisory lock
         _leader_connection = conn
         logger.info(f"Acquired maintenance leadership with key '{lock_key}'")
         return True
