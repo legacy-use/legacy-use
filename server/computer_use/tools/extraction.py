@@ -6,7 +6,7 @@ from typing import Any, Dict, Hashable, Literal
 
 from anthropic.types.beta import BetaToolUnionParam
 from jsonschema import ValidationError
-from openapi_schema_validator import validate
+from openapi_schema_validator import OAS31Validator, validate
 
 from .base import BaseAnthropicTool, ToolResult
 
@@ -69,7 +69,7 @@ class ExtractionTool(BaseAnthropicTool):
             # validate the data adheres to the response schema; an empty schema (dict) results in no validation
             if self.response_schema:
                 try:
-                    validate(extraction_data, self.response_schema)
+                    validate(extraction_data, self.response_schema, cls=OAS31Validator)
                 except ValidationError as e:
                     logger.error(f'Extraction tool data is invalid: {e}')
                     return ToolResult(error=str(e.message))

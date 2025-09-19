@@ -45,8 +45,9 @@ from server.computer_use.utils import (
 from server.database.service import DatabaseService
 
 # Import the centralized health check function
+from server.models.base import APIDefinitionRuntime
 from server.utils.api_definitions import (
-    get_api_response_schema_by_version_id,
+    infer_schema_from_response_example,
 )
 from server.utils.docker_manager import check_target_container_health
 from server.utils.telemetry import (
@@ -78,6 +79,7 @@ async def sampling_loop(
     session_id: str,
     tenant_schema: str,
     job_data: dict[str, Any],
+    api_definition_runtime: APIDefinitionRuntime,
     # Remove job_id from here as it's now a primary parameter
     # job_id: Optional[str] = None,
 ) -> tuple[Any, list[dict[str, Any]]]:  # Return format remains the same
@@ -101,6 +103,9 @@ async def sampling_loop(
         api_key: API key to use
         only_n_most_recent_images: Only keep this many most recent images
         session_id: Session ID for the computer tool
+        tenant_schema: Tenant schema to use
+        job_data: Job data to use
+        api_definition_runtime: API definition runtime to use
 
     Returns:
         (result, exchanges): The final result and list of API exchanges
@@ -111,16 +116,15 @@ async def sampling_loop(
     # Create tools (no longer need database service)
     tools = []
     for ToolCls in tool_group.tools:
-        if ToolCls == CustomActionTool:
+        if isinstance(ToolCls, CustomActionTool):
             # get api_def specific custom actions
             custom_actions = db_tenant.get_custom_actions(
                 job_data['api_definition_version_id'],
             )
             tools.append(ToolCls(custom_actions, job_data['parameters']))
-        elif ToolCls == ExtractionTool:
-            response_schema = await get_api_response_schema_by_version_id(
-                job_data['api_definition_version_id'], db_tenant
-            )
+        elif isinstance(ToolCls, ExtractionTool):
+            response_example = api_definition_runtime.get_extraction_example()
+            response_schema = infer_schema_from_response_example(response_example)
             tools.append(ToolCls(response_schema))
         else:
             tools.append(ToolCls())

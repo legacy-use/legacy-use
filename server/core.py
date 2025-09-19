@@ -186,6 +186,7 @@ class APIGatewayCore:
                 tool_version=self.tool_version,
                 tenant_schema=self.tenant_schema,
                 job_data=job_data,
+                api_definition_runtime=api_def,
             )
             capture_ai_span(ai_trace_id=str(job_id), ai_span_name='sampling_loop end')
 

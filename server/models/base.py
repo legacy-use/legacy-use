@@ -61,13 +61,17 @@ class APIDefinitionRuntime:
         # Build the full prompt template with instructions
         self.full_prompt_template = self._build_full_prompt_template()
 
+    def get_extraction_example(self) -> dict[str, Any]:
+        """Get the final extraction schema."""
+        return {'name': self.name, 'result': self.response_example}
+
     # TODO: Once a chat function is implemented, split that prompt up. e.g. only give the cleanup prompt once the actual call was successful
     # TODO: Move the prompt template in to seperate file
     def _build_full_prompt_template(self) -> str:
         """Build the full prompt template with cleanup and response example instructions."""
         # Build the full prompt with standard instructions
 
-        prompt_full = f'''{self.prompt}
+        prompt_full = f"""{self.prompt}
 
 
 IMPORTANT INSTRUCTIONS FOR RETURNING RESULTS:
@@ -76,10 +80,7 @@ IMPORTANT INSTRUCTIONS FOR RETURNING RESULTS:
 1. When you've found the requested information, you MUST use the extraction tool to return the result. Use these parameters:
 
    ```
-   {{
-     "name": "{self.name}",
-     "result": {self.response_example}
-   }}
+   {self.get_extraction_example()}
    ```
 
 2. The API call will ONLY succeed if:
@@ -90,7 +91,7 @@ IMPORTANT INSTRUCTIONS FOR RETURNING RESULTS:
 3. DO NOT output the JSON directly in text - you must ONLY use the extraction tool.
 
 4. After you've completed the extraction, please perform these steps to return the system to its original state: {self.prompt_cleanup}
-'''
+"""
 
         return prompt_full
 
