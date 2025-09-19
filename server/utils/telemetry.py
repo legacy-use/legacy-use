@@ -14,6 +14,7 @@ from server.models.base import (
     TargetUpdate,
 )
 from server.settings import settings
+from server.utils.exceptions import TenantNotFoundError
 from server.utils.tenant_utils import get_tenant_from_request
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,12 @@ def get_tenant(request: Request | None) -> str:
     Get the tenant from the request headers.
     """
     if request is not None:
-        tenant = get_tenant_from_request(request).get('schema')
+        tenant = None
+        try:
+            tenant = get_tenant_from_request(request).get('schema')
+        except TenantNotFoundError:
+            pass
+
         if tenant:
             return tenant
 

@@ -29,6 +29,7 @@ import {
   Typography,
 } from '@mui/material';
 import posthog from 'posthog-js';
+import { applyTenantToPosthog } from '../services/telemetryService';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ProviderConfiguration } from '@/gen/endpoints';
@@ -157,6 +158,7 @@ const OnboardingWizard = ({ open, onClose, onComplete }) => {
 
       // identify the user
       posthog.identify(signupData.email, { email: signupData.email });
+      applyTenantToPosthog(posthog);
       posthog.capture('signup', {
         email: signupData.email,
         description: signupData.description,

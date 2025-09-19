@@ -6,6 +6,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import CloudApp from './cloud';
+import { applyTenantToPosthog } from './services/telemetryService';
 
 const isCloudDomain = window.location.host.startsWith('cloud');
 const Main = isCloudDomain ? CloudApp : App;
@@ -17,6 +18,9 @@ const options: Partial<PostHogConfig> = {
   disable_session_recording: true,
   person_profiles: 'identified_only',
   mask_all_text: true,
+  loaded: client => {
+    applyTenantToPosthog(client);
+  },
 };
 
 const apiKey =
