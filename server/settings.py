@@ -83,6 +83,9 @@ class Settings(BaseSettings):
 
     API_KEY_NAME: str = 'X-API-Key'
 
+    # API key that allows access to endpoints that are not tenant-specific, e.g. creating new tenants
+    ADMIN_API_KEY: str = 'admin-api-key'
+
     # Maximum number of tokens (input + output) allowed per job
     TOKEN_LIMIT: int = 500000
 

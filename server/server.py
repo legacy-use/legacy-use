@@ -25,6 +25,7 @@ from server.routes import (
 )
 from server.routes.sessions import session_router, websocket_router
 from server.routes.settings import settings_router
+from server.routes.tenants import tenants_router
 from server.settings_tenant import get_tenant_setting
 from server.utils.api_prefix import api_prefix
 from server.utils.auth import get_api_key
@@ -148,9 +149,21 @@ async def auth_middleware(request: Request, call_next):
         whitelist_patterns.append(rf'^{api_prefix}/specs(/.*)?$')
         whitelist_patterns.append(rf'^{api_prefix}/openapi.json$')
 
+    # Admin API patterns
+    admin_api_patterns = [
+        rf'^{api_prefix}/tenants(/.*)?$',
+    ]
+
     # Check if request path matches any whitelist pattern
     for pattern in whitelist_patterns:
         if re.match(pattern, request.url.path):
+            return await call_next(request)
+
+    # Check if request path matches any admin API patterns
+    for pattern in admin_api_patterns:
+        if re.match(pattern, request.url.path):
+            # TODO: Check for admin API key
+            # TODO: Is this the right place to handle this. Should there maybe be a separate middleware for admin API?
             return await call_next(request)
 
     try:
@@ -303,6 +316,9 @@ app.include_router(tools_router, prefix=api_prefix)
 
 # Include monitoring router
 app.include_router(health_router, prefix=api_prefix)
+
+# Include tenants router
+app.include_router(tenants_router, prefix=api_prefix)
 
 
 # Root endpoint

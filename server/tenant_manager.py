@@ -18,6 +18,7 @@ from server.database.multi_tenancy import (
     get_tenant_by_host,
     get_tenant_by_schema,
     tenant_create,
+    tenant_delete,
 )
 from server.database.service import DatabaseService
 from server.settings_tenant import set_tenant_setting
@@ -125,6 +126,16 @@ def create_tenant(name: str, schema: str, host: str) -> bool:
 
     except Exception as e:
         print(f'❌ Error creating tenant: {str(e)}')
+        return False
+
+
+def delete_tenant(schema: str) -> bool:
+    """Delete a tenant."""
+    try:
+        tenant_delete(schema)
+        return True
+    except Exception as e:
+        print(f'❌ Error deleting tenant: {str(e)}')
         return False
 
 
