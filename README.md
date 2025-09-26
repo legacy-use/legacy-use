@@ -41,11 +41,17 @@
   - [Get Docker](https://www.docker.com/get-started/) for your platform
   - **Note**: Make sure Docker is running before proceeding with setup
 
-#### API Keys
+#### AI Provider API Key
 
-- **Anthropic API Key** - Required for AI model access (Claude)
-  - [Get your API key](https://console.anthropic.com/) from Anthropic Console
-  - **Note**: You'll need credits in your Anthropic account for API usage
+Choose **one** of the following AI providers:
+
+- **Anthropic Claude** (Recommended) - [Get API key](https://console.anthropic.com/)
+- **OpenAI GPT** - [Get API key](https://platform.openai.com/api-keys)
+- **Google Generative AI** - [Get API key](https://makersuite.google.com/app/apikey)
+- **AWS Bedrock** (Claude via AWS) - Use your AWS credentials
+- **Google Vertex AI** (Claude via Google Cloud) - Use your GCP project
+
+**Note**: You only need **one** provider configured. The system will work with whichever one you set up.
 
 #### For Development Only
 
@@ -61,15 +67,14 @@ cd legacy-use
 
 # 2. Create and configure environment file
 cp .env.template .env
-# Edit .env file with your favorite editor and add:
-# ANTHROPIC_API_KEY=sk-your-anthropic-key-here
-# (Optional) Add any configuration options from above
+# Edit .env file and configure ONE AI provider.
 
 # 3. Build docker containers
 make docker-build
 
 # 4. Start all services
 make docker-dev
+# there are targets for detached startup, but for the first startup don't detach!
 ```
 
 **🔑 Automatic API Key Generation**
@@ -81,7 +86,8 @@ During the initial database migration, the system will automatically:
 - Store the key securely in the database
 
 You'll see output like this:
-```
+
+```text
 ============================================================
 🚀 LEGACY-USE SETUP COMPLETE
 ============================================================
@@ -102,9 +108,10 @@ You'll see output like this:
 Once the setup completes:
 
 1. **Check the console output** - You should see the setup credentials displayed
-2. **Frontend**: Open <http://localhost:8077> - you should see the legacy-use dashboard
-3. **API Documentation**: Visit <http://localhost:8088/redoc> - to explore the REST API
-4. **Configure AI Provider**: Go to Settings and configure your Anthropic API key
+2. **Frontend**: Open <http://localhost:5173> - you should see the legacy-use dashboard
+3. **API Documentation**: Visit <http://localhost:8088/api/redoc> or <http://localhost:8088/api/docs> - to explore the REST API
+4. **OpenAPI Definition**: Visit <http://localhost:8088/api/openapi.json>
+5. **Configure AI Provider**: Your API key from .env will be used automatically, or you can configure additional providers in Settings
 
 🎉 **You're all set!** The complete setup usually takes 2-5 minutes depending on your internet connection.
 
@@ -113,17 +120,32 @@ Once the setup completes:
 **Docker not starting?**
 
 - Ensure Docker Desktop is running
-- Check if ports 8077 and 8088 are available: `lsof -i :8077` and `lsof -i :8088`
+- Check if ports 5173 and 8088 are available: `lsof -i :5173` and `lsof -i :8088`
 
 **Build failing?**
 
-- Ensure you have sufficient disk space (~2GB)
-- Try: `docker system prune` to clean up space, then rebuild
+- Ensure you have sufficient disk space (~2GB for all images)
+- Try: `docker system prune` to clean up space, then rebuild with `make docker-build`
+- If individual images fail, try building them separately:
+  
+  ```bash
+  make docker-build-backend    # Build just the backend
+  make docker-build-frontend   # Build just the frontend
+  make docker-build-target     # Build just the target environment
+  ```
 
 **Can't access the UI?**
 
 - Wait 30-60 seconds for all services to fully start
-- Check logs: `docker logs legacy-use-mgmt`
+- Check logs: `docker logs legacy-use-frontend` and `docker logs legacy-use-backend`
+- Ensure you're accessing the correct URL: http://localhost:5173
+- Verify containers are running: `docker ps`
+
+**Development changes not reflecting?**
+
+- Make sure you're using `make docker-dev` (not `make docker-prod`)
+- Development mode includes volume mounts for hot-reloading
+- If changes still don't appear, try: `make docker-build`
 
 ---
 
@@ -172,7 +194,7 @@ For optimal performance, configure your VM's display resolution:
 
 ### Step 5: Add Target in Legacy-Use
 
-1. Open the legacy-use web interface: `http://localhost:8077`
+1. Open the legacy-use web interface: `http://localhost:5173`
 2. Navigate to **Targets** → **New Target**
 3. Fill in the details:
    ```
@@ -242,9 +264,32 @@ VITE_PUBLIC_DISABLE_TRACKING=true
 
 ## Optional Configuration
 
-- `VITE_ALLOW_OPENVPN`: Set to `true` to enable OpenVPN target creation. **⚠️ Security Warning**: OpenVPN requires elevated system privileges (NET_ADMIN capabilities) which may pose security risks. Only enable this if you understand the security implications and trust your target environments
+### AI Provider Configuration (Choose ONE)
+- `ANTHROPIC_API_KEY`: Anthropic Claude API key (recommended)
+- `OPENAI_API_KEY`: OpenAI GPT API key (alternative)
+- `GOOGLE_GENAI_API_KEY`: Google Generative AI API key (alternative)
 
-- `SHOW_DOCS`: Set to `true` to make backend endpoints documentation available via `/redoc`
+### AWS Bedrock Configuration
+- `AWS_ACCESS_KEY_ID`: AWS access key for Bedrock
+- `AWS_SECRET_ACCESS_KEY`: AWS secret key for Bedrock
+- `AWS_REGION`: AWS region (default: us-east-1)
+
+### Google Vertex AI Configuration
+- `VERTEX_PROJECT_ID`: Google Cloud project ID
+- `VERTEX_REGION`: Vertex AI region (default: us-central1)
+
+### Security & Features
+- `VITE_ALLOW_OPENVPN`: Set to `true` to enable OpenVPN target creation. **⚠️ Security Warning**: OpenVPN requires elevated system privileges (NET_ADMIN capabilities) which may pose security risks. Only enable this if you understand the security implications and trust your target environments
+- `SHOW_DOCS`: make backend endpoints documentation available via `/redoc` (default: true)
+- `HIDE_INTERNAL_API_ENDPOINTS_IN_DOC`: internal endpoints in API docs (default: true)
+
+### Monitoring & Analytics
+- `VITE_SENTRY_DSN_UI`: Sentry DSN for frontend error tracking
+- `SENTRY_DSN_API`: Sentry DSN for backend error tracking
+- `VITE_PUBLIC_DISABLE_TRACKING`: Set to `true` to disable PostHog analytics (default: false)
+
+### Database
+- `DATABASE_URL`: PostgreSQL connection string (default configured for Docker setup)
 
 ## 🤝 Contributing
 
