@@ -195,3 +195,7 @@ terraform.tfstate.backup
 # Generated OpenAPI schema
 openapi.json
 openapi.yaml
+
+# Ignore other AI Agents
+.roo/
+.kilocode/
