@@ -29,7 +29,7 @@
     "ajv-keywords": "5.1.0",
     "axios": "^1.12.2",
     "material-ui-popup-state": "^5.3.6",
-    "posthog-js": "^1.275.0",
+    "posthog-js": "^1.275.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-json-pretty": "^2.2.0",
@@ -39,11 +39,11 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.2.5",
+    "@biomejs/biome": "^2.2.6",
     "@swc/plugin-emotion": "^11.1.0",
-    "@types/node": "^24.7.1",
+    "@types/node": "^24.7.2",
     "@types/react": "^19.2.2",
-    "@types/react-dom": "^19.2.1",
+    "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react-swc": "^4.1.0",
     "ajv": "^8.17.1",
     "orval": "^7.13.2",
