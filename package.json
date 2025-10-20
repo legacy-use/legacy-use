@@ -20,7 +20,7 @@
     "format:fix": "biome format --write"
   },
   "dependencies": {
-    "@clerk/clerk-react": "^5.53.0",
+    "@clerk/clerk-react": "^5.53.2",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.4",
@@ -29,7 +29,7 @@
     "ajv-keywords": "5.1.0",
     "axios": "^1.12.2",
     "material-ui-popup-state": "^5.3.6",
-    "posthog-js": "^1.276.0",
+    "posthog-js": "^1.277.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-json-pretty": "^2.2.0",
@@ -41,14 +41,14 @@
   "devDependencies": {
     "@biomejs/biome": "^2.2.6",
     "@swc/plugin-emotion": "^11.1.0",
-    "@types/node": "^24.8.0",
+    "@types/node": "^24.8.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react-swc": "^4.1.0",
     "ajv": "^8.17.1",
-    "orval": "^7.13.2",
+    "orval": "^7.14.0",
     "typescript": "^5.9.3",
-    "vite": "^7.1.10"
+    "vite": "^7.1.11"
   },
   "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748"
 }
