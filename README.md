@@ -102,9 +102,9 @@ You'll see output like this:
 Once the setup completes:
 
 1. **Check the console output** - You should see the setup credentials displayed
-2. **Frontend**: Open <http://localhost:8077> - you should see the legacy-use dashboard
-3. **API Documentation**: Visit <http://localhost:8088/redoc> - to explore the REST API
-4. **Configure AI Provider**: Go to Settings and configure your Anthropic API key
+2. **Frontend**: Open <http://tenant-default.local.legacy-use.com:5173> - you should see the legacy-use dashboard
+3. **API Documentation**: Visit <http://tenant-default.local.legacy-use.com:8088/redoc> - to explore the REST API
+4. **Configure AI Provider**: Go to Settings (http://tenant-default.local.legacy-use.com:5173/settings) and configure your Anthropic API key
 
 🎉 **You're all set!** The complete setup usually takes 2-5 minutes depending on your internet connection.
 
