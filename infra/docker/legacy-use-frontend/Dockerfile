@@ -1,4 +1,4 @@
-FROM node:alpine
+FROM node:20-alpine
 
 ENV DEBIAN_FRONTEND=noninteractive
 
