@@ -26,7 +26,15 @@ server-tests:
 # Docker Compose Commands
 docker-dev: ensure-env
 	@echo "🚀 Starting legacy-use in DEVELOPMENT mode with hot-reloading..."
-	docker-compose -f docker-compose.yml -f docker-compose.dev-override.yml up
+	docker compose -f docker-compose.yml -f docker-compose.dev-override.yml up
+
+docker-dev-detached: ensure-env
+	@echo "🚀 Starting legacy-use DETACHED in DEVELOPMENT mode with hot-reloading..."
+	docker compose -f docker-compose.yml -f docker-compose.dev-override.yml up -d
+
+docker-dev-down:
+	@echo "🛑 Stopping DETACHED development legacy-use ..."
+	docker compose -f docker-compose.yml -f docker-compose.dev-override.yml down $(if $(CLEAN),--remove-orphans -v,)
 
 docker-prod: ensure-env
 	@echo "🚀 Starting legacy-use in PRODUCTION mode..."
