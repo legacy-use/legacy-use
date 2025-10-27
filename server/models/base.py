@@ -137,6 +137,7 @@ class TargetType(str, Enum):
     RDP = 'rdp'
     VNC = 'vnc'
     TEAMVIEWER = 'teamviewer'
+    RUSTDESK = 'rustdesk'
     VNC_TAILSCALE = 'vnc+tailscale'
     VNC_WIREGUARD = 'vnc+wireguard'
     RDP_WIREGUARD = 'rdp_wireguard'
