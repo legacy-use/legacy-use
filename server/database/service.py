@@ -648,14 +648,19 @@ class DatabaseService:
                 return [self._to_dict(log) for log in logs]
 
     def prune_old_logs(self, days=7):
-        """Delete logs older than the specified number of days."""
+        """Delete job logs and job messages older than the specified number of days."""
         with self.Session() as session:
             cutoff_date = datetime.now() - timedelta(days=days)
-            deleted_count = (
+            deleted_logs = (
                 session.query(JobLog).filter(JobLog.timestamp < cutoff_date).delete()
             )
+            deleted_messages = (
+                session.query(JobMessage)
+                .filter(JobMessage.created_at < cutoff_date)
+                .delete()
+            )
             session.commit()
-            return deleted_count
+            return deleted_logs + deleted_messages
 
     # API Definition Services
     async def get_api_definitions(self, include_archived=False):

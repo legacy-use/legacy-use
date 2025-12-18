@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from server.database.models import JobLog
+from server.database.models import JobLog, JobMessage
 from server.database.multi_tenancy import with_db
 from server.settings import settings
 from server.utils.tenant_utils import get_active_tenants
@@ -17,27 +17,37 @@ logger = logging.getLogger(__name__)
 
 def prune_old_logs_for_tenant(tenant_schema: str, days: int = 7) -> int:
     """
-    Prune old logs for a specific tenant using tenant-aware database connection.
+    Prune old logs and job messages for a specific tenant using tenant-aware database connection.
 
     Args:
         tenant_schema: The tenant schema to prune logs for
         days: Number of days to keep logs (default: 7)
 
     Returns:
-        Number of deleted log records
+        Total number of deleted records (logs + messages)
     """
     with with_db(tenant_schema) as db_tenant:
         cutoff_date = datetime.now() - timedelta(days=days)
-        deleted_count = (
+        deleted_logs = (
             db_tenant.query(JobLog).filter(JobLog.timestamp < cutoff_date).delete()
         )
+        deleted_messages = (
+            db_tenant.query(JobMessage)
+            .filter(JobMessage.created_at < cutoff_date)
+            .delete()
+        )
         db_tenant.commit()
-        return deleted_count
+        if deleted_logs or deleted_messages:
+            logger.info(
+                f'Pruned {deleted_logs} job logs and {deleted_messages} job messages '
+                f'for tenant {tenant_schema} older than {days} days'
+            )
+        return deleted_logs + deleted_messages
 
 
 async def prune_old_logs_all_tenants(days: Optional[int] = None) -> dict:
     """
-    Prune old logs for all active tenants.
+    Prune old logs and job messages for all active tenants.
 
     Args:
         days: Number of days to keep logs (defaults to settings.LOG_RETENTION_DAYS)
@@ -59,19 +69,13 @@ async def prune_old_logs_all_tenants(days: Optional[int] = None) -> dict:
             deleted_count = prune_old_logs_for_tenant(tenant['schema'], days)
             results[tenant['schema']] = deleted_count
             total_deleted += deleted_count
-
-            if deleted_count > 0:
-                logger.info(
-                    f'Pruned {deleted_count} logs for tenant {tenant["name"]} '
-                    f'({tenant["schema"]}) older than {days} days'
-                )
         except Exception as e:
             logger.error(
-                f'Error pruning logs for tenant {tenant["name"]} ({tenant["schema"]}): {str(e)}'
+                f'Error pruning logs/messages for tenant {tenant["name"]} ({tenant["schema"]}): {str(e)}'
             )
             results[tenant['schema']] = 0
 
-    logger.info(f'Total logs pruned across all tenants: {total_deleted}')
+    logger.info(f'Total log/message records pruned across all tenants: {total_deleted}')
     return results
 
 
