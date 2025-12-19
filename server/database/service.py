@@ -647,7 +647,7 @@ class DatabaseService:
                 )
                 return [self._to_dict(log) for log in logs]
 
-    def prune_old_logs(self, days=7):
+    def prune_old_logs(self, days=2):
         """Delete job logs and job messages older than the specified number of days."""
         with self.Session() as session:
             cutoff_date = datetime.now() - timedelta(days=days)
