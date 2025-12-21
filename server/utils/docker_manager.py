@@ -16,9 +16,9 @@ docker = docker_sdk.from_env()
 logger = logging.getLogger(__name__)
 
 
-async def check_target_container_health(container_ip: str) -> dict:
+async def check_target_container_health_once(container_ip: str) -> dict:
     """
-    Check the /health endpoint of a target container.
+    Perform a single /health check against a target container.
 
     Args:
         container_ip: The IP address of the container.
@@ -38,10 +38,10 @@ async def check_target_container_health(container_ip: str) -> dict:
             if health_response.status_code == 200:
                 logger.info(f'Health check passed for target {container_ip}')
                 return {'healthy': True, 'reason': 'Health check successful.'}
-            else:
-                reason = f'Target container at {container_ip} failed health check. Status: {health_response.status_code}'
-                logger.warning(f'{reason}')
-                return {'healthy': False, 'reason': reason}
+
+            reason = f'Target container at {container_ip} failed health check. Status: {health_response.status_code}'
+            logger.warning(f'{reason}')
+            return {'healthy': False, 'reason': reason}
 
     except httpx.TimeoutException:
         reason = f'Target container at {container_ip} failed health check: Timeout'
@@ -57,6 +57,25 @@ async def check_target_container_health(container_ip: str) -> dict:
         reason = f'Unexpected error during health check for {container_ip}: {str(e)}'
         logger.error(f'{reason}')
         return {'healthy': False, 'reason': reason}
+
+
+async def check_target_container_health(container_ip: str) -> dict:
+    """
+    Check the /health endpoint of a target container with a single retry.
+    """
+    attempts = 2
+
+    for attempt in range(attempts):
+        result = await check_target_container_health_once(container_ip)
+
+        if result.get('healthy'):
+            return result
+
+        if attempt < attempts - 1:
+            logger.info(f'Retrying health check for target {container_ip}')
+            continue
+
+        return result
 
 
 def get_container_ip(container_id: str) -> Optional[str]:
