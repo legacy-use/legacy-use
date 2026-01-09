@@ -18,6 +18,8 @@ class APIProvider(StrEnum):
     LEGACYUSE_PROXY = 'legacyuse'
     OPENAI = 'openai'
     OPENCUA = 'opencua'
+    GEMINI = 'gemini'  # Google AI Studio
+    GEMINI_VERTEX = 'gemini_vertex'  # Vertex AI with Gemini
 
 
 PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
@@ -31,6 +33,8 @@ PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.LEGACYUSE_PROXY: 'legacy-use-sonnet-4',  # model selection is handled server side
     APIProvider.OPENAI: 'gpt-5',
     APIProvider.OPENCUA: 'opencua-7b-1755605386',
+    APIProvider.GEMINI: 'gemini-3-pro',
+    APIProvider.GEMINI_VERTEX: 'gemini-3-pro',
 }
 
 

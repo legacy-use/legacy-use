@@ -10,6 +10,7 @@ from typing import Dict, Optional, Type
 from server.computer_use.config import APIProvider
 from server.computer_use.handlers.anthropic.handler import AnthropicHandler
 from server.computer_use.handlers.base import BaseProviderHandler, ProviderHandler
+from server.computer_use.handlers.gemini.handler import GeminiHandler
 from server.computer_use.handlers.openai.handler import OpenAIHandler
 from server.computer_use.handlers.opencua.handler import OpenCuaHandler
 
@@ -21,6 +22,8 @@ HANDLER_REGISTRY: Dict[APIProvider, Type[BaseProviderHandler]] = {
     APIProvider.LEGACYUSE_PROXY: AnthropicHandler,
     APIProvider.OPENAI: OpenAIHandler,
     APIProvider.OPENCUA: OpenCuaHandler,
+    APIProvider.GEMINI: GeminiHandler,
+    APIProvider.GEMINI_VERTEX: GeminiHandler,
 }
 
 

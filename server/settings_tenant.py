@@ -23,6 +23,10 @@ TENANT_SETTINGS_DEFAULTS = {
     'VERTEX_PROJECT_ID': None,
     'VERTEX_REGION': None,
     'LEGACYUSE_PROXY_API_KEY': None,
+    # Google Gemini settings
+    'GOOGLE_API_KEY': None,  # Google AI Studio API key
+    'GOOGLE_CLOUD_PROJECT': None,  # Vertex AI project ID
+    'GOOGLE_CLOUD_LOCATION': None,  # Vertex AI region (default: us-central1)
 }
 
 

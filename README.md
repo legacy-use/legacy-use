@@ -41,11 +41,18 @@
   - [Get Docker](https://www.docker.com/get-started/) for your platform
   - **Note**: Make sure Docker is running before proceeding with setup
 
-#### API Keys
+#### API Keys (choose one provider)
 
-- **Anthropic API Key** - Required for AI model access (Claude)
+- **Anthropic API Key** - For Claude models (default)
   - [Get your API key](https://console.anthropic.com/) from Anthropic Console
   - **Note**: You'll need credits in your Anthropic account for API usage
+
+- **OpenAI API Key** - For GPT models
+  - [Get your API key](https://platform.openai.com/) from OpenAI Platform
+
+- **Google API Key** - For Gemini 3 Pro models
+  - [Get your API key](https://aistudio.google.com/) from Google AI Studio
+  - Or use Vertex AI with GCP credentials for enterprise deployments
 
 #### For Development Only
 
@@ -237,6 +244,21 @@ VITE_PUBLIC_DISABLE_TRACKING=true
 
 **Full transparency**: See exactly what we track in the code:
 `app/main.tsx`, `app/services/telemetryService.tsx`, `server/server.py`, `server/utils/telemetry.py`
+
+---
+
+## 🤖 Supported AI Providers
+
+| Provider | Models | Status | Configuration |
+|----------|--------|--------|---------------|
+| **Anthropic** | Claude Sonnet 4, Claude Opus 4.5 | ✅ Default | `ANTHROPIC_API_KEY` |
+| **AWS Bedrock** | Claude models via AWS | ✅ | AWS credentials |
+| **Google Vertex AI** | Claude models via GCP | ✅ | GCP project credentials |
+| **OpenAI** | GPT-5 | ✅ | `OPENAI_API_KEY` |
+| **Google AI Studio** | Gemini 3 Pro | ✅ New | `GOOGLE_API_KEY` |
+| **Google Vertex AI (Gemini)** | Gemini 3 Pro | ✅ New | GCP project + ADC |
+
+Configure your preferred provider in **Settings** after initial setup, or set tenant-specific API keys via the database.
 
 ---
 
