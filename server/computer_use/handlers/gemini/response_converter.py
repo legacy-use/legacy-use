@@ -4,7 +4,8 @@ Gemini response conversion utilities.
 This module contains utilities for converting Gemini responses to Anthropic format.
 """
 
-from typing import Any
+import base64
+from typing import Any, Optional, Union
 
 from anthropic.types.beta import (
     BetaContentBlockParam,
@@ -139,8 +140,20 @@ def process_extraction_tool(tool_input: dict) -> dict:
     return tool_input
 
 
+def _encode_thought_signature(
+    thought_signature: Optional[Union[str, bytes]],
+) -> Optional[str]:
+    if thought_signature is None:
+        return None
+    if isinstance(thought_signature, bytes):
+        return base64.b64encode(thought_signature).decode('ascii')
+    return str(thought_signature)
+
+
 def convert_function_call(
-    function_call: dict[str, Any], call_id: str
+    function_call: dict[str, Any],
+    call_id: str,
+    thought_signature: Optional[Union[str, bytes]] = None,
 ) -> BetaContentBlockParam:
     """
     Convert a single Gemini function call to Anthropic format.
@@ -192,12 +205,16 @@ def convert_function_call(
             tool_input = process_extraction_tool(tool_input)
 
         # Create the tool use block
-        return BetaToolUseBlockParam(
+        block: BetaToolUseBlockParam = BetaToolUseBlockParam(
             type='tool_use',
             id=call_id,
             name=tool_name,
             input=tool_input,
         )
+        encoded_signature = _encode_thought_signature(thought_signature)
+        if encoded_signature:
+            block['thought_signature'] = encoded_signature
+        return block
 
     except Exception as e:
         logger.error(f'Failed to process function call: {function_call}, error: {e}')
@@ -286,7 +303,10 @@ def convert_gemini_to_anthropic_response(
 
             logger.debug(f'Gemini function call: {fc_dict["name"]} (id: {call_id})')
 
-            block = convert_function_call(fc_dict, call_id)
+            thought_signature = getattr(part, 'thought_signature', None)
+            block = convert_function_call(
+                fc_dict, call_id, thought_signature=thought_signature
+            )
             content_blocks.append(block)
 
     # Determine stop reason

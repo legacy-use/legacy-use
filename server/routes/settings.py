@@ -153,6 +153,32 @@ async def get_providers(request: Request, db_tenant=Depends(get_tenant_db)):
                 'region': get_tenant_setting(tenant_schema, 'AWS_REGION'),
             },
         },
+        APIProvider.GEMINI: {
+            'name': 'Google AI Studio',
+            'description': 'Gemini models via Google AI Studio',
+            'available': bool(get_tenant_setting(tenant_schema, 'GOOGLE_API_KEY')),
+            'credentials': {
+                'api_key': obscure_api_key(
+                    get_tenant_setting(tenant_schema, 'GOOGLE_API_KEY')
+                ),
+            },
+        },
+        APIProvider.GEMINI_VERTEX: {
+            'name': 'Google Vertex AI (Gemini)',
+            'description': 'Gemini models via Google Vertex AI',
+            'available': all(
+                [
+                    get_tenant_setting(tenant_schema, 'GOOGLE_CLOUD_PROJECT'),
+                    get_tenant_setting(tenant_schema, 'GOOGLE_CLOUD_LOCATION'),
+                ]
+            ),
+            'credentials': {
+                'project_id': obscure_api_key(
+                    get_tenant_setting(tenant_schema, 'GOOGLE_CLOUD_PROJECT')
+                ),
+                'location': get_tenant_setting(tenant_schema, 'GOOGLE_CLOUD_LOCATION'),
+            },
+        },
     }
 
     # Build provider list
@@ -272,6 +298,34 @@ async def update_provider_settings(
             request.credentials['secret_access_key'],
         )
         set_tenant_setting(tenant_schema, 'AWS_REGION', request.credentials['region'])
+
+    elif provider_enum == APIProvider.GEMINI:
+        api_key = request.credentials.get('api_key', '')
+        if not isinstance(api_key, str) or not api_key.strip():
+            raise HTTPException(
+                status_code=400,
+                detail='API key is required for Google AI Studio provider',
+            )
+        set_tenant_setting(tenant_schema, 'GOOGLE_API_KEY', api_key.strip())
+
+    elif provider_enum == APIProvider.GEMINI_VERTEX:
+        required_fields = ['project_id', 'location']
+        for field in required_fields:
+            if field not in request.credentials:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f'{field} is required for Google Vertex AI (Gemini) provider',
+                )
+        set_tenant_setting(
+            tenant_schema,
+            'GOOGLE_CLOUD_PROJECT',
+            request.credentials['project_id'],
+        )
+        set_tenant_setting(
+            tenant_schema,
+            'GOOGLE_CLOUD_LOCATION',
+            request.credentials['location'],
+        )
 
     # Set as active provider
     set_tenant_setting(tenant_schema, 'API_PROVIDER', provider_enum.value)

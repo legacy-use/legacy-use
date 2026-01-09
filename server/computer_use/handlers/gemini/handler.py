@@ -7,7 +7,9 @@ and the Anthropic format used for DB storage.
 Supports both Google AI Studio (direct API) and Vertex AI endpoints.
 """
 
-from typing import Any, Optional
+import base64
+import binascii
+from typing import Any, Optional, Union
 
 import httpx
 import instructor
@@ -49,7 +51,7 @@ class GeminiHandler(BaseProviderHandler):
 
         Args:
             provider: The specific Gemini provider variant (GEMINI or GEMINI_VERTEX)
-            model: Model identifier (e.g., 'gemini-3-pro')
+            model: Model identifier (e.g., 'gemini-3-pro-preview')
             tenant_schema: Tenant schema for settings lookup
             only_n_most_recent_images: Number of recent images to keep
             max_retries: Maximum number of retries for API calls
@@ -63,6 +65,21 @@ class GeminiHandler(BaseProviderHandler):
         )
         self.provider = provider
         self.model = model
+        self._genai_api_key: Optional[str] = None
+        self._vertex_project: Optional[str] = None
+        self._vertex_location: Optional[str] = None
+
+    def _resolve_ai_studio_api_key(self, api_key: str) -> str:
+        tenant_key = self.tenant_setting('GOOGLE_API_KEY')
+        settings_key = getattr(settings, 'GOOGLE_GENAI_API_KEY', None)
+        final_api_key = tenant_key or api_key or settings_key
+        if not final_api_key:
+            raise ValueError(
+                'Google API key is required. Please provide either '
+                'GOOGLE_API_KEY tenant setting, GOOGLE_GENAI_API_KEY environment '
+                'variable, or api_key parameter.'
+            )
+        return final_api_key
 
     async def initialize_client(
         self, api_key: str, **kwargs
@@ -70,7 +87,7 @@ class GeminiHandler(BaseProviderHandler):
         """
         Initialize Gemini client using instructor.
 
-        For GEMINI: Uses Google AI Studio with GOOGLE_API_KEY
+        For GEMINI: Uses Google AI Studio with GOOGLE_API_KEY or GOOGLE_GENAI_API_KEY
         For GEMINI_VERTEX: Uses Vertex AI with GCP credentials (ADC)
         """
         if self.provider == APIProvider.GEMINI_VERTEX:
@@ -82,6 +99,9 @@ class GeminiHandler(BaseProviderHandler):
             location = self.tenant_setting('GOOGLE_CLOUD_LOCATION') or getattr(
                 settings, 'GOOGLE_CLOUD_LOCATION', 'us-central1'
             )
+            self._vertex_project = project
+            self._vertex_location = location
+            self._genai_api_key = None
 
             logger.info(
                 f'Initializing Gemini Vertex AI client - '
@@ -96,26 +116,18 @@ class GeminiHandler(BaseProviderHandler):
             )
         else:
             # Google AI Studio - use API key
-            tenant_key = self.tenant_setting('GOOGLE_API_KEY')
-            final_api_key = tenant_key or api_key
-
-            if not final_api_key:
-                raise ValueError(
-                    'Google API key is required. Please provide either '
-                    'GOOGLE_API_KEY tenant setting or api_key parameter.'
-                )
+            final_api_key = self._resolve_ai_studio_api_key(api_key)
+            self._genai_api_key = final_api_key
+            self._vertex_project = None
+            self._vertex_location = None
 
             logger.info('Initializing Gemini AI Studio client')
-
-            # Configure the genai library with the API key
-            import google.generativeai as genai
-
-            genai.configure(api_key=final_api_key)
 
             # Use instructor's from_provider for consistent interface
             client = instructor.from_provider(
                 f'google/{self.model}',
                 async_client=True,
+                api_key=final_api_key,
             )
 
         return client
@@ -143,6 +155,26 @@ class GeminiHandler(BaseProviderHandler):
         tools = internal_specs_to_gemini_functions(list(tool_collection.tools))
         logger.debug(f'Gemini tools after conversion: {[t.get("name") for t in tools]}')
         return tools
+
+    def _normalize_thought_signature(self, value: Any) -> Optional[Union[str, bytes]]:
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            return value
+        if isinstance(value, str):
+            if value in {
+                'context_engineering_is_the_way_to_go',
+                'skip_thought_signature_validator',
+            }:
+                return value
+            try:
+                decoded = base64.b64decode(value, validate=True)
+                if base64.b64encode(decoded).decode('ascii') == value:
+                    return decoded
+            except (binascii.Error, ValueError):
+                return value
+            return value
+        return None
 
     async def make_ai_request(
         self,
@@ -193,22 +225,51 @@ class GeminiHandler(BaseProviderHandler):
                     parts.append(types.Part.from_text(text=part_data['text']))
                 elif 'inline_data' in part_data:
                     inline = part_data['inline_data']
+                    data = inline.get('data', b'')
+                    if isinstance(data, str):
+                        if 'base64,' in data:
+                            data = data.split('base64,', 1)[-1]
+                        try:
+                            data_bytes = base64.b64decode(data, validate=False)
+                        except (binascii.Error, ValueError):
+                            logger.warning(
+                                'Gemini inline_data is not valid base64; sending raw bytes'
+                            )
+                            data_bytes = data.encode('utf-8')
+                    else:
+                        data_bytes = data
                     parts.append(
                         types.Part.from_bytes(
-                            data=inline.get('data', '').encode('utf-8')
-                            if isinstance(inline.get('data'), str)
-                            else inline.get('data', b''),
+                            data=data_bytes,
                             mime_type=inline.get('mime_type', 'image/png'),
                         )
                     )
                 elif 'function_call' in part_data:
                     fc = part_data['function_call']
-                    parts.append(
-                        types.Part.from_function_call(
-                            name=fc.get('name', ''),
-                            args=fc.get('args', {}),
-                        )
+                    part = types.Part.from_function_call(
+                        name=fc.get('name', ''),
+                        args=fc.get('args', {}),
                     )
+                    thought_signature = self._normalize_thought_signature(
+                        part_data.get('thought_signature')
+                    )
+                    if thought_signature is not None:
+                        try:
+                            part.thought_signature = thought_signature
+                        except Exception:
+                            try:
+                                part = types.Part(
+                                    function_call=types.FunctionCall(
+                                        name=fc.get('name', ''),
+                                        args=fc.get('args', {}),
+                                    ),
+                                    thought_signature=thought_signature,
+                                )
+                            except Exception:
+                                logger.warning(
+                                    'Unable to attach thought_signature to function_call part'
+                                )
+                    parts.append(part)
                 elif 'function_response' in part_data:
                     fr = part_data['function_response']
                     parts.append(
@@ -226,7 +287,15 @@ class GeminiHandler(BaseProviderHandler):
 
         # Create client and make request
         # Note: instructor wraps the client, so we need to access the underlying client
-        genai_client = genai.Client()
+        if self.provider == APIProvider.GEMINI_VERTEX:
+            genai_client = genai.Client(
+                vertexai=True,
+                project=self._vertex_project,
+                location=self._vertex_location,
+            )
+        else:
+            api_key = self._genai_api_key or self._resolve_ai_studio_api_key('')
+            genai_client = genai.Client(api_key=api_key)
 
         response = await genai_client.aio.models.generate_content(
             model=model,

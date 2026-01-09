@@ -73,6 +73,7 @@ def _spec_to_gemini_function(spec: dict[str, Any]) -> dict[str, Any]:
     name = str(spec.get('name') or '')
     description = str(spec.get('description') or f'Tool: {name}')
     parameters = spec.get('input_schema') or {'type': 'object', 'properties': {}}
+    _coerce_enum_types(parameters)
 
     return {
         'name': name,
@@ -106,8 +107,21 @@ def expand_computer_to_gemini_functions(
                 },
             }
         )
+        _coerce_enum_types(funcs[-1]['parameters'])
 
     return funcs
+
+
+def _coerce_enum_types(schema: Any) -> None:
+    """Ensure enums declare a string type for Gemini compatibility."""
+    if isinstance(schema, dict):
+        if 'enum' in schema and 'type' not in schema:
+            schema['type'] = 'string'
+        for value in schema.values():
+            _coerce_enum_types(value)
+    elif isinstance(schema, list):
+        for item in schema:
+            _coerce_enum_types(item)
 
 
 def internal_specs_to_gemini_functions(

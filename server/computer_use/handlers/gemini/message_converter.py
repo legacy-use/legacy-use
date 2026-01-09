@@ -132,14 +132,16 @@ def _convert_content_blocks(
 
         elif block_type == 'tool_use':
             # Convert tool use to function call
-            parts.append(
-                {
-                    'function_call': {
-                        'name': str(block.get('name') or ''),
-                        'args': block.get('input', {}),
-                    }
+            part: dict[str, Any] = {
+                'function_call': {
+                    'name': str(block.get('name') or ''),
+                    'args': block.get('input', {}),
                 }
-            )
+            }
+            thought_signature = block.get('thought_signature')
+            if thought_signature:
+                part['thought_signature'] = thought_signature
+            parts.append(part)
 
     return parts
 
