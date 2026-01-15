@@ -90,7 +90,7 @@ async def analyze_video(video: UploadFile = File(...)) -> VideoAnalysisResponse:
         )
 
     client = instructor.from_provider(
-        'google/gemini-2.5-flash',
+        'google/gemini-3-flash-preview',
         async_client=True,
         api_key=settings.GOOGLE_GENAI_API_KEY,
     )
