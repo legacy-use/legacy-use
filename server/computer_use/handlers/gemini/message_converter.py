@@ -24,6 +24,8 @@ from .mapping import (
     normalize_coordinate,
 )
 
+DEFAULT_FUNCTION_RESPONSE_URL = 'about:blank'
+
 
 def _extract_text_from_tool_result(block: BetaContentBlockParam) -> Tuple[str, bool]:
     if block.get('error'):
@@ -192,7 +194,7 @@ def _tool_result_to_function_response(
     text, is_error = _extract_text_from_tool_result(block)
     image_parts = _extract_images_from_tool_result(block)
 
-    response_data: Dict[str, Any] = {}
+    response_data: Dict[str, Any] = {'url': DEFAULT_FUNCTION_RESPONSE_URL}
     if is_error:
         response_data['error'] = text or 'Tool execution failed.'
     elif text:
