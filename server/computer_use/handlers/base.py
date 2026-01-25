@@ -156,7 +156,7 @@ class BaseProviderHandler(ABC):
     """Base class with common functionality for provider handlers."""
 
     # Debug message constants for logging
-    DEBUG_MESSAGE_MAX_LENGTH = 10000
+    DEBUG_MESSAGE_MAX_LENGTH = 1000
     DEBUG_MESSAGE_TRUNCATE_LENGTH = 7
 
     def __init__(
@@ -215,6 +215,19 @@ class BaseProviderHandler(ABC):
             }
         elif isinstance(obj, str):
             if len(obj) > self.DEBUG_MESSAGE_MAX_LENGTH:
+                if self._looks_like_binary(obj):
+                    return f'<binary data: {len(obj)} bytes>'
                 return obj[: self.DEBUG_MESSAGE_TRUNCATE_LENGTH] + '...'
             return obj
+        elif isinstance(obj, bytes):
+            return f'<binary data: {len(obj)} bytes>'
         return obj
+
+    def _looks_like_binary(self, s: str) -> bool:
+        """Check if string looks like binary/base64 image data."""
+        # Check for common base64 image prefixes or high non-printable ratio
+        if len(s) < 100:
+            return False
+        sample = s[:200]
+        non_printable = sum(1 for c in sample if ord(c) < 32 or ord(c) > 126)
+        return non_printable / len(sample) > 0.1
