@@ -4,19 +4,19 @@ overview: Add Qwen3-VL as a new Computer Use provider backed by Amazon Bedrock (
 todos:
   - id: add-provider-enum
     content: Add APIProvider.QWEN_BEDROCK + default model mapping in `server/computer_use/config.py`.
-    status: pending
+    status: completed
   - id: implement-qwen-handler
     content: Create `server/computer_use/handlers/qwen/{handler,message_converter,response_converter}.py` using Bedrock Converse, forced region eu-west-2, and Beta-format conversions.
-    status: pending
+    status: completed
   - id: register-handler
     content: Register `QWEN_BEDROCK` in `server/computer_use/handlers/registry.py` without changing existing mappings.
-    status: pending
+    status: completed
   - id: settings-provider
     content: Expose and configure the new provider in `server/routes/settings.py` with required AWS credentials and forced region eu-west-2.
-    status: pending
+    status: completed
   - id: tests-smoke
     content: Add minimal unit tests for converters + a manual Bedrock smoke test checklist.
-    status: pending
+    status: completed
 isProject: false
 ---
 
