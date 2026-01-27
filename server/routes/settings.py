@@ -139,6 +139,18 @@ async def get_providers(request: Request, db_tenant=Depends(get_tenant_db)):
                 ),
             },
         },
+        APIProvider.GEMINI: {
+            'name': 'Google Gemini',
+            'description': 'Google Gemini models via direct API',
+            'available': bool(
+                get_tenant_setting(tenant_schema, 'GOOGLE_GENAI_API_KEY')
+            ),
+            'credentials': {
+                'api_key': obscure_api_key(
+                    get_tenant_setting(tenant_schema, 'GOOGLE_GENAI_API_KEY')
+                ),
+            },
+        },
         APIProvider.OPENCUA: {
             'name': 'OpenCua',
             'description': 'OpenCua models via self-hosted AWS Sagemaker',
@@ -255,6 +267,14 @@ async def update_provider_settings(
                 status_code=400, detail='API key is required for OpenAI provider'
             )
         set_tenant_setting(tenant_schema, 'OPENAI_API_KEY', api_key.strip())
+
+    elif provider_enum == APIProvider.GEMINI:
+        api_key = request.credentials.get('api_key', '')
+        if not isinstance(api_key, str) or not api_key.strip():
+            raise HTTPException(
+                status_code=400, detail='API key is required for Gemini provider'
+            )
+        set_tenant_setting(tenant_schema, 'GOOGLE_GENAI_API_KEY', api_key.strip())
 
     elif provider_enum == APIProvider.OPENCUA:
         required_fields = ['access_key_id', 'secret_access_key', 'region']

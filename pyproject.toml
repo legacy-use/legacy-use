@@ -32,6 +32,7 @@ dependencies = [
     "aioboto3>=15.1.0",
     "openapi-schema-validator>=0.6.3",
     "clerk-backend-api>=3.3.1",
+    "google-genai==1.45.0",
 ]
 
 [dependency-groups]

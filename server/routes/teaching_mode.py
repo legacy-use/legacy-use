@@ -81,16 +81,16 @@ async def analyze_video(video: UploadFile = File(...)) -> VideoAnalysisResponse:
             detail='Invalid file type. Please upload a video file.',
         )
 
-    # Check file size (limit to 50MB)
+    # Check file size
     video_content = await video.read()
-    if len(video_content) > 50 * 1024 * 1024:  # 50MB
+    if len(video_content) > 120 * 1024 * 1024:  # 120MB
         raise HTTPException(
             status_code=400,
-            detail='Video file too large. Maximum size is 50MB.',
+            detail='Video file too large. Maximum size is 120MB.',
         )
 
     client = instructor.from_provider(
-        'google/gemini-2.5-flash',
+        'google/gemini-3-flash-preview',
         async_client=True,
         api_key=settings.GOOGLE_GENAI_API_KEY,
     )

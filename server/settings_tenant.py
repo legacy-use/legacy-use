@@ -19,6 +19,7 @@ TENANT_SETTINGS_DEFAULTS = {
     'AWS_REGION': None,
     'AWS_SESSION_TOKEN': None,
     'ANTHROPIC_API_KEY': None,
+    'GOOGLE_GENAI_API_KEY': None,
     'OPENAI_API_KEY': None,
     'VERTEX_PROJECT_ID': None,
     'VERTEX_REGION': None,
