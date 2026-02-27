@@ -250,7 +250,7 @@ class OpenCuaHandler(BaseProviderHandler):
                 messages.append(tool_use)
 
                 # End the turn once extraction or ui_not_as_expected is called
-                if tool_use['id'] == 'toolu_opencua_terminate':
+                if tool_use['name'] in {'extraction', 'ui_not_as_expected'}:
                     # potentially overwrite stop_reason with end_turn
                     stop_reason = 'end_turn'
                     break

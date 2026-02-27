@@ -1,0 +1,1 @@
+"""Kimi Bedrock handler package."""
