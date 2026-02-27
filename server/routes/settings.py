@@ -165,6 +165,24 @@ async def get_providers(request: Request, db_tenant=Depends(get_tenant_db)):
                 'region': get_tenant_setting(tenant_schema, 'AWS_REGION'),
             },
         },
+        APIProvider.QWEN_BEDROCK: {
+            'name': 'Qwen (Bedrock)',
+            'description': 'Qwen3-VL via Bedrock Converse; region fixed to eu-west-2',
+            'available': all(
+                [
+                    get_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID'),
+                    get_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY'),
+                ]
+            ),
+            'credentials': {
+                'access_key_id': obscure_api_key(
+                    get_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID')
+                ),
+                'secret_access_key': obscure_api_key(
+                    get_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY')
+                ),
+            },
+        },
     }
 
     # Build provider list
@@ -292,6 +310,23 @@ async def update_provider_settings(
             request.credentials['secret_access_key'],
         )
         set_tenant_setting(tenant_schema, 'AWS_REGION', request.credentials['region'])
+    elif provider_enum == APIProvider.QWEN_BEDROCK:
+        required_fields = ['access_key_id', 'secret_access_key']
+        for field in required_fields:
+            if field not in request.credentials:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f'{field} is required for Qwen Bedrock provider',
+                )
+        set_tenant_setting(
+            tenant_schema, 'AWS_ACCESS_KEY_ID', request.credentials['access_key_id']
+        )
+        set_tenant_setting(
+            tenant_schema,
+            'AWS_SECRET_ACCESS_KEY',
+            request.credentials['secret_access_key'],
+        )
+        set_tenant_setting(tenant_schema, 'AWS_REGION', 'eu-west-2')
 
     # Set as active provider
     set_tenant_setting(tenant_schema, 'API_PROVIDER', provider_enum.value)

@@ -338,13 +338,13 @@ const LogViewer = ({ logs }) => {
 
         // Handle custom action tool
         if (log.content.name === 'custom_action') {
-        const actionName = log.content.input?.action_name;
-        const inputParams = log.content.input?.input_parameters;
-        const paramsText =
-          inputParams && Object.keys(inputParams).length > 0
-            ? ` | params: ${JSON.stringify(inputParams)}`
-            : '';
-        return `Custom action: "${actionName}"${paramsText}`;
+          const actionName = log.content.input?.action_name;
+          const inputParams = log.content.input?.input_parameters;
+          const paramsText =
+            inputParams && Object.keys(inputParams).length > 0
+              ? ` | params: ${JSON.stringify(inputParams)}`
+              : '';
+          return `Custom action: "${actionName}"${paramsText}`;
         }
 
         // Check for extraction tool result in combined log entry

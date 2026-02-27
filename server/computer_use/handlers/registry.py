@@ -13,6 +13,7 @@ from server.computer_use.handlers.base import BaseProviderHandler, ProviderHandl
 from server.computer_use.handlers.gemini.handler import GeminiHandler
 from server.computer_use.handlers.openai.handler import OpenAIHandler
 from server.computer_use.handlers.opencua.handler import OpenCuaHandler
+from server.computer_use.handlers.qwen.handler import QwenBedrockHandler
 
 # Registry mapping providers to handler classes
 HANDLER_REGISTRY: Dict[APIProvider, Type[BaseProviderHandler]] = {
@@ -23,6 +24,7 @@ HANDLER_REGISTRY: Dict[APIProvider, Type[BaseProviderHandler]] = {
     APIProvider.OPENAI: OpenAIHandler,
     APIProvider.GEMINI: GeminiHandler,
     APIProvider.OPENCUA: OpenCuaHandler,
+    APIProvider.QWEN_BEDROCK: QwenBedrockHandler,
 }
 
 
