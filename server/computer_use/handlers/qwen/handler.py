@@ -42,6 +42,7 @@ class QwenBedrockHandler(BaseProviderHandler):
         )
         self.model = model
         self._forced_region = 'eu-west-2'
+        self._computer_tool: BaseAnthropicTool | None = None
 
     async def initialize_client(self, api_key: str, **kwargs) -> Any:
         aws_access_key = self.tenant_setting('AWS_ACCESS_KEY_ID')
@@ -95,6 +96,9 @@ class QwenBedrockHandler(BaseProviderHandler):
     def _expand_computer_tools(self, tool: BaseAnthropicTool) -> list[dict[str, Any]]:
         spec = tool.internal_spec()
         actions = spec.get('actions') or []
+        options = spec.get('options') or {}
+        display_width = int(options.get('display_width_px') or 1000)
+        display_height = int(options.get('display_height_px') or 1000)
         tools: list[dict[str, Any]] = []
 
         for action in actions:
@@ -102,6 +106,24 @@ class QwenBedrockHandler(BaseProviderHandler):
             params = action.get('params') or {}
             required = action.get('required') or []
             description = action.get('description') or f'Computer action: {action_name}'
+
+            # Qwen works more reliably with a fixed normalized coordinate contract.
+            if 'coordinate' in params and isinstance(params['coordinate'], dict):
+                coordinate_schema = dict(params['coordinate'])
+                item_schema = coordinate_schema.get('items')
+                if isinstance(item_schema, dict):
+                    normalized_item_schema = dict(item_schema)
+                    normalized_item_schema.setdefault('minimum', 0)
+                    normalized_item_schema.setdefault('maximum', 1000)
+                    coordinate_schema['items'] = normalized_item_schema
+                coordinate_schema['description'] = (
+                    'Coordinate as normalized [x, y] in the 0-1000 range '
+                    f'for display {display_width}x{display_height}. '
+                    'Use [0,0] for top-left and [1000,1000] for bottom-right.'
+                )
+                params = dict(params)
+                params['coordinate'] = coordinate_schema
+
             tools.append(
                 {
                     'toolSpec': {
@@ -123,6 +145,7 @@ class QwenBedrockHandler(BaseProviderHandler):
         tools: list[dict[str, Any]] = []
         for tool in tool_collection.tools:
             if getattr(tool, 'name', None) == 'computer':
+                self._computer_tool = tool
                 tools.extend(self._expand_computer_tools(tool))
             else:
                 tools.append(self._spec_to_bedrock_tool(tool.internal_spec()))
@@ -255,4 +278,6 @@ class QwenBedrockHandler(BaseProviderHandler):
     def convert_from_provider_response(
         self, response: dict[str, Any]
     ) -> tuple[list[BetaContentBlockParam], str]:
-        return convert_bedrock_to_anthropic_response(response)
+        return convert_bedrock_to_anthropic_response(
+            response, computer_tool=self._computer_tool
+        )
