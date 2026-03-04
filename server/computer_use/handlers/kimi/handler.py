@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Optional
 
 import aioboto3
@@ -23,7 +24,7 @@ from .system_prompt import build_system_prompt
 
 
 class KimiBedrockHandler(BaseProviderHandler):
-    """Handler for Kimi K2.5 via Amazon Bedrock Converse."""
+    """Handler for Kimi K2.5 via Amazon Bedrock InvokeModel."""
 
     def __init__(
         self,
@@ -42,15 +43,16 @@ class KimiBedrockHandler(BaseProviderHandler):
             **kwargs,
         )
         self.model = model
-        self._forced_region = 'eu-west-2'
+        self._region = 'eu-north-1'
         self.latest_api_definitions: dict[str, str] = {}
         self._computer_options: dict[str, Any] = {}
         self._custom_action_names: list[str] = []
 
     async def initialize_client(self, api_key: str, **kwargs) -> Any:
-        aws_access_key = self.tenant_setting('AWS_ACCESS_KEY_ID')
-        aws_secret_key = self.tenant_setting('AWS_SECRET_ACCESS_KEY')
-        aws_session_token = self.tenant_setting('AWS_SESSION_TOKEN')
+        aws_access_key = self.tenant_setting_stripped('AWS_ACCESS_KEY_ID')
+        aws_secret_key = self.tenant_setting_stripped('AWS_SECRET_ACCESS_KEY')
+        aws_session_token = self.tenant_setting_stripped('AWS_SESSION_TOKEN')
+        self._region = self.tenant_setting_stripped('AWS_REGION') or self._region
 
         if not aws_access_key or not aws_secret_key:
             raise ValueError(
@@ -62,7 +64,7 @@ class KimiBedrockHandler(BaseProviderHandler):
             aws_access_key_id=aws_access_key,
             aws_secret_access_key=aws_secret_key,
             aws_session_token=aws_session_token,
-            region_name=self._forced_region,
+            region_name=self._region,
         )
 
         return session.client(
@@ -74,15 +76,11 @@ class KimiBedrockHandler(BaseProviderHandler):
             ),
         )
 
-    def prepare_system(self, system_prompt: str) -> list[dict[str, str]]:
-        return [
-            {
-                'text': build_system_prompt(
-                    computer_options=self._computer_options,
-                    custom_action_names=self._custom_action_names,
-                )
-            }
-        ]
+    def prepare_system(self, system_prompt: str) -> str:
+        return build_system_prompt(
+            computer_options=self._computer_options,
+            custom_action_names=self._custom_action_names,
+        )
 
     def convert_to_provider_messages(
         self, messages: list[BetaMessageParam]
@@ -93,6 +91,7 @@ class KimiBedrockHandler(BaseProviderHandler):
         for message in messages:
             if message.get('role') != 'user':
                 continue
+
             content = message.get('content')
             user_text = ''
             if isinstance(content, str):
@@ -102,6 +101,7 @@ class KimiBedrockHandler(BaseProviderHandler):
                     if isinstance(block, dict) and block.get('type') == 'text':
                         user_text = str(block.get('text') or '')
                         break
+
             if not user_text:
                 continue
 
@@ -144,49 +144,48 @@ class KimiBedrockHandler(BaseProviderHandler):
         self,
         client: Any,
         messages: list[dict[str, Any]],
-        system: list[dict[str, str]],
+        system: str,
         tools: list[Any],
         model: str,
         max_tokens: int,
         temperature: float,
         **kwargs,
     ) -> tuple[dict[str, Any], httpx.Request, httpx.Response]:
-        payload: dict[str, Any] = {
-            'modelId': model,
-            'messages': messages,
-            'inferenceConfig': {
-                'maxTokens': max_tokens,
-                'temperature': temperature,
-            },
-        }
+        full_messages: list[dict[str, Any]] = []
         if system:
-            payload['system'] = system
+            full_messages.append({'role': 'system', 'content': system})
+        full_messages.extend(messages)
 
-        logger.debug(f'Kimi Bedrock payload: {self._truncate_for_debug(payload)}')
+        body_payload: dict[str, Any] = {
+            'messages': full_messages,
+            'max_tokens': max_tokens,
+            'temperature': temperature,
+            'stream': False,
+        }
 
-        response = await client.converse(**payload)
+        logger.debug(f'Kimi Bedrock payload: {self._truncate_for_debug(body_payload)}')
 
-        def _sanitize(obj: Any) -> Any:
-            if isinstance(obj, dict):
-                return {k: _sanitize(v) for k, v in obj.items()}
-            if isinstance(obj, list):
-                return [_sanitize(v) for v in obj]
-            if isinstance(obj, (bytes, bytearray)):
-                return '<binary data>'
-            return obj
+        response = await client.invoke_model(
+            modelId=model,
+            contentType='application/json',
+            accept='application/json',
+            body=json.dumps(body_payload).encode('utf-8'),
+        )
+        body_bytes = await response['body'].read()
+        parsed_response = json.loads(body_bytes.decode('utf-8'))
 
-        request_payload = _sanitize(payload)
+        request_payload = self._truncate_for_debug(body_payload)
         request = httpx.Request(
             method='POST',
-            url=f'https://bedrock-runtime.{self._forced_region}.amazonaws.com/model/{model}/converse',
+            url=f'https://bedrock-runtime.{self._region}.amazonaws.com/model/{model}/invoke',
             json=request_payload,
         )
         raw_response = httpx.Response(
             status_code=200,
-            json=response,
+            json=parsed_response,
             request=request,
         )
-        return response, request, raw_response
+        return parsed_response, request, raw_response
 
     def _capture_generation(
         self,
@@ -209,9 +208,9 @@ class KimiBedrockHandler(BaseProviderHandler):
             ai_trace_id=job_id,
             ai_parent_id=str(iteration_count),
             ai_provider='kimi_bedrock',
-            ai_model=response.get('modelId') or self.model,
-            ai_input_tokens=_get('inputTokens') or _get('promptTokens'),
-            ai_output_tokens=_get('outputTokens') or _get('completionTokens'),
+            ai_model=response.get('model') or self.model,
+            ai_input_tokens=_get('prompt_tokens') or _get('input_tokens'),
+            ai_output_tokens=_get('completion_tokens') or _get('output_tokens'),
             ai_temperature=temperature,
             ai_max_tokens=max_tokens,
         )
@@ -222,9 +221,11 @@ class KimiBedrockHandler(BaseProviderHandler):
         ]
         if not user_messages:
             return True
+
         last_user_message = user_messages[-1]
         return not any(
-            'image' in block for block in last_user_message.get('content', [])
+            isinstance(block, dict) and block.get('type') == 'image_url'
+            for block in last_user_message.get('content', [])
         )
 
     def _build_screenshot_retry(
@@ -276,10 +277,10 @@ class KimiBedrockHandler(BaseProviderHandler):
         **kwargs,
     ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
         self.prepare_tools(tools)
-        system_blocks = self.prepare_system(system)
-        bedrock_messages = self.convert_to_provider_messages(messages)
+        system_text = self.prepare_system(system)
+        kimi_messages = self.convert_to_provider_messages(messages)
 
-        if self._needs_screenshot(bedrock_messages):
+        if self._needs_screenshot(kimi_messages):
             screenshot_tool = self._build_screenshot_retry(messages)
             if screenshot_tool is None:
                 return [], 'end_turn', None, None
@@ -288,8 +289,8 @@ class KimiBedrockHandler(BaseProviderHandler):
         async with client as br_client:
             response, request, raw_response = await self.make_ai_request(
                 client=br_client,
-                messages=bedrock_messages,
-                system=system_blocks,
+                messages=kimi_messages,
+                system=system_text,
                 tools=[],
                 model=model,
                 max_tokens=max_tokens,

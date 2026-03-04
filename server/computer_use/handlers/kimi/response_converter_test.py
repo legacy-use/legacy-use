@@ -5,15 +5,13 @@ from server.computer_use.handlers.kimi.response_converter import (
 
 def test_compliant_response_yields_text_and_tool_use():
     response = {
-        'output': {
-            'message': {
-                'content': [
-                    {
-                        'text': '## Thought:\nInspect the button\n## Action:\nClick the button\n## Code:\n```python\npyautogui.click(x=10, y=20)\n```'
-                    }
-                ]
+        'choices': [
+            {
+                'message': {
+                    'content': '## Thought:\nInspect the button\n## Action:\nClick the button\n## Code:\n```python\npyautogui.click(x=10, y=20)\n```'
+                }
             }
-        }
+        ]
     }
 
     blocks, stop_reason = convert_kimi_to_anthropic_response(response)
@@ -28,15 +26,13 @@ def test_compliant_response_yields_text_and_tool_use():
 
 def test_terminate_response_is_end_turn():
     response = {
-        'output': {
-            'message': {
-                'content': [
-                    {
-                        'text': '## Thought:\nDone\n## Action:\nReturn result\n## Code:\n```python\ncomputer.terminate(status="success", data="{\\"done\\": true}")\n```'
-                    }
-                ]
+        'choices': [
+            {
+                'message': {
+                    'content': '## Thought:\nDone\n## Action:\nReturn result\n## Code:\n```python\ncomputer.terminate(status="success", data="{\\"done\\": true}")\n```'
+                }
             }
-        }
+        ]
     }
 
     blocks, stop_reason = convert_kimi_to_anthropic_response(response)
@@ -48,13 +44,9 @@ def test_terminate_response_is_end_turn():
 
 def test_malformed_response_returns_text_only():
     response = {
-        'output': {
-            'message': {
-                'content': [
-                    {'text': 'I am not following the requested format.'},
-                ]
-            }
-        }
+        'choices': [
+            {'message': {'content': 'I am not following the requested format.'}}
+        ]
     }
 
     blocks, stop_reason = convert_kimi_to_anthropic_response(response)

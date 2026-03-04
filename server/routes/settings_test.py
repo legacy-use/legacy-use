@@ -33,8 +33,12 @@ def test_get_providers_includes_kimi(monkeypatch):
     providers = {provider.provider: provider for provider in response.providers}
     assert APIProvider.KIMI_BEDROCK.value in providers
     assert providers[APIProvider.KIMI_BEDROCK.value].available is True
-    assert providers[APIProvider.KIMI_BEDROCK.value].default_model == (
-        'moonshotai.kimi-k2-5-20250929-v1:0'
+    assert (
+        providers[APIProvider.KIMI_BEDROCK.value].default_model
+        == 'moonshotai.kimi-k2.5'
+    )
+    assert (
+        providers[APIProvider.KIMI_BEDROCK.value].credentials['region'] == 'eu-north-1'
     )
 
 
@@ -57,6 +61,7 @@ def test_update_provider_settings_sets_fixed_region(monkeypatch):
         credentials={
             'access_key_id': 'abc',
             'secret_access_key': 'def',
+            'region': 'eu-north-1',
         },
     )
 
@@ -69,4 +74,4 @@ def test_update_provider_settings_sets_fixed_region(monkeypatch):
     )
 
     assert response['status'] == 'success'
-    assert ('tenant', 'AWS_REGION', 'eu-west-2') in calls
+    assert ('tenant', 'AWS_REGION', 'eu-north-1') in calls

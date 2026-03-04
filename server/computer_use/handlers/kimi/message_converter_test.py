@@ -6,8 +6,7 @@ from server.computer_use.handlers.kimi.message_converter import (
 
 
 def test_user_text_and_tool_results_are_preserved():
-    image_bytes = b'fakepngbytes'
-    encoded = base64.b64encode(image_bytes).decode('ascii')
+    encoded = base64.b64encode(b'fakepngbytes').decode('ascii')
 
     messages = [
         {
@@ -38,11 +37,11 @@ def test_user_text_and_tool_results_are_preserved():
     converted = convert_anthropic_to_kimi_messages(messages)
     content = converted[0]['content']
 
-    assert {'text': 'Find the value'} in content
-    assert {'text': 'Tool error: failed once'} in content
-    assert {'text': 'retrying'} in content
-    image = next(item['image'] for item in content if 'image' in item)
-    assert image['source']['bytes'] == image_bytes
+    assert {'type': 'text', 'text': 'Find the value'} in content
+    assert {'type': 'text', 'text': 'Tool error: failed once'} in content
+    assert {'type': 'text', 'text': 'retrying'} in content
+    image = next(item for item in content if item.get('type') == 'image_url')
+    assert image['image_url']['url'] == f'data:image/png;base64,{encoded}'
 
 
 def test_assistant_tool_use_history_is_stripped():
@@ -64,5 +63,8 @@ def test_assistant_tool_use_history_is_stripped():
     converted = convert_anthropic_to_kimi_messages(messages)
 
     assert converted == [
-        {'role': 'assistant', 'content': [{'text': '## Thought:\nInspect'}]}
+        {
+            'role': 'assistant',
+            'content': [{'type': 'text', 'text': '## Thought:\nInspect'}],
+        }
     ]

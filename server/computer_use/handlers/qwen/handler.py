@@ -44,9 +44,9 @@ class QwenBedrockHandler(BaseProviderHandler):
         self._forced_region = 'eu-west-2'
 
     async def initialize_client(self, api_key: str, **kwargs) -> Any:
-        aws_access_key = self.tenant_setting('AWS_ACCESS_KEY_ID')
-        aws_secret_key = self.tenant_setting('AWS_SECRET_ACCESS_KEY')
-        aws_session_token = self.tenant_setting('AWS_SESSION_TOKEN')
+        aws_access_key = self.tenant_setting_stripped('AWS_ACCESS_KEY_ID')
+        aws_secret_key = self.tenant_setting_stripped('AWS_SECRET_ACCESS_KEY')
+        aws_session_token = self.tenant_setting_stripped('AWS_SESSION_TOKEN')
 
         if not aws_access_key or not aws_secret_key:
             raise ValueError(

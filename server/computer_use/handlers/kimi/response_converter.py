@@ -16,13 +16,27 @@ from server.computer_use.handlers.utils.pyautogui_converter import (
 
 
 def _extract_text_from_response(response: Any) -> str:
-    output = response.get('output') or {}
-    message = output.get('message') or {}
-    contents = message.get('content') or []
+    choices = response.get('choices') or []
+    if not choices:
+        return ''
+
+    message = choices[0].get('message') or {}
+    content = message.get('content')
+
+    if isinstance(content, str):
+        return content.strip()
+    if not isinstance(content, list):
+        return ''
+
     parts: list[str] = []
-    for item in contents:
-        if isinstance(item, dict) and 'text' in item:
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        if item.get('type') == 'text':
             parts.append(str(item.get('text') or ''))
+        elif 'text' in item:
+            parts.append(str(item.get('text') or ''))
+
     return '\n'.join(part for part in parts if part).strip()
 
 
@@ -30,7 +44,7 @@ def convert_kimi_to_anthropic_response(
     response: dict[str, Any],
     latest_api_definitions: dict[str, str] | None = None,
 ) -> tuple[list[BetaContentBlockParam], str]:
-    """Convert a Kimi Bedrock response to Anthropic-style content blocks."""
+    """Convert a Kimi response to Anthropic-style content blocks."""
     parsed_text = _extract_text_from_response(response)
     task = parse_task(parsed_text)
 
@@ -55,11 +69,11 @@ def convert_kimi_to_anthropic_response(
     if not code:
         return content_blocks, stop_reason
 
-    commands = code.split('\n')
-    for command in commands:
+    for command in code.split('\n'):
         command = command.strip()
         if not command:
             continue
+
         tool_use = convert_pyautogui_code_to_tool_use(
             command,
             latest_api_definitions,
@@ -68,6 +82,7 @@ def convert_kimi_to_anthropic_response(
             invalid_to_ui_not_as_expected=True,
         )
         content_blocks.append(tool_use)
+
         if tool_use['name'] in {'extraction', 'ui_not_as_expected'}:
             stop_reason = 'end_turn'
             break
