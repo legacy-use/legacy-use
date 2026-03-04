@@ -1,4 +1,4 @@
-.PHONY: server frontend test server-tests docker-start docker-linux-vm dev-docker prod stop logs ensure-env docker-build-backend docker-build-frontend docker-build-linux-machine docker-build-demo-db docker-build-target docker-build-all
+.PHONY: server frontend test server-tests db-backup db-backup-api-targets docker-start docker-linux-vm dev-docker prod stop logs ensure-env docker-build-backend docker-build-frontend docker-build-linux-machine docker-build-demo-db docker-build-target docker-build-all
 
 ensure-env:
 	@if [ ! -f .env ]; then \
@@ -12,6 +12,55 @@ ensure-env:
 
 db-migrate:
 	uv run alembic -c server/alembic.ini upgrade head
+
+db-backup:
+	@mkdir -p backups
+	@backup_file="backups/legacy-use-$$(date +%Y-%m-%d_%H-%M-%S).dump"; \
+		tmp_file="$$backup_file.tmp"; \
+		if ! docker inspect -f '{{.State.Running}}' legacy-use-postgres >/dev/null 2>&1; then \
+			echo "❌ Container legacy-use-postgres does not exist. Start it with: docker compose up -d postgres"; \
+			exit 1; \
+		fi; \
+		if [ "$$(docker inspect -f '{{.State.Running}}' legacy-use-postgres 2>/dev/null)" != "true" ]; then \
+			echo "❌ Container legacy-use-postgres is not running. Start it with: docker compose up -d postgres"; \
+			exit 1; \
+		fi; \
+		echo "📦 Writing database backup to $$backup_file"; \
+		rm -f "$$tmp_file"; \
+		if docker exec legacy-use-postgres pg_dump -U postgres -d legacy_use -Fc > "$$tmp_file"; then \
+			mv "$$tmp_file" "$$backup_file"; \
+			echo "✅ Backup complete: $$backup_file"; \
+		else \
+			rm -f "$$tmp_file"; \
+			echo "❌ Backup failed"; \
+			exit 1; \
+		fi
+
+db-backup-api-targets:
+	@mkdir -p backups
+	@backup_file="backups/legacy-use-api-targets-$$(date +%Y-%m-%d_%H-%M-%S).dump"; \
+		tmp_file="$$backup_file.tmp"; \
+		if ! docker inspect -f '{{.State.Running}}' legacy-use-postgres >/dev/null 2>&1; then \
+			echo "❌ Container legacy-use-postgres does not exist. Start it with: docker compose up -d postgres"; \
+			exit 1; \
+		fi; \
+		if [ "$$(docker inspect -f '{{.State.Running}}' legacy-use-postgres 2>/dev/null)" != "true" ]; then \
+			echo "❌ Container legacy-use-postgres is not running. Start it with: docker compose up -d postgres"; \
+			exit 1; \
+		fi; \
+		echo "📦 Writing API definitions and targets backup to $$backup_file"; \
+		rm -f "$$tmp_file"; \
+		if docker exec legacy-use-postgres pg_dump -U postgres -d legacy_use -Fc --data-only \
+			-t '*.targets' \
+			-t '*.api_definitions' \
+			-t '*.api_definition_versions' > "$$tmp_file"; then \
+			mv "$$tmp_file" "$$backup_file"; \
+			echo "✅ Backup complete: $$backup_file"; \
+		else \
+			rm -f "$$tmp_file"; \
+			echo "❌ Backup failed"; \
+			exit 1; \
+		fi
 
 server:
 	uv run uvicorn server.server:app --host 0.0.0.0 --port 8088 --reload --reload-dir server --reload-include .env
