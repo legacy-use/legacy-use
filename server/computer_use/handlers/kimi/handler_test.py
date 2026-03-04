@@ -1,6 +1,8 @@
 import asyncio
 import json
 
+from anthropic.types.beta import BetaMessageParam
+
 from server.computer_use.handlers.kimi.handler import KimiBedrockHandler
 from server.computer_use.tools.collection import ToolCollection
 from server.computer_use.tools.computer import ComputerTool20250124
@@ -49,6 +51,16 @@ def test_prepare_tools_populates_system_context():
     assert 'login' in system_prompt
 
 
+def test_kimi_clamps_image_history_to_one():
+    handler = KimiBedrockHandler(
+        model='moonshotai.kimi-k2.5',
+        tenant_schema='tenant',
+        only_n_most_recent_images=3,
+    )
+
+    assert handler.only_n_most_recent_images == 1
+
+
 def test_make_ai_request_uses_invoke_model():
     handler = KimiBedrockHandler(model='moonshotai.kimi-k2.5', tenant_schema='tenant')
     fake_client = FakeBedrockClient({'choices': [{'message': {'content': 'ok'}}]})
@@ -90,3 +102,70 @@ def test_initialize_client_requires_credentials():
         assert 'AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required' in str(exc)
     else:
         raise AssertionError('Expected initialize_client to raise ValueError')
+
+
+def test_execute_terminates_with_ui_not_as_expected_after_retry_exhaustion():
+    handler = KimiBedrockHandler(
+        model='moonshotai.kimi-k2.5',
+        tenant_schema='tenant',
+        max_retries=0,
+    )
+    fake_client = FakeBedrockClient(
+        {'choices': [{'message': {'content': 'I will think but not emit code.'}}]}
+    )
+    tools = ToolCollection(ComputerTool20250124())
+    messages = [
+        BetaMessageParam(
+            role='assistant',
+            content=[
+                {
+                    'type': 'tool_use',
+                    'id': 'toolu_retry_screenshot_0',
+                    'name': 'computer',
+                    'input': {'action': 'screenshot'},
+                }
+            ],
+        ),
+        BetaMessageParam(
+            role='user',
+            content=[
+                {'type': 'text', 'text': 'do the thing'},
+                {
+                    'type': 'tool_result',
+                    'tool_use_id': 'toolu_prev',
+                    'content': [
+                        {
+                            'type': 'image',
+                            'source': {
+                                'type': 'base64',
+                                'media_type': 'image/png',
+                                'data': 'ZmFrZQ==',
+                            },
+                        }
+                    ],
+                },
+            ],
+        ),
+    ]
+
+    content_blocks, stop_reason, _, _ = asyncio.run(
+        handler.execute(
+            job_id='job-1',
+            iteration_count=1,
+            client=fake_client,
+            messages=messages,
+            system='ignored',
+            tools=tools,
+            model='moonshotai.kimi-k2.5',
+            max_tokens=256,
+            temperature=0.0,
+        )
+    )
+
+    assert stop_reason == 'end_turn'
+    assert content_blocks[-1]['type'] == 'tool_use'
+    assert content_blocks[-1]['name'] == 'ui_not_as_expected'
+    assert (
+        'did not include a supported tool action'
+        in content_blocks[-1]['input']['reasoning']
+    )

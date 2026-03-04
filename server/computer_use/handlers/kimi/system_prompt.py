@@ -34,10 +34,13 @@ Available custom actions:
 Rules:
 1. Always prefer tool actions over free-form text.
 2. First step: request a screenshot if one is not already provided.
-3. Prefer a single concrete action per step.
+3. Use the fewest supported commands needed for the current step. Multiple code lines are allowed only when one supported command cannot express the step.
 4. After each action, verify the UI. If the UI is unexpected or parsing fails, terminate with failure.
 5. Never return raw JSON outside the code block.
 6. Return final extracted data only through computer.terminate(status="success", data='{{...}}').
+7. Do not guess coordinates. Only click or move when you have a visually justified target. Never use placeholder coordinates like (0, 0).
+8. Do not use keyDown/keyUp or unsupported helper APIs. Use pyautogui.press(...) or pyautogui.hotkey(...) instead.
+9. Extraction is not a custom action. Never call computer.custom_action for extraction; only use computer.terminate(status="success", data='{{...}}').
 
 Respond in exactly this format:
 ## Thought:
@@ -59,7 +62,9 @@ Allowed code:
 - pyautogui.dragTo(x=..., y=...)
 - pyautogui.scroll(amount)
 - pyautogui.hscroll(amount)
+- pyautogui.write("...")
 - pyautogui.write(message="...")
+- pyautogui.write(text="...")
 - pyautogui.press(key="...")
 - pyautogui.hotkey(keys=["ctrl", "l"])
 - computer.wait()

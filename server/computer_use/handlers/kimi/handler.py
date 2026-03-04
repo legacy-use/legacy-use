@@ -23,6 +23,27 @@ from .response_converter import convert_kimi_to_anthropic_response
 from .system_prompt import build_system_prompt
 
 
+class _LazyBedrockRuntimeClient:
+    """Create the Bedrock client only when it is actually entered."""
+
+    def __init__(self, session: aioboto3.Session, config: Config):
+        self._session = session
+        self._config = config
+        self._context = None
+
+    async def __aenter__(self) -> Any:
+        self._context = self._session.client(
+            service_name='bedrock-runtime',
+            config=self._config,
+        )
+        return await self._context.__aenter__()
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        if self._context is None:
+            return False
+        return await self._context.__aexit__(exc_type, exc, tb)
+
+
 class KimiBedrockHandler(BaseProviderHandler):
     """Handler for Kimi K2.5 via Amazon Bedrock InvokeModel."""
 
@@ -36,9 +57,9 @@ class KimiBedrockHandler(BaseProviderHandler):
     ):
         super().__init__(
             tenant_schema=tenant_schema,
-            only_n_most_recent_images=3
+            only_n_most_recent_images=1
             if only_n_most_recent_images is None
-            else only_n_most_recent_images,
+            else min(only_n_most_recent_images, 1),
             max_retries=max_retries,
             **kwargs,
         )
@@ -67,8 +88,8 @@ class KimiBedrockHandler(BaseProviderHandler):
             region_name=self._region,
         )
 
-        return session.client(
-            service_name='bedrock-runtime',
+        return _LazyBedrockRuntimeClient(
+            session=session,
             config=Config(
                 retries={'max_attempts': self.max_retries},
                 read_timeout=180,
@@ -263,6 +284,34 @@ class KimiBedrockHandler(BaseProviderHandler):
             'input': {'action': 'screenshot'},
         }
 
+    def _build_noncompliant_terminal(
+        self,
+        content_blocks: list[BetaContentBlockParam] | None = None,
+    ) -> BetaContentBlockParam:
+        """Return a terminal failure tool when the model stops emitting actions."""
+        reason = (
+            'Kimi response did not include a supported tool action after exhausting '
+            'screenshot retries.'
+        )
+
+        if content_blocks:
+            text_blocks = [
+                block
+                for block in content_blocks
+                if isinstance(block, dict) and block.get('type') == 'text'
+            ]
+            if text_blocks:
+                last_text = str(text_blocks[-1].get('text') or '').strip()
+                if last_text:
+                    reason = f'{reason} Last response: {last_text[:400]}'
+
+        return {
+            'id': 'toolu_kimi_noncompliant_terminate',
+            'type': 'tool_use',
+            'name': 'ui_not_as_expected',
+            'input': {'reasoning': reason},
+        }
+
     async def execute(
         self,
         job_id: str,
@@ -283,7 +332,8 @@ class KimiBedrockHandler(BaseProviderHandler):
         if self._needs_screenshot(kimi_messages):
             screenshot_tool = self._build_screenshot_retry(messages)
             if screenshot_tool is None:
-                return [], 'end_turn', None, None
+                terminal_tool = self._build_noncompliant_terminal()
+                return [terminal_tool], 'end_turn', None, None
             return [screenshot_tool], 'tool_use', None, None
 
         async with client as br_client:
@@ -311,6 +361,7 @@ class KimiBedrockHandler(BaseProviderHandler):
         if not any(block.get('type') == 'tool_use' for block in content_blocks):
             screenshot_tool = self._build_screenshot_retry(messages)
             if screenshot_tool is None:
+                content_blocks.append(self._build_noncompliant_terminal(content_blocks))
                 return content_blocks, 'end_turn', request, raw_response
             content_blocks.append(screenshot_tool)
             stop_reason = 'tool_use'
@@ -323,4 +374,5 @@ class KimiBedrockHandler(BaseProviderHandler):
         return convert_kimi_to_anthropic_response(
             response,
             latest_api_definitions=self.latest_api_definitions,
+            computer_options=self._computer_options,
         )
