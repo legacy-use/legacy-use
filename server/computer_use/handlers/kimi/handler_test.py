@@ -1,5 +1,6 @@
 import asyncio
 import json
+from unittest.mock import patch
 
 from anthropic.types.beta import BetaMessageParam
 
@@ -63,7 +64,16 @@ def test_kimi_clamps_image_history_to_one():
 
 def test_make_ai_request_uses_invoke_model():
     handler = KimiBedrockHandler(model='moonshotai.kimi-k2.5', tenant_schema='tenant')
-    fake_client = FakeBedrockClient({'choices': [{'message': {'content': 'ok'}}]})
+    fake_client = FakeBedrockClient(
+        {
+            'choices': [{'message': {'content': 'ok'}}],
+            'usage': {
+                'prompt_tokens': 100,
+                'completion_tokens': 25,
+                'prompt_tokens_details': {'cached_tokens': 10},
+            },
+        }
+    )
 
     response, request, raw_response = asyncio.run(
         handler.make_ai_request(
@@ -86,6 +96,38 @@ def test_make_ai_request_uses_invoke_model():
     assert request.url.path.endswith('/invoke')
     assert raw_response.status_code == 200
     assert response['choices'][0]['message']['content'] == 'ok'
+    assert raw_response.json()['usage']['input_tokens'] == 100
+    assert raw_response.json()['usage']['output_tokens'] == 25
+    assert raw_response.json()['usage']['cache_read_input_tokens'] == 10
+
+
+def test_capture_generation_forwards_normalized_usage():
+    handler = KimiBedrockHandler(model='moonshotai.kimi-k2.5', tenant_schema='tenant')
+    response = {
+        'model': 'moonshotai.kimi-k2.5',
+        'usage': {
+            'prompt_tokens': 120,
+            'completion_tokens': 34,
+            'prompt_tokens_details': {'cached_tokens': 12},
+        },
+    }
+
+    with patch(
+        'server.computer_use.handlers.kimi.handler.capture_ai_generation'
+    ) as capture:
+        handler._capture_generation(
+            response=response,
+            job_id='job-1',
+            iteration_count=2,
+            temperature=0.0,
+            max_tokens=256,
+        )
+
+    capture.assert_called_once()
+    kwargs = capture.call_args.kwargs
+    assert kwargs['ai_input_tokens'] == 120
+    assert kwargs['ai_output_tokens'] == 34
+    assert kwargs['ai_cache_read_input_tokens'] == 12
 
 
 def test_initialize_client_requires_credentials():

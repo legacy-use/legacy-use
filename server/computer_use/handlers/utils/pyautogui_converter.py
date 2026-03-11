@@ -31,32 +31,63 @@ def parse_task(text: str) -> Dict[str, Optional[str]]:
     step_match = re.search(r'#\s*Step\s*([^\n:]+):?', text, re.IGNORECASE)
     step = f'{step_match.group(1).strip()}' if step_match else None
 
-    thought_match = re.search(
-        r'(?:^|\n)(?:##\s*)?Thought:\s*(.*?)(?=(?:\n(?:##\s*)?Thought:)|(?:\n(?:##\s*)?Action:)|(?:\n(?:##\s*)?Code:)|$)',
-        text,
-        re.DOTALL | re.IGNORECASE,
+    section_pattern = re.compile(
+        r'(?:^|\n)(?:##\s*)?(Thought|Action|Code):',
+        re.IGNORECASE,
     )
-    thought = thought_match.group(1).strip() if thought_match else None
+    section_matches = list(section_pattern.finditer(text))
 
-    action_match = re.search(
-        r'(?:^|\n)(?:##\s*)?Action:\s*(.*?)(?=(?:\n(?:##\s*)?Thought:)|(?:\n(?:##\s*)?Action:)|(?:\n(?:##\s*)?Code:)|$)',
-        text,
-        re.DOTALL | re.IGNORECASE,
-    )
-    action = action_match.group(1).strip() if action_match else None
-
-    code_match = re.search(
-        r'(?:^|\n)(?:##\s*)?Code:\s*```(?:python|code)?\n?(.*?)```',
-        text,
-        re.DOTALL | re.IGNORECASE,
-    )
-    if not code_match:
-        code_match = re.search(
-            r'(?:^|\n)(?:##\s*)?Code:\s*(.*)',
-            text,
-            re.DOTALL | re.IGNORECASE,
+    sections: list[tuple[str, str]] = []
+    for index, match in enumerate(section_matches):
+        section_type = match.group(1).lower()
+        content_start = match.end()
+        content_end = (
+            section_matches[index + 1].start()
+            if index + 1 < len(section_matches)
+            else len(text)
         )
-    code = code_match.group(1).strip() if code_match else None
+        content = text[content_start:content_end].strip()
+
+        if section_type == 'code':
+            fenced_match = re.fullmatch(
+                r'```(?:python|code)?\n?(.*?)```',
+                content,
+                re.DOTALL | re.IGNORECASE,
+            )
+            if fenced_match:
+                content = fenced_match.group(1).strip()
+
+        sections.append((section_type, content))
+
+    code = None
+    thought = None
+    action = None
+
+    selected_code_index = None
+    for index in range(len(sections) - 1, -1, -1):
+        section_type, content = sections[index]
+        if section_type == 'code' and content:
+            selected_code_index = index
+            code = content
+            break
+
+    if selected_code_index is not None:
+        for index in range(selected_code_index - 1, -1, -1):
+            section_type, content = sections[index]
+            if thought is None and section_type == 'thought' and content:
+                thought = content
+            if action is None and section_type == 'action' and content:
+                action = content
+            if thought is not None and action is not None:
+                break
+    else:
+        for section_type, content in reversed(sections):
+            if thought is None and section_type == 'thought' and content:
+                thought = content
+            if action is None and section_type == 'action' and content:
+                action = content
+            if thought is not None and action is not None:
+                break
 
     return {'step': step, 'thought': thought, 'action': action, 'code': code}
 
@@ -295,6 +326,11 @@ def normalize_extraction_data(
     if isinstance(data, dict) and 'name' in data and 'result' in data:
         raw_name = str(data.get('name') or raw_name).strip() or raw_name
         raw_result = data.get('result')
+
+    if expected_name and raw_name and raw_name != expected_name:
+        raise ValueError(
+            f'Extraction name `{raw_name}` does not match expected API name `{expected_name}`'
+        )
 
     raw_result = _unwrap_named_result(raw_result, raw_name or expected_name)
     expected_result_example = _parse_example_result()

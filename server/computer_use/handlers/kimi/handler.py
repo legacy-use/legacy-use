@@ -69,6 +69,66 @@ class KimiBedrockHandler(BaseProviderHandler):
         self._computer_options: dict[str, Any] = {}
         self._custom_action_names: list[str] = []
 
+    def _truncate_debug_text(self, value: Any, *, limit: int = 4000) -> str:
+        """Keep debug text readable without dropping it to an unhelpful stub."""
+        if value is None:
+            return ''
+        if not isinstance(value, str):
+            value = json.dumps(value, ensure_ascii=False)
+        if len(value) <= limit:
+            return value
+        return f'{value[:limit]}... <truncated {len(value) - limit} chars>'
+
+    def _summarize_content_blocks(
+        self, content_blocks: list[BetaContentBlockParam]
+    ) -> list[dict[str, Any]]:
+        """Produce a readable debug summary of converted content blocks."""
+        summary: list[dict[str, Any]] = []
+        for block in content_blocks:
+            if not isinstance(block, dict):
+                summary.append({'type': type(block).__name__})
+                continue
+
+            block_type = str(block.get('type') or '')
+            if block_type == 'text':
+                summary.append(
+                    {
+                        'type': 'text',
+                        'text': self._truncate_debug_text(block.get('text')),
+                    }
+                )
+                continue
+
+            if block_type == 'tool_use':
+                summary.append(
+                    {
+                        'type': 'tool_use',
+                        'name': block.get('name'),
+                        'input': block.get('input'),
+                    }
+                )
+                continue
+
+            summary.append(block)
+        return summary
+
+    def _normalize_usage(self, response: dict[str, Any]) -> dict[str, Any]:
+        """Normalize Kimi/OpenAI-style usage into the shared Anthropic-style shape."""
+        usage = dict(response.get('usage') or {})
+        prompt_tokens = usage.get('prompt_tokens', usage.get('input_tokens'))
+        completion_tokens = usage.get('completion_tokens', usage.get('output_tokens'))
+        prompt_tokens_details = usage.get('prompt_tokens_details') or {}
+        cached_tokens = prompt_tokens_details.get('cached_tokens')
+
+        if prompt_tokens is not None and 'input_tokens' not in usage:
+            usage['input_tokens'] = prompt_tokens
+        if completion_tokens is not None and 'output_tokens' not in usage:
+            usage['output_tokens'] = completion_tokens
+        if cached_tokens is not None and 'cache_read_input_tokens' not in usage:
+            usage['cache_read_input_tokens'] = cached_tokens
+
+        return usage
+
     async def initialize_client(self, api_key: str, **kwargs) -> Any:
         aws_access_key = self.tenant_setting_stripped('AWS_ACCESS_KEY_ID')
         aws_secret_key = self.tenant_setting_stripped('AWS_SECRET_ACCESS_KEY')
@@ -194,6 +254,22 @@ class KimiBedrockHandler(BaseProviderHandler):
         )
         body_bytes = await response['body'].read()
         parsed_response = json.loads(body_bytes.decode('utf-8'))
+        normalized_response = dict(parsed_response)
+        normalized_response['usage'] = self._normalize_usage(parsed_response)
+        logger.debug(
+            'Kimi Bedrock raw response: '
+            f'{self._truncate_for_debug(normalized_response)}'
+        )
+        model_content = (
+            ((parsed_response.get('choices') or [{}])[0].get('message') or {}).get(
+                'content'
+            )
+            if isinstance(parsed_response, dict)
+            else None
+        )
+        logger.debug(
+            f'Kimi Bedrock model content: {self._truncate_debug_text(model_content)}'
+        )
 
         request_payload = self._truncate_for_debug(body_payload)
         request = httpx.Request(
@@ -203,7 +279,7 @@ class KimiBedrockHandler(BaseProviderHandler):
         )
         raw_response = httpx.Response(
             status_code=200,
-            json=parsed_response,
+            json=normalized_response,
             request=request,
         )
         return parsed_response, request, raw_response
@@ -216,7 +292,7 @@ class KimiBedrockHandler(BaseProviderHandler):
         temperature: float,
         max_tokens: int,
     ) -> None:
-        usage = response.get('usage') or {}
+        usage = self._normalize_usage(response)
 
         def _get(field: str) -> int | None:
             value = usage.get(field)
@@ -232,6 +308,7 @@ class KimiBedrockHandler(BaseProviderHandler):
             ai_model=response.get('model') or self.model,
             ai_input_tokens=_get('prompt_tokens') or _get('input_tokens'),
             ai_output_tokens=_get('completion_tokens') or _get('output_tokens'),
+            ai_cache_read_input_tokens=_get('cache_read_input_tokens'),
             ai_temperature=temperature,
             ai_max_tokens=max_tokens,
         )
@@ -357,6 +434,10 @@ class KimiBedrockHandler(BaseProviderHandler):
         )
 
         content_blocks, stop_reason = self.convert_from_provider_response(response)
+        logger.debug(
+            'Kimi converted content blocks: '
+            f'{self._summarize_content_blocks(content_blocks)}; stop_reason={stop_reason}'
+        )
 
         if not any(block.get('type') == 'tool_use' for block in content_blocks):
             screenshot_tool = self._build_screenshot_retry(messages)

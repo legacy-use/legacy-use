@@ -1,6 +1,7 @@
 from server.computer_use.handlers.utils.pyautogui_converter import (
     convert_pyautogui_code_to_tool_use,
     normalize_extraction_data,
+    parse_task,
 )
 
 
@@ -148,6 +149,23 @@ def test_sleep_alias_maps_to_wait():
     assert time_block['input']['duration'] == 1.5
 
 
+def test_parse_task_pairs_code_with_nearest_preceding_thought_and_action():
+    task = parse_task(
+        '## Thought:\nFirst thought.\n'
+        '## Action:\nFirst action.\n'
+        '## Thought:\nFinal thought.\n'
+        '## Action:\nFinal action.\n'
+        '## Code:\n```python\ncomputer.terminate(status="success", data="{\\"done\\": true}")\n```'
+    )
+
+    assert task['thought'] == 'Final thought.'
+    assert task['action'] == 'Final action.'
+    assert (
+        task['code']
+        == 'computer.terminate(status="success", data="{\\"done\\": true}")'
+    )
+
+
 def test_terminate_success_maps_to_extraction():
     block = convert_pyautogui_code_to_tool_use(
         'computer.terminate(status="success", data="{\\"foo\\": \\"bar\\"}")',
@@ -210,6 +228,20 @@ def test_normalize_extraction_data_prefers_list_field_for_array_schema():
         'name': 'Tool Test',
         'result': {'results': ['Settings', 'System settings']},
     }
+
+
+def test_terminate_success_name_mismatch_maps_to_ui_not_as_expected():
+    block = convert_pyautogui_code_to_tool_use(
+        'computer.terminate(status="success", data="{\\"name\\": \\"Wrong Tool\\", \\"result\\": {\\"done\\": true}}")',
+        tool_id_prefix='toolu_test',
+        latest_api_definitions={
+            'api_name': 'Expected Tool',
+            'api_response_example': '{"done": true}',
+        },
+    )
+
+    assert block['name'] == 'ui_not_as_expected'
+    assert 'does not match expected API name' in block['input']['reasoning']
 
 
 def test_terminate_failure_maps_to_ui_not_as_expected():

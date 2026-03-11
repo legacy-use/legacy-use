@@ -18,6 +18,7 @@ from server.computer_use.handlers.utils.pyautogui_converter import (
     normalize_extraction_data,
     parse_task,
 )
+from server.computer_use.logging import logger
 
 
 def _normalize_response_text(text: str) -> str:
@@ -157,7 +158,15 @@ def _try_parse_raw_extraction(
     if not isinstance(parsed, dict):
         return None
 
-    extraction_data = normalize_extraction_data(parsed, latest_api_definitions)
+    try:
+        extraction_data = normalize_extraction_data(parsed, latest_api_definitions)
+    except ValueError as exc:
+        return {
+            'id': 'toolu_kimi_terminate',
+            'type': 'tool_use',
+            'name': 'ui_not_as_expected',
+            'input': {'reasoning': str(exc)},
+        }
 
     return {
         'id': 'toolu_kimi_extraction',
@@ -199,7 +208,14 @@ def convert_kimi_to_anthropic_response(
 ) -> tuple[list[BetaContentBlockParam], str]:
     """Convert a Kimi response to Anthropic-style content blocks."""
     parsed_text = _normalize_response_text(_extract_text_from_response(response))
+    logger.debug(f'Kimi raw response text: {parsed_text[:2000]}')
     task = parse_task(parsed_text)
+    logger.debug(
+        'Kimi parsed task: '
+        f'thought={bool(task.get("thought"))}, '
+        f'action={bool(task.get("action"))}, '
+        f'code={task.get("code", "")[:1000] if task.get("code") else ""}'
+    )
 
     content_blocks: list[BetaContentBlockParam] = []
     synthesized_parts: list[str] = []
@@ -222,12 +238,18 @@ def convert_kimi_to_anthropic_response(
     if not code:
         return content_blocks, stop_reason
 
+    logger.debug(f'Kimi model code block: {code}')
+
     raw_extraction = _try_parse_raw_extraction(code, latest_api_definitions)
     if raw_extraction is not None:
+        logger.debug(
+            f'Kimi model tool output mapped from raw JSON code block: {raw_extraction}'
+        )
         content_blocks.append(raw_extraction)
         return content_blocks, 'end_turn'
 
     raw_commands = _split_code_commands(code)
+    logger.debug(f'Kimi raw code commands: {raw_commands}')
     commands: list[str] = []
     index = 0
     while index < len(raw_commands):
@@ -252,6 +274,8 @@ def convert_kimi_to_anthropic_response(
         commands.append(command)
         index += 1
 
+    logger.debug(f'Kimi normalized commands: {commands}')
+
     for command in commands:
         tool_use = convert_pyautogui_code_to_tool_use(
             command,
@@ -261,6 +285,7 @@ def convert_kimi_to_anthropic_response(
             default_wait_seconds=20,
             invalid_to_ui_not_as_expected=True,
         )
+        logger.debug(f'Kimi tool mapping: command={command} -> tool_use={tool_use}')
         content_blocks.append(tool_use)
 
         if tool_use['name'] in {'extraction', 'ui_not_as_expected'}:

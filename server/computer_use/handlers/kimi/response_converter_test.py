@@ -42,6 +42,24 @@ def test_terminate_response_is_end_turn():
     assert blocks[1]['name'] == 'extraction'
 
 
+def test_terminate_response_uses_thought_action_nearest_to_code():
+    response = {
+        'choices': [
+            {
+                'message': {
+                    'content': '## Thought:\nOld thought\n## Action:\nOld action\n## Thought:\nFinal thought\n## Action:\nFinal action\n## Code:\n```python\ncomputer.terminate(status="success", data="{\\"done\\": true}")\n```'
+                }
+            }
+        ]
+    }
+
+    blocks, stop_reason = convert_kimi_to_anthropic_response(response)
+
+    assert stop_reason == 'end_turn'
+    assert blocks[0]['text'] == '## Thought:\nFinal thought\n## Action:\nFinal action'
+    assert blocks[1]['name'] == 'extraction'
+
+
 def test_inline_code_headers_and_keydown_pair_are_normalized():
     response = {
         'choices': [
@@ -139,7 +157,7 @@ def test_normalized_coordinates_use_display_metadata():
     assert blocks[1]['input']['coordinate'] == [494, 404]
 
 
-def test_duplicate_thought_action_sections_are_not_repeated_in_text_block():
+def test_duplicate_thought_action_sections_use_latest_pair_without_repetition():
     response = {
         'choices': [
             {
@@ -155,7 +173,10 @@ def test_duplicate_thought_action_sections_are_not_repeated_in_text_block():
     assert stop_reason == 'end_turn'
     assert len(blocks) == 1
     assert blocks[0]['type'] == 'text'
-    assert blocks[0]['text'] == '## Thought:\nFirst thought.\n## Action:\nFirst action.'
+    assert (
+        blocks[0]['text']
+        == '## Thought:\nRepeated thought.\n## Action:\nRepeated action.'
+    )
 
 
 def test_raw_json_code_block_maps_to_extraction():
@@ -200,6 +221,30 @@ def test_raw_json_list_result_is_wrapped_to_match_expected_shape():
     assert stop_reason == 'end_turn'
     assert blocks[1]['name'] == 'extraction'
     assert blocks[1]['input']['data']['result'] == {'result': ['settings']}
+
+
+def test_raw_json_name_mismatch_maps_to_ui_not_as_expected():
+    response = {
+        'choices': [
+            {
+                'message': {
+                    'content': '## Thought:\nDone\n## Action:\nReturn the result\n## Code:\n```python\n{\n  "name": "Wrong Tool",\n  "result": {\n    "done": true\n  }\n}\n```'
+                }
+            }
+        ]
+    }
+
+    blocks, stop_reason = convert_kimi_to_anthropic_response(
+        response,
+        latest_api_definitions={
+            'api_name': 'Expected Tool',
+            'api_response_example': '{"done": true}',
+        },
+    )
+
+    assert stop_reason == 'end_turn'
+    assert blocks[1]['name'] == 'ui_not_as_expected'
+    assert 'does not match expected API name' in blocks[1]['input']['reasoning']
 
 
 def test_malformed_response_returns_text_only():
