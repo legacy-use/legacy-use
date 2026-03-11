@@ -24,7 +24,10 @@ from anthropic.types.beta import (
 
 from server.computer_use.client import LegacyUseClient
 from server.computer_use.config import PROMPT_CACHING_BETA_FLAG, APIProvider
-from server.computer_use.handlers.base import BaseProviderHandler
+from server.computer_use.handlers.base import (
+    BaseProviderHandler,
+    ProviderExecutionResult,
+)
 from server.computer_use.logging import logger
 from server.computer_use.tools.collection import ToolCollection
 from server.settings import settings
@@ -230,7 +233,7 @@ class AnthropicHandler(BaseProviderHandler):
         max_tokens: int,
         temperature: float = 0.0,
         **kwargs,
-    ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
+    ) -> ProviderExecutionResult:
         """
         Make API call to Anthropic and return standardized response format.
 
@@ -273,7 +276,12 @@ class AnthropicHandler(BaseProviderHandler):
             parsed_response
         )
 
-        return content_blocks, stop_reason, request, raw_response
+        return ProviderExecutionResult(
+            content_blocks=content_blocks,
+            stop_reason=stop_reason,
+            request=request,
+            raw_response=raw_response,
+        )
 
     def convert_from_provider_response(
         self, response: BetaMessage

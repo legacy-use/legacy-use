@@ -165,6 +165,7 @@ class Job(Base):
     completed_at = Column(DateTime, nullable=True)
     total_input_tokens = Column(Integer, nullable=True)
     total_output_tokens = Column(Integer, nullable=True)
+    provider_state = Column(JSONB, nullable=True)
     # Lease fields for resilient workers
     lease_owner = Column(String, nullable=True)
     lease_expires_at = Column(DateTime, nullable=True)

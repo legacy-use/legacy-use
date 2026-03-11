@@ -32,7 +32,7 @@ PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     # APIProvider.BEDROCK: 'eu.anthropic.claude-opus-4-5-20251101-v1:0', # opus 4.5
     APIProvider.VERTEX: 'claude-sonnet-4@20250514',
     APIProvider.LEGACYUSE_PROXY: 'legacy-use-sonnet-4',  # model selection is handled server side
-    APIProvider.OPENAI: 'gpt-5',
+    APIProvider.OPENAI: 'gpt-5.4',
     APIProvider.GEMINI: 'gemini-2.5-computer-use-preview-10-2025',
     APIProvider.OPENCUA: 'opencua-7b-1755605386',
     APIProvider.QWEN_BEDROCK: 'qwen.qwen3-vl-235b-a22b',

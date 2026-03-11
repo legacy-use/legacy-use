@@ -11,9 +11,16 @@ from typing import Dict, Optional, Tuple
 import docker as docker_sdk
 import httpx
 
-docker = docker_sdk.from_env()
-
 logger = logging.getLogger(__name__)
+_docker_client = None
+
+
+def get_docker_client():
+    """Create the Docker client lazily to avoid import-time side effects."""
+    global _docker_client
+    if _docker_client is None:
+        _docker_client = docker_sdk.from_env()
+    return _docker_client
 
 
 async def check_target_container_health_once(container_ip: str) -> dict:
@@ -88,7 +95,7 @@ def get_container_ip(container_id: str) -> Optional[str]:
     Returns:
         IP address as string or None if not found
     """
-    container = docker.containers.get(container_id)
+    container = get_docker_client().containers.get(container_id)
     networks = container.attrs['NetworkSettings']['Networks']
     for network in networks.values():
         ip_address = network['IPAddress']
@@ -102,7 +109,7 @@ def get_container_ip(container_id: str) -> Optional[str]:
 def get_docker_network_mode() -> Optional[str]:
     """Check if we are running in docker and get network info."""
     # Find container by regex pattern - handles both legacy-use-backend and app-backend-\d+
-    containers = docker.containers.list()
+    containers = get_docker_client().containers.list()
     for container in containers:
         if re.search(r'(legacy-use-backend|app-backend-\d+)', container.name):
             networks = container.attrs['NetworkSettings']['Networks']
@@ -159,7 +166,7 @@ def launch_container(
 
         logger.info(f'Launching docker container {container_name}')
 
-        container = docker.containers.run(
+        container = get_docker_client().containers.run(
             'legacy-use-target:local',
             name=container_name,
             detach=True,
@@ -200,8 +207,9 @@ def stop_container(container_id: str) -> bool:
         True if successful, False otherwise
     """
     logger.info(f'Stopping and removing container {container_id}')
-    docker.containers.get(container_id).stop(timeout=1)
-    docker.containers.get(container_id).remove()
+    docker_client = get_docker_client()
+    docker_client.containers.get(container_id).stop(timeout=1)
+    docker_client.containers.get(container_id).remove()
     logger.info(f'Stopped and removed container {container_id}')
     return True
 
@@ -230,7 +238,7 @@ async def get_container_status(container_id: str, session_state: str) -> Dict:
     )
 
     try:
-        container = docker.containers.get(container_id)
+        container = get_docker_client().containers.get(container_id)
     except Exception as e:
         logger.error(f'Container {container_id} not found or unavailable: {str(e)}')
         return {

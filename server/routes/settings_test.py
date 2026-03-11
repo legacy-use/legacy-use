@@ -42,6 +42,27 @@ def test_get_providers_includes_kimi(monkeypatch):
     )
 
 
+def test_get_providers_uses_gpt_5_4_for_openai(monkeypatch):
+    monkeypatch.setattr(
+        settings_module,
+        'get_tenant_from_request',
+        lambda request: {'schema': 'tenant'},
+    )
+    monkeypatch.setattr(
+        settings_module,
+        'get_tenant_setting',
+        lambda schema, key: {
+            'API_PROVIDER': APIProvider.OPENAI.value,
+            'OPENAI_API_KEY': 'sk-test',
+        }.get(key),
+    )
+
+    response = asyncio.run(settings_module.get_providers(_request(), db_tenant=None))
+
+    providers = {provider.provider: provider for provider in response.providers}
+    assert providers[APIProvider.OPENAI.value].default_model == 'gpt-5.4'
+
+
 def test_update_provider_settings_sets_fixed_region(monkeypatch):
     monkeypatch.setattr(
         settings_module,

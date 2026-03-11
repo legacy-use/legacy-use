@@ -25,6 +25,18 @@ def _spec_to_openai_chat_function(spec: dict[str, Any]) -> ChatCompletionToolPar
     }
 
 
+def _spec_to_openai_responses_function(spec: dict[str, Any]) -> dict[str, Any]:
+    name = str(spec.get('name') or '')
+    description = str(spec.get('description') or f'Tool: {name}')
+    parameters = spec.get('input_schema') or {'type': 'object', 'properties': {}}
+    return {
+        'type': 'function',
+        'name': name,
+        'description': description,
+        'parameters': parameters,
+    }
+
+
 def expand_computer_to_openai_chat_functions(
     tool: BaseAnthropicTool,
 ) -> List[ChatCompletionToolParam]:
@@ -62,4 +74,16 @@ def internal_specs_to_openai_chat_functions(
             result.extend(expand_computer_to_openai_chat_functions(tool))
         else:
             result.append(_spec_to_openai_chat_function(tool.internal_spec()))
+    return result
+
+
+def internal_specs_to_openai_responses_tools(
+    tools: List[BaseAnthropicTool],
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for tool in tools:
+        if getattr(tool, 'name', None) == 'computer':
+            result.append({'type': 'computer'})
+            continue
+        result.append(_spec_to_openai_responses_function(tool.internal_spec()))
     return result

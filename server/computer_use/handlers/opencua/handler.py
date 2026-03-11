@@ -5,7 +5,6 @@ import logging
 from typing import Any, Dict, Iterable, cast
 
 import aioboto3
-import httpx
 from anthropic.types.beta import (
     BetaContentBlockParam,
     BetaMessageParam,
@@ -15,7 +14,10 @@ from anthropic.types.beta import (
 from botocore.config import Config
 
 from server.computer_use.config import APIProvider
-from server.computer_use.handlers.base import BaseProviderHandler
+from server.computer_use.handlers.base import (
+    BaseProviderHandler,
+    ProviderExecutionResult,
+)
 from server.computer_use.tools.collection import ToolCollection
 from server.utils.telemetry import capture_ai_generation
 
@@ -136,7 +138,7 @@ class OpenCuaHandler(BaseProviderHandler):
         messages: list[BetaMessageParam],
         system: str,
         **kwargs,
-    ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
+    ) -> ProviderExecutionResult:
         """Make raw API call to OpenCua and return provider-specific response."""
 
         system_formatted = self.prepare_system(system)
@@ -157,7 +159,10 @@ class OpenCuaHandler(BaseProviderHandler):
                 'name': 'computer',
                 'input': {'action': 'screenshot'},
             }
-            return [mock_screenshot_tool_use], 'tool_use', None, None
+            return ProviderExecutionResult(
+                content_blocks=[mock_screenshot_tool_use],
+                stop_reason='tool_use',
+            )
 
         async with client as sm_client:
             result, request, response = await self.make_ai_request(
@@ -203,7 +208,12 @@ class OpenCuaHandler(BaseProviderHandler):
 
             if retry_count > self.max_retries:
                 logger.warning('Max retries reached, terminating task')
-                return [], 'end_turn', request, response
+                return ProviderExecutionResult(
+                    content_blocks=[],
+                    stop_reason='end_turn',
+                    request=request,
+                    raw_response=response,
+                )
 
             mock_screenshot_tool_use: BetaToolUseBlockParam = {
                 'id': f'toolu_retry_screenshot_{retry_count}',
@@ -213,7 +223,12 @@ class OpenCuaHandler(BaseProviderHandler):
             }
             content_blocks.append(mock_screenshot_tool_use)
 
-        return content_blocks, stop_reason, request, response
+        return ProviderExecutionResult(
+            content_blocks=content_blocks,
+            stop_reason=stop_reason,
+            request=request,
+            raw_response=response,
+        )
 
     def convert_from_provider_response(
         self, response: str

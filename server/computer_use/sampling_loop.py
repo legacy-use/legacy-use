@@ -24,6 +24,7 @@ from anthropic.types.beta import (
 )
 
 from server.computer_use.config import APIProvider
+from server.computer_use.handlers.base import ProviderExecutionResult
 from server.computer_use.handlers.registry import get_handler
 from server.computer_use.logging import logger
 from server.computer_use.tools import (
@@ -139,6 +140,7 @@ async def sampling_loop(
         token_efficient_tools_beta=token_efficient_tools_beta,
         only_n_most_recent_images=only_n_most_recent_images,
         tenant_schema=tenant_schema,
+        provider_state=job_data.get('provider_state'),
     )
 
     # Load system prompt
@@ -196,6 +198,7 @@ async def sampling_loop(
         # --- Initialize client ---
 
         client = await handler.initialize_client(api_key=api_key)
+        handler.extra_params['provider_state'] = job_data.get('provider_state') or {}
 
         # Check for cancellation before API call
         try:
@@ -212,12 +215,7 @@ async def sampling_loop(
                 ai_span_name='api call',
             )
             # Make API call via handler
-            (
-                response_params,
-                stop_reason,
-                request,
-                raw_response,
-            ) = await handler.execute(
+            execution_result = await handler.execute(
                 job_id=str(job_id),
                 iteration_count=iteration_count,
                 client=client,
@@ -228,6 +226,15 @@ async def sampling_loop(
                 max_tokens=max_tokens,
                 temperature=0.0,
             )
+            if not isinstance(execution_result, ProviderExecutionResult):
+                raise TypeError(
+                    f'Provider handler returned invalid result type: {type(execution_result).__name__}'
+                )
+
+            response_params = execution_result.content_blocks
+            stop_reason = execution_result.stop_reason
+            request = execution_result.request
+            raw_response = execution_result.raw_response
 
             if api_response_callback:
                 api_response_callback(request, raw_response, None)
@@ -239,6 +246,17 @@ async def sampling_loop(
                     'response': raw_response,
                 }
             )
+
+            provider_state = execution_result.provider_state or {}
+            if provider_state != (job_data.get('provider_state') or {}):
+                db_tenant.update_job(
+                    job_id,
+                    {
+                        'provider_state': provider_state or None,
+                    },
+                    update_session=False,
+                )
+                job_data['provider_state'] = provider_state
 
         except (APIStatusError, APIResponseValidationError) as e:
             if e.response.status_code == 403 and 'API Credits Exceeded' in str(e):

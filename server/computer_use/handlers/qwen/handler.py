@@ -13,7 +13,10 @@ import httpx
 from anthropic.types.beta import BetaContentBlockParam, BetaMessageParam
 from botocore.config import Config
 
-from server.computer_use.handlers.base import BaseProviderHandler
+from server.computer_use.handlers.base import (
+    BaseProviderHandler,
+    ProviderExecutionResult,
+)
 from server.computer_use.logging import logger
 from server.computer_use.tools.base import BaseAnthropicTool
 from server.computer_use.tools.collection import ToolCollection
@@ -223,7 +226,7 @@ class QwenBedrockHandler(BaseProviderHandler):
         max_tokens: int,
         temperature: float = 0.0,
         **kwargs,
-    ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
+    ) -> ProviderExecutionResult:
         bedrock_messages = self.convert_to_provider_messages(messages)
         system_blocks = self.prepare_system(system)
         bedrock_tools = self.prepare_tools(tools)
@@ -250,7 +253,12 @@ class QwenBedrockHandler(BaseProviderHandler):
 
         content_blocks, stop_reason = self.convert_from_provider_response(response)
 
-        return content_blocks, stop_reason, request, raw_response
+        return ProviderExecutionResult(
+            content_blocks=content_blocks,
+            stop_reason=stop_reason,
+            request=request,
+            raw_response=raw_response,
+        )
 
     def convert_from_provider_response(
         self, response: dict[str, Any]

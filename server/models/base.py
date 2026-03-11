@@ -343,6 +343,7 @@ class Job(BaseModel):
     api_definition_version_id: Optional[UUID] = None
     total_input_tokens: Optional[int] = None
     total_output_tokens: Optional[int] = None
+    provider_state: Optional[Dict[str, Any]] = None
     duration_seconds: Optional[float] = None  # Duration in seconds
 
 

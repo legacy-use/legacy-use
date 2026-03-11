@@ -6,10 +6,10 @@ to support multi-provider functionality in the sampling loop.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol, runtime_checkable
 
 import httpx
-import instructor
 from anthropic.types.beta import (
     BetaContentBlockParam,
     BetaMessageParam,
@@ -84,7 +84,7 @@ class ProviderHandler(Protocol):
     @abstractmethod
     async def make_ai_request(
         self,
-        client: instructor.AsyncInstructor,
+        client: Any,
         messages: list[BetaMessageParam],
         system: str,
         tools: ToolCollection,
@@ -113,7 +113,7 @@ class ProviderHandler(Protocol):
         self,
         job_id: str,
         iteration_count: int,
-        client: instructor.AsyncInstructor,
+        client: Any,
         messages: list[BetaMessageParam],
         system: str,
         tools: ToolCollection,
@@ -121,7 +121,7 @@ class ProviderHandler(Protocol):
         max_tokens: int,
         temperature: float = 0.0,
         **kwargs,
-    ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
+    ) -> 'ProviderExecutionResult':
         """
         Execute the API call to the provider and return standardized response.
 
@@ -138,7 +138,7 @@ class ProviderHandler(Protocol):
             **kwargs: Additional provider-specific parameters
 
         Returns:
-            Tuple of (content_blocks, stop_reason, request, raw_response)
+            Standardized provider execution result.
         """
         ...
 
@@ -238,3 +238,14 @@ class BaseProviderHandler(ABC):
         sample = s[:200]
         non_printable = sum(1 for c in sample if ord(c) < 32 or ord(c) > 126)
         return non_printable / len(sample) > 0.1
+
+
+@dataclass(kw_only=True)
+class ProviderExecutionResult:
+    """Standardized result returned by provider handlers."""
+
+    content_blocks: list[BetaContentBlockParam]
+    stop_reason: str
+    request: httpx.Request | None = None
+    raw_response: httpx.Response | Any | None = None
+    provider_state: dict[str, Any] = field(default_factory=dict)

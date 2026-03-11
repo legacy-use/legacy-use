@@ -17,7 +17,10 @@ from google import genai
 from google.genai import types
 from google.genai.types import HttpOptions
 
-from server.computer_use.handlers.base import BaseProviderHandler
+from server.computer_use.handlers.base import (
+    BaseProviderHandler,
+    ProviderExecutionResult,
+)
 from server.computer_use.logging import logger
 from server.computer_use.tools.base import BaseAnthropicTool
 from server.computer_use.tools.collection import ToolCollection
@@ -246,7 +249,7 @@ class GeminiHandler(BaseProviderHandler):
         max_tokens: int,
         temperature: float = 0.0,
         **kwargs,
-    ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
+    ) -> ProviderExecutionResult:
         gemini_tools = self.prepare_tools(tools)
         gemini_messages = self.convert_to_provider_messages(messages)
         system_str = self.prepare_system(system)
@@ -272,7 +275,12 @@ class GeminiHandler(BaseProviderHandler):
 
         content_blocks, stop_reason = self.convert_from_provider_response(response)
 
-        return content_blocks, stop_reason, request, raw_response  # type: ignore[return-value]
+        return ProviderExecutionResult(
+            content_blocks=content_blocks,
+            stop_reason=stop_reason,
+            request=request,
+            raw_response=raw_response,
+        )
 
     def convert_from_provider_response(
         self, response: Any

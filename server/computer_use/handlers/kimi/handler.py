@@ -10,7 +10,10 @@ import httpx
 from anthropic.types.beta import BetaContentBlockParam, BetaMessageParam
 from botocore.config import Config
 
-from server.computer_use.handlers.base import BaseProviderHandler
+from server.computer_use.handlers.base import (
+    BaseProviderHandler,
+    ProviderExecutionResult,
+)
 from server.computer_use.handlers.opencua.message_converter import (
     extract_api_definitions_from_user_message,
 )
@@ -401,7 +404,7 @@ class KimiBedrockHandler(BaseProviderHandler):
         max_tokens: int,
         temperature: float = 0.0,
         **kwargs,
-    ) -> tuple[list[BetaContentBlockParam], str, httpx.Request, httpx.Response]:
+    ) -> ProviderExecutionResult:
         self.prepare_tools(tools)
         system_text = self.prepare_system(system)
         kimi_messages = self.convert_to_provider_messages(messages)
@@ -410,8 +413,14 @@ class KimiBedrockHandler(BaseProviderHandler):
             screenshot_tool = self._build_screenshot_retry(messages)
             if screenshot_tool is None:
                 terminal_tool = self._build_noncompliant_terminal()
-                return [terminal_tool], 'end_turn', None, None
-            return [screenshot_tool], 'tool_use', None, None
+                return ProviderExecutionResult(
+                    content_blocks=[terminal_tool],
+                    stop_reason='end_turn',
+                )
+            return ProviderExecutionResult(
+                content_blocks=[screenshot_tool],
+                stop_reason='tool_use',
+            )
 
         async with client as br_client:
             response, request, raw_response = await self.make_ai_request(
@@ -443,11 +452,21 @@ class KimiBedrockHandler(BaseProviderHandler):
             screenshot_tool = self._build_screenshot_retry(messages)
             if screenshot_tool is None:
                 content_blocks.append(self._build_noncompliant_terminal(content_blocks))
-                return content_blocks, 'end_turn', request, raw_response
+                return ProviderExecutionResult(
+                    content_blocks=content_blocks,
+                    stop_reason='end_turn',
+                    request=request,
+                    raw_response=raw_response,
+                )
             content_blocks.append(screenshot_tool)
             stop_reason = 'tool_use'
 
-        return content_blocks, stop_reason, request, raw_response
+        return ProviderExecutionResult(
+            content_blocks=content_blocks,
+            stop_reason=stop_reason,
+            request=request,
+            raw_response=raw_response,
+        )
 
     def convert_from_provider_response(
         self, response: dict[str, Any]
