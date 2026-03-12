@@ -183,6 +183,13 @@ class BaseProviderHandler(ABC):
         """Convenience accessor for tenant-specific settings."""
         return _get_tenant_setting(self.tenant_schema, key)
 
+    def tenant_setting_stripped(self, key: str) -> Optional[str]:
+        """Return a tenant setting with surrounding whitespace removed."""
+        value = self.tenant_setting(key)
+        if isinstance(value, str):
+            value = value.strip()
+        return value or None
+
     def preprocess_messages(
         self,
         messages: list[BetaMessageParam],

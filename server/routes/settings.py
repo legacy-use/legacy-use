@@ -183,6 +183,26 @@ async def get_providers(request: Request, db_tenant=Depends(get_tenant_db)):
                 ),
             },
         },
+        APIProvider.KIMI_BEDROCK: {
+            'name': 'Kimi (Bedrock)',
+            'description': 'Kimi K2.5 via Bedrock Converse; default region eu-north-1',
+            'available': all(
+                [
+                    get_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID'),
+                    get_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY'),
+                ]
+            ),
+            'credentials': {
+                'access_key_id': obscure_api_key(
+                    get_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID')
+                ),
+                'secret_access_key': obscure_api_key(
+                    get_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY')
+                ),
+                'region': get_tenant_setting(tenant_schema, 'AWS_REGION')
+                or 'eu-north-1',
+            },
+        },
     }
 
     # Build provider list
@@ -242,15 +262,12 @@ async def update_provider_settings(
                 raise HTTPException(
                     status_code=400, detail=f'{field} is required for Bedrock provider'
                 )
-        set_tenant_setting(
-            tenant_schema, 'AWS_ACCESS_KEY_ID', request.credentials['access_key_id']
-        )
-        set_tenant_setting(
-            tenant_schema,
-            'AWS_SECRET_ACCESS_KEY',
-            request.credentials['secret_access_key'],
-        )
-        set_tenant_setting(tenant_schema, 'AWS_REGION', request.credentials['region'])
+        access_key_id = request.credentials['access_key_id'].strip()
+        secret_access_key = request.credentials['secret_access_key'].strip()
+        region = request.credentials['region'].strip()
+        set_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID', access_key_id)
+        set_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY', secret_access_key)
+        set_tenant_setting(tenant_schema, 'AWS_REGION', region)
 
     elif provider_enum == APIProvider.VERTEX:
         required_fields = ['project_id', 'region']
@@ -301,15 +318,12 @@ async def update_provider_settings(
                 raise HTTPException(
                     status_code=400, detail=f'{field} is required for OpenCua provider'
                 )
-        set_tenant_setting(
-            tenant_schema, 'AWS_ACCESS_KEY_ID', request.credentials['access_key_id']
-        )
-        set_tenant_setting(
-            tenant_schema,
-            'AWS_SECRET_ACCESS_KEY',
-            request.credentials['secret_access_key'],
-        )
-        set_tenant_setting(tenant_schema, 'AWS_REGION', request.credentials['region'])
+        access_key_id = request.credentials['access_key_id'].strip()
+        secret_access_key = request.credentials['secret_access_key'].strip()
+        region = request.credentials['region'].strip()
+        set_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID', access_key_id)
+        set_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY', secret_access_key)
+        set_tenant_setting(tenant_schema, 'AWS_REGION', region)
     elif provider_enum == APIProvider.QWEN_BEDROCK:
         required_fields = ['access_key_id', 'secret_access_key']
         for field in required_fields:
@@ -318,15 +332,25 @@ async def update_provider_settings(
                     status_code=400,
                     detail=f'{field} is required for Qwen Bedrock provider',
                 )
-        set_tenant_setting(
-            tenant_schema, 'AWS_ACCESS_KEY_ID', request.credentials['access_key_id']
-        )
-        set_tenant_setting(
-            tenant_schema,
-            'AWS_SECRET_ACCESS_KEY',
-            request.credentials['secret_access_key'],
-        )
+        access_key_id = request.credentials['access_key_id'].strip()
+        secret_access_key = request.credentials['secret_access_key'].strip()
+        set_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID', access_key_id)
+        set_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY', secret_access_key)
         set_tenant_setting(tenant_schema, 'AWS_REGION', 'eu-west-2')
+    elif provider_enum == APIProvider.KIMI_BEDROCK:
+        required_fields = ['access_key_id', 'secret_access_key', 'region']
+        for field in required_fields:
+            if field not in request.credentials:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f'{field} is required for Kimi Bedrock provider',
+                )
+        access_key_id = request.credentials['access_key_id'].strip()
+        secret_access_key = request.credentials['secret_access_key'].strip()
+        region = request.credentials['region'].strip()
+        set_tenant_setting(tenant_schema, 'AWS_ACCESS_KEY_ID', access_key_id)
+        set_tenant_setting(tenant_schema, 'AWS_SECRET_ACCESS_KEY', secret_access_key)
+        set_tenant_setting(tenant_schema, 'AWS_REGION', region)
 
     # Set as active provider
     set_tenant_setting(tenant_schema, 'API_PROVIDER', provider_enum.value)

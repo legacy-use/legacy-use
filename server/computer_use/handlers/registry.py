@@ -11,6 +11,7 @@ from server.computer_use.config import APIProvider
 from server.computer_use.handlers.anthropic.handler import AnthropicHandler
 from server.computer_use.handlers.base import BaseProviderHandler, ProviderHandler
 from server.computer_use.handlers.gemini.handler import GeminiHandler
+from server.computer_use.handlers.kimi.handler import KimiBedrockHandler
 from server.computer_use.handlers.openai.handler import OpenAIHandler
 from server.computer_use.handlers.opencua.handler import OpenCuaHandler
 from server.computer_use.handlers.qwen.handler import QwenBedrockHandler
@@ -25,6 +26,7 @@ HANDLER_REGISTRY: Dict[APIProvider, Type[BaseProviderHandler]] = {
     APIProvider.GEMINI: GeminiHandler,
     APIProvider.OPENCUA: OpenCuaHandler,
     APIProvider.QWEN_BEDROCK: QwenBedrockHandler,
+    APIProvider.KIMI_BEDROCK: KimiBedrockHandler,
 }
 
 

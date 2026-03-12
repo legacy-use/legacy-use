@@ -20,6 +20,7 @@ class APIProvider(StrEnum):
     GEMINI = 'gemini'
     OPENCUA = 'opencua'
     QWEN_BEDROCK = 'qwen_bedrock'
+    KIMI_BEDROCK = 'kimi_bedrock'
 
 
 PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
@@ -35,6 +36,7 @@ PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.GEMINI: 'gemini-2.5-computer-use-preview-10-2025',
     APIProvider.OPENCUA: 'opencua-7b-1755605386',
     APIProvider.QWEN_BEDROCK: 'qwen.qwen3-vl-235b-a22b',
+    APIProvider.KIMI_BEDROCK: 'moonshotai.kimi-k2.5',
 }
 
 
