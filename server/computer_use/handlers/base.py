@@ -190,6 +190,13 @@ class BaseProviderHandler(ABC):
             value = value.strip()
         return value or None
 
+    def runtime_override_stripped(self, key: str) -> Optional[str]:
+        """Return a runtime override with surrounding whitespace removed."""
+        value = self.extra_params.get(key)
+        if isinstance(value, str):
+            value = value.strip()
+        return value or None
+
     def preprocess_messages(
         self,
         messages: list[BetaMessageParam],

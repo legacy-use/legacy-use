@@ -353,6 +353,7 @@ class JobCreate(BaseModel):
     status: JobStatus = JobStatus.PENDING
     model: Optional[str] = None
     provider: Optional[str] = None
+    region: Optional[str] = None
 
 
 class JobUpdate(BaseModel):

@@ -136,7 +136,11 @@ class KimiBedrockHandler(BaseProviderHandler):
         aws_access_key = self.tenant_setting_stripped('AWS_ACCESS_KEY_ID')
         aws_secret_key = self.tenant_setting_stripped('AWS_SECRET_ACCESS_KEY')
         aws_session_token = self.tenant_setting_stripped('AWS_SESSION_TOKEN')
-        self._region = self.tenant_setting_stripped('AWS_REGION') or self._region
+        self._region = (
+            self.runtime_override_stripped('region_override')
+            or self.tenant_setting_stripped('AWS_REGION')
+            or self._region
+        )
 
         if not aws_access_key or not aws_secret_key:
             raise ValueError(

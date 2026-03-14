@@ -167,6 +167,9 @@ export interface JobCreate {
   api_name: string;
   parameters?: JobCreateParameters;
   status?: JobStatus;
+  model?: string | null;
+  provider?: string | null;
+  region?: string | null;
 }
 
 export interface JobLogEntry {

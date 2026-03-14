@@ -88,6 +88,7 @@ class APIGatewayCore:
         session_id: str = None,
         model_override: Optional[str] = None,
         provider_override: Optional[str] = None,
+        region_override: Optional[str] = None,
     ) -> APIResponse:
         """Execute an API by name with the given parameters."""
         # Load API definitions fresh from the database
@@ -196,6 +197,7 @@ class APIGatewayCore:
                 tenant_schema=self.tenant_schema,
                 job_data=job_data,
                 api_definition_runtime=api_def,
+                region_override=region_override.strip() if region_override else None,
             )
             capture_ai_span(ai_trace_id=str(job_id), ai_span_name='sampling_loop end')
 

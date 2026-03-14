@@ -44,6 +44,7 @@ class OpenCuaHandler(BaseProviderHandler):
             tenant_schema=tenant_schema,
             only_n_most_recent_images=only_n_most_recent_images,
             max_retries=max_retries,
+            **kwargs,
         )
 
         self.provider = provider
@@ -55,7 +56,9 @@ class OpenCuaHandler(BaseProviderHandler):
         """Initialize OpenCua client."""
         # AWS credentials from tenant settings
 
-        aws_region = self.tenant_setting_stripped('AWS_REGION')
+        aws_region = self.runtime_override_stripped(
+            'region_override'
+        ) or self.tenant_setting_stripped('AWS_REGION')
         aws_access_key = self.tenant_setting_stripped('AWS_ACCESS_KEY_ID')
         aws_secret_key = self.tenant_setting_stripped('AWS_SECRET_ACCESS_KEY')
 

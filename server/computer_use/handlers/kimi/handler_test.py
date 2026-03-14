@@ -146,6 +146,38 @@ def test_initialize_client_requires_credentials():
         raise AssertionError('Expected initialize_client to raise ValueError')
 
 
+def test_initialize_client_uses_region_override(monkeypatch):
+    captured = {}
+
+    class FakeSession:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        'server.computer_use.handlers.kimi.handler.aioboto3.Session', FakeSession
+    )
+
+    handler = KimiBedrockHandler(
+        model='moonshotai.kimi-k2.5',
+        tenant_schema='tenant',
+        region_override='us-east-1',
+    )
+
+    def _tenant_setting(key: str):
+        return {
+            'AWS_REGION': 'eu-north-1',
+            'AWS_ACCESS_KEY_ID': 'access',
+            'AWS_SECRET_ACCESS_KEY': 'secret',
+            'AWS_SESSION_TOKEN': None,
+        }.get(key)
+
+    handler.tenant_setting = _tenant_setting  # type: ignore[method-assign]
+
+    asyncio.run(handler.initialize_client(api_key=''))
+
+    assert captured['region_name'] == 'us-east-1'
+
+
 def test_execute_terminates_with_ui_not_as_expected_after_retry_exhaustion():
     handler = KimiBedrockHandler(
         model='moonshotai.kimi-k2.5',
@@ -190,7 +222,7 @@ def test_execute_terminates_with_ui_not_as_expected_after_retry_exhaustion():
         ),
     ]
 
-    content_blocks, stop_reason, _, _ = asyncio.run(
+    execution_result = asyncio.run(
         handler.execute(
             job_id='job-1',
             iteration_count=1,
@@ -204,10 +236,10 @@ def test_execute_terminates_with_ui_not_as_expected_after_retry_exhaustion():
         )
     )
 
-    assert stop_reason == 'end_turn'
-    assert content_blocks[-1]['type'] == 'tool_use'
-    assert content_blocks[-1]['name'] == 'ui_not_as_expected'
+    assert execution_result.stop_reason == 'end_turn'
+    assert execution_result.content_blocks[-1]['type'] == 'tool_use'
+    assert execution_result.content_blocks[-1]['name'] == 'ui_not_as_expected'
     assert (
         'did not include a supported tool action'
-        in content_blocks[-1]['input']['reasoning']
+        in execution_result.content_blocks[-1]['input']['reasoning']
     )

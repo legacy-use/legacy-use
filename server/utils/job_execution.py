@@ -359,6 +359,7 @@ async def execute_api_in_background_with_tenant(job: Job, tenant_schema: str):
                     session_id=(str(job.session_id) if job.session_id else None),
                     model_override=job.parameters.get('_model'),
                     provider_override=job.parameters.get('_provider'),
+                    region_override=job.parameters.get('_region'),
                 )
 
             # Update job with result and API exchanges using tenant-aware database service
@@ -580,6 +581,10 @@ async def create_and_enqueue_job(
         job_data['parameters']['_provider'] = job_data.pop('provider')
     else:
         job_data.pop('provider', None)
+    if job_data.get('region'):
+        job_data['parameters']['_region'] = job_data.pop('region')
+    else:
+        job_data.pop('region', None)
 
     # Ensure session
     if not job_data.get('session_id'):

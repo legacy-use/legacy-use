@@ -101,8 +101,10 @@ class AnthropicHandler(BaseProviderHandler):
 
         elif self.provider == APIProvider.BEDROCK:
             # AWS credentials from tenant settings (fallback to env settings)
-            aws_region = self.tenant_setting('AWS_REGION') or getattr(
-                settings, 'AWS_REGION', None
+            aws_region = (
+                self.runtime_override_stripped('region_override')
+                or self.tenant_setting('AWS_REGION')
+                or getattr(settings, 'AWS_REGION', None)
             )
             aws_access_key = self.tenant_setting('AWS_ACCESS_KEY_ID') or getattr(
                 settings, 'AWS_ACCESS_KEY_ID', None

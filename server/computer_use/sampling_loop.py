@@ -81,6 +81,7 @@ async def sampling_loop(
     tenant_schema: str,
     job_data: dict[str, Any],
     api_definition_runtime: APIDefinitionRuntime,
+    region_override: str | None = None,
     # Remove job_id from here as it's now a primary parameter
     # job_id: Optional[str] = None,
 ) -> tuple[Any, list[dict[str, Any]]]:  # Return format remains the same
@@ -141,6 +142,7 @@ async def sampling_loop(
         only_n_most_recent_images=only_n_most_recent_images,
         tenant_schema=tenant_schema,
         provider_state=job_data.get('provider_state'),
+        region_override=region_override,
     )
 
     # Load system prompt
