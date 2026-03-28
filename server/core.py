@@ -180,6 +180,7 @@ class APIGatewayCore:
                 if provider_override
                 else self.provider
             )
+            tool_version = get_tool_version(model)
             result, exchanges = await sampling_loop(
                 job_id=job_id,
                 db_tenant=self.db_tenant,
@@ -193,7 +194,7 @@ class APIGatewayCore:
                 api_key=self.api_key,
                 only_n_most_recent_images=3,
                 session_id=session_id,
-                tool_version=self.tool_version,
+                tool_version=tool_version,
                 tenant_schema=self.tenant_schema,
                 job_data=job_data,
                 api_definition_runtime=api_def,

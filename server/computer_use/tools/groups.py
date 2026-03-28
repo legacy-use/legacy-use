@@ -4,12 +4,20 @@ from typing import Literal
 from server.computer_use.tools.custom_action import CustomActionTool
 
 from .base import BaseAnthropicTool
-from .computer import ComputerTool20241022, ComputerTool20250124
+from .computer import (
+    ComputerTool20241022,
+    ComputerTool20250124,
+    ComputerTool20251124,
+)
 from .extraction import ExtractionTool
 from .ui_not_as_expected import UINotAsExpectedTool
 
-ToolVersion = Literal['computer_use_20250124', 'computer_use_20241022']
-BetaFlag = Literal['computer-use-2024-10-22', 'computer-use-2025-01-24']
+ToolVersion = Literal[
+    'computer_use_20251124', 'computer_use_20250124', 'computer_use_20241022'
+]
+BetaFlag = Literal[
+    'computer-use-2024-10-22', 'computer-use-2025-01-24', 'computer-use-2025-11-24'
+]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -29,6 +37,16 @@ TOOL_GROUPS: list[ToolGroup] = [
             CustomActionTool,
         ],
         beta_flag='computer-use-2024-10-22',
+    ),
+    ToolGroup(
+        version='computer_use_20251124',
+        tools=[
+            ComputerTool20251124,
+            ExtractionTool,
+            UINotAsExpectedTool,
+            CustomActionTool,
+        ],
+        beta_flag='computer-use-2025-11-24',
     ),
     ToolGroup(
         version='computer_use_20250124',

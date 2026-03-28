@@ -75,7 +75,7 @@ server-tests:
 # Docker Compose Commands
 docker-dev: ensure-env
 	@echo "🚀 Starting legacy-use in DEVELOPMENT mode with hot-reloading..."
-	docker-compose -f docker-compose.yml -f docker-compose.dev-override.yml up
+	docker compose -f docker-compose.yml -f docker-compose.dev-override.yml up --force-recreate --remove-orphans
 
 docker-prod: ensure-env
 	@echo "🚀 Starting legacy-use in PRODUCTION mode..."
@@ -86,7 +86,7 @@ docker-prod: ensure-env
 		export DATABASE_URL=$$(aws secretsmanager get-secret-value --secret-id $$SECRET_NAME --query SecretString --output text); \
 	fi
 	@echo "🔧 Starting services in production mode..."
-	docker-compose up -d
+	docker compose up -d --force-recreate --remove-orphans
 
 # Individual Docker Build Targets
 docker-build-target:

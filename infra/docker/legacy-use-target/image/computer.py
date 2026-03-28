@@ -57,6 +57,8 @@ Action_20250124 = (
     ]
 )
 
+Action_20251124 = Action_20250124
+
 ScrollDirection = Literal['up', 'down', 'left', 'right']
 
 
@@ -492,3 +494,7 @@ class ComputerTool20250124(BaseComputerTool):
         return await super().__call__(
             action=action, text=text, coordinate=coordinate, key=key, **kwargs
         )
+
+
+class ComputerTool20251124(ComputerTool20250124):
+    api_type: Literal['computer_20251124'] = 'computer_20251124'

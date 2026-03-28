@@ -21,6 +21,14 @@ from server.computer_use.logging import logger
 from server.computer_use.tools import ToolResult
 
 
+def _stringify_tool_result_value(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
 def _load_system_prompt(system_prompt_suffix: str = '') -> str:
     """
     Load and format the system prompt with current values.
@@ -145,7 +153,9 @@ def _make_api_tool_result(
             {
                 'type': 'tool_result',
                 'tool_use_id': tool_use_id,
-                'content': [{'type': 'text', 'text': result.error}],
+                'content': [
+                    {'type': 'text', 'text': _stringify_tool_result_value(result.error)}
+                ],
                 'is_error': True,
             },
         )
@@ -209,7 +219,9 @@ def _make_api_tool_result(
             content.append(
                 {
                     'type': 'text',
-                    'text': _maybe_prepend_system_tool_result(result, result.output),
+                    'text': _maybe_prepend_system_tool_result(
+                        result, _stringify_tool_result_value(result.output)
+                    ),
                 }
             )
 

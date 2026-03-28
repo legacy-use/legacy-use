@@ -6,6 +6,7 @@ import httpx
 from anthropic.types.beta import (
     BetaToolComputerUse20241022Param,
     BetaToolComputerUse20250124Param,
+    BetaToolUnionParam,
 )
 
 from .base import BaseAnthropicTool, ToolError, ToolResult
@@ -35,6 +36,8 @@ Action_20250124 = (
     ]
 )
 
+Action_20251124 = Action_20250124
+
 ScrollDirection = Literal['up', 'down', 'left', 'right']
 
 
@@ -48,7 +51,9 @@ class BaseComputerTool(BaseAnthropicTool):
     width: int = 1024  # Default width
     height: int = 768  # Default height
     display_num: int = 1  # Default display number
-    api_type: Literal['computer_20241022', 'computer_20250124'] = 'computer_20241022'
+    api_type: Literal['computer_20241022', 'computer_20250124', 'computer_20251124'] = (
+        'computer_20241022'
+    )
 
     @property
     def options(self):
@@ -58,9 +63,18 @@ class BaseComputerTool(BaseAnthropicTool):
             'display_number': self.display_num,
         }
 
+    @property
+    def runtime_api_type(self) -> Literal['computer_20241022', 'computer_20250124']:
+        # The target container action surface for 2025-11-24 matches 2025-01-24 in
+        # this codebase, so forward the older literal for compatibility with older
+        # target images that have not yet been rebuilt.
+        if self.api_type == 'computer_20251124':
+            return 'computer_20250124'
+        return cast(Literal['computer_20241022', 'computer_20250124'], self.api_type)
+
     def to_params(
         self,
-    ) -> BetaToolComputerUse20241022Param | BetaToolComputerUse20250124Param:
+    ) -> BetaToolUnionParam:
         # redundant return type to satisfy type checker :(
         if self.api_type == 'computer_20241022':
             return BetaToolComputerUse20241022Param(
@@ -77,6 +91,20 @@ class BaseComputerTool(BaseAnthropicTool):
                 display_width_px=self.width,
                 display_height_px=self.height,
                 display_number=self.display_num,
+            )
+        elif self.api_type == 'computer_20251124':
+            # anthropic==0.67.0 does not yet expose a typed helper for the latest
+            # computer-use tool, but the API accepts the raw tool payload.
+            return cast(
+                BetaToolUnionParam,
+                {
+                    'name': self.name,
+                    'type': self.api_type,
+                    'display_width_px': self.width,
+                    'display_height_px': self.height,
+                    'display_number': self.display_num,
+                    'enable_zoom': False,
+                },
             )
         raise ValueError(f'Invalid API type: {self.api_type}')
 
@@ -259,7 +287,7 @@ class BaseComputerTool(BaseAnthropicTool):
     async def _forward_request(
         self,
         session_id: str,
-        action: Action_20241022 | Action_20250124,
+        action: Action_20241022 | Action_20250124 | Action_20251124,
         text: str | None = None,
         coordinate: tuple[int, int] | None = None,
         scroll_direction: ScrollDirection | None = None,
@@ -297,7 +325,7 @@ class BaseComputerTool(BaseAnthropicTool):
         timeout = httpx.Timeout(60.0, connect=10.0)
 
         # Construct the payload with only non-None parameters
-        payload: Dict[str, Any] = {'api_type': self.api_type}
+        payload: Dict[str, Any] = {'api_type': self.runtime_api_type}
         if text is not None:
             payload['text'] = text
         if coordinate is not None:
@@ -397,6 +425,48 @@ class ComputerTool20250124(BaseComputerTool, BaseAnthropicTool):
         **kwargs,
     ):
         return await self._forward_request(
+            session_id=session_id,
+            action=action,
+            text=text,
+            coordinate=coordinate,
+            scroll_direction=scroll_direction,
+            scroll_amount=scroll_amount,
+            duration=duration,
+            key=key,
+            **kwargs,
+        )
+
+
+class ComputerTool20251124(ComputerTool20250124):
+    api_type = 'computer_20251124'
+
+    def to_params(self) -> BetaToolUnionParam:
+        return cast(
+            BetaToolUnionParam,
+            {
+                'name': self.name,
+                'type': cast(Literal['computer_20251124'], self.api_type),
+                'display_width_px': self.width,
+                'display_height_px': self.height,
+                'display_number': self.display_num,
+                'enable_zoom': False,
+            },
+        )
+
+    async def __call__(
+        self,
+        *,
+        session_id: str,
+        action: Action_20251124,
+        text: str | None = None,
+        coordinate: tuple[int, int] | None = None,
+        scroll_direction: ScrollDirection | None = None,
+        scroll_amount: int | None = None,
+        duration: int | float | None = None,
+        key: str | None = None,
+        **kwargs,
+    ):
+        return await super().__call__(
             session_id=session_id,
             action=action,
             text=text,

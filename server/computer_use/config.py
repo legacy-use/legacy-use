@@ -7,7 +7,7 @@ from enum import StrEnum
 from server.computer_use.tools.groups import ToolVersion
 
 # Beta feature flags
-COMPUTER_USE_BETA_FLAG = 'computer-use-2025-01-24'
+COMPUTER_USE_BETA_FLAG = 'computer-use-2025-11-24'
 PROMPT_CACHING_BETA_FLAG = 'prompt-caching-2024-07-31'
 
 
@@ -71,5 +71,14 @@ def get_tool_version(model_name: str) -> ToolVersion:
     """
     Get the tool version for a given model name.
     """
-    # if needed 'computer_use_20241022', dependend on the model name, but currently all models are 20250124
+    normalized_model_name = model_name.lower().strip()
+
+    latest_computer_use_models = (
+        'claude-opus-4-6',
+        'claude-sonnet-4-6',
+        'claude-opus-4-5',
+    )
+    if any(model in normalized_model_name for model in latest_computer_use_models):
+        return 'computer_use_20251124'
+
     return 'computer_use_20250124'

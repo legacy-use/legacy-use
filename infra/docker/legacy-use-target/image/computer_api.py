@@ -6,8 +6,10 @@ from typing import Literal, Optional, Tuple, Union, get_args
 from computer import (
     Action_20241022,
     Action_20250124,
+    Action_20251124,
     ComputerTool20241022,
     ComputerTool20250124,
+    ComputerTool20251124,
     ScrollDirection,
     ToolError,
     run,
@@ -139,14 +141,14 @@ class ToolUseRequest(BaseModel):
     scroll_amount: Optional[int] = None
     duration: Optional[Union[int, float]] = None
     key: Optional[str] = None
-    api_type: Optional[Literal['computer_20241022', 'computer_20250124']] = (
-        'computer_20250124'
-    )
+    api_type: Optional[
+        Literal['computer_20241022', 'computer_20250124', 'computer_20251124']
+    ] = 'computer_20250124'
 
 
 @app.post('/tool_use/{action}')
 async def tool_use(
-    action: Action_20250124 = FastAPIPath(..., description='The action to perform'),
+    action: Action_20251124 = FastAPIPath(..., description='The action to perform'),
     request: Optional[ToolUseRequest] = None,
 ):
     """Execute a specific computer action"""
@@ -168,6 +170,18 @@ async def tool_use(
             'action': action,
             'text': request.text,
             'coordinate': request.coordinate,
+        }
+    elif request.api_type == 'computer_20251124':
+        valid_actions = [v for t in get_args(Action_20251124) for v in get_args(t)]
+        computer_actions = ComputerTool20251124()
+        params = {
+            'action': action,
+            'text': request.text,
+            'coordinate': request.coordinate,
+            'scroll_direction': request.scroll_direction,
+            'scroll_amount': request.scroll_amount,
+            'duration': request.duration,
+            'key': request.key,
         }
     else:
         valid_actions = [v for t in get_args(Action_20250124) for v in get_args(t)]
