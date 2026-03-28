@@ -83,6 +83,97 @@ class GeminiHandler(BaseProviderHandler):
     def prepare_system(self, system_prompt: str) -> str:
         return system_prompt
 
+    def _safe_int(self, value: Any) -> int | None:
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _response_to_json_dict(self, response: Any) -> dict[str, Any]:
+        if isinstance(response, dict):
+            return dict(response)
+        if hasattr(response, 'to_json_dict'):
+            return response.to_json_dict()
+        if hasattr(response, 'model_dump'):
+            return response.model_dump(mode='json', exclude_none=True)
+        return {}
+
+    def _sanitize_json_payload(self, value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: self._sanitize_json_payload(item) for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [self._sanitize_json_payload(item) for item in value]
+        if isinstance(value, tuple):
+            return [self._sanitize_json_payload(item) for item in value]
+        if isinstance(value, (bytes, bytearray)):
+            return f'<binary data: {len(value)} bytes>'
+        if hasattr(value, 'to_json_dict'):
+            return self._sanitize_json_payload(value.to_json_dict())
+        if hasattr(value, 'model_dump'):
+            return self._sanitize_json_payload(
+                value.model_dump(mode='json', exclude_none=True)
+            )
+        return value
+
+    def _normalize_usage(self, response: Any) -> dict[str, Any]:
+        """Normalize Gemini usage metadata into the shared Anthropic-style shape."""
+        usage = getattr(response, 'usage_metadata', None) or getattr(
+            response, 'usage', None
+        )
+        if not usage:
+            return {}
+
+        if isinstance(usage, dict):
+            normalized_usage = dict(usage)
+        elif hasattr(usage, 'model_dump'):
+            normalized_usage = usage.model_dump(mode='json', exclude_none=True)
+        elif hasattr(usage, 'to_json_dict'):
+            normalized_usage = usage.to_json_dict()
+        else:
+            normalized_usage = {
+                field: value
+                for field in (
+                    'prompt_token_count',
+                    'prompt_tokens',
+                    'input_tokens',
+                    'candidates_token_count',
+                    'completion_tokens',
+                    'output_tokens',
+                    'cached_content_token_count',
+                    'cache_read_input_tokens',
+                )
+                if (value := getattr(usage, field, None)) is not None
+            }
+
+        prompt_tokens = self._safe_int(
+            normalized_usage.get('prompt_token_count')
+            or normalized_usage.get('prompt_tokens')
+            or normalized_usage.get('input_tokens')
+        )
+        output_tokens = self._safe_int(
+            normalized_usage.get('candidates_token_count')
+            or normalized_usage.get('completion_tokens')
+            or normalized_usage.get('output_tokens')
+        )
+        cached_tokens = self._safe_int(
+            normalized_usage.get('cached_content_token_count')
+            or normalized_usage.get('cache_read_input_tokens')
+        )
+
+        if prompt_tokens is not None and 'input_tokens' not in normalized_usage:
+            normalized_usage['input_tokens'] = prompt_tokens
+        if output_tokens is not None and 'output_tokens' not in normalized_usage:
+            normalized_usage['output_tokens'] = output_tokens
+        if (
+            cached_tokens is not None
+            and 'cache_read_input_tokens' not in normalized_usage
+        ):
+            normalized_usage['cache_read_input_tokens'] = cached_tokens
+
+        return normalized_usage
+
     def _spec_to_function_declaration(
         self, spec: dict[str, Any]
     ) -> types.FunctionDeclaration:
@@ -199,7 +290,28 @@ class GeminiHandler(BaseProviderHandler):
         response = await client.aio.models.generate_content(
             model=model, contents=messages, config=config
         )
-        return response, None, response
+        request_payload = self._sanitize_json_payload(
+            {
+                'model': model,
+                'contents': messages,
+                'config': config.to_json_dict(),
+            }
+        )
+        request = httpx.Request(
+            method='POST',
+            url=f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
+            json=request_payload,
+        )
+        raw_response_payload = self._sanitize_json_payload(
+            self._response_to_json_dict(response)
+        )
+        raw_response_payload['usage'] = self._normalize_usage(response)
+        raw_response = httpx.Response(
+            status_code=200,
+            json=raw_response_payload,
+            request=request,
+        )
+        return response, request, raw_response
 
     def _capture_generation(
         self,
@@ -209,30 +321,23 @@ class GeminiHandler(BaseProviderHandler):
         temperature: float,
         max_tokens: int,
     ) -> None:
-        usage = getattr(response, 'usage_metadata', None) or getattr(
-            response, 'usage', None
-        )
+        usage = self._normalize_usage(response)
 
         def _get(field: str) -> int | None:
-            if not usage:
-                return None
-            if isinstance(usage, dict):
-                value = usage.get(field)
-            else:
-                value = getattr(usage, field, None)
-            try:
-                return int(value) if value is not None else None
-            except (TypeError, ValueError):
-                return None
+            return self._safe_int(usage.get(field))
 
         capture_ai_generation(
             ai_trace_id=job_id,
             ai_parent_id=str(iteration_count),
             ai_provider='gemini',
             ai_model=getattr(response, 'model', None) or self.model,
-            ai_input_tokens=_get('prompt_token_count') or _get('prompt_tokens'),
-            ai_output_tokens=_get('candidates_token_count')
+            ai_input_tokens=_get('input_tokens')
+            or _get('prompt_token_count')
+            or _get('prompt_tokens'),
+            ai_output_tokens=_get('output_tokens')
+            or _get('candidates_token_count')
             or _get('completion_tokens'),
+            ai_cache_read_input_tokens=_get('cache_read_input_tokens'),
             ai_temperature=temperature,
             ai_max_tokens=max_tokens,
         )
