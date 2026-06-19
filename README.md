@@ -27,7 +27,7 @@
 - **Model Provider Independence** — Choose your model provider and avoid vendor lock-in.
 - **Enterprise-Grade Security and Compliance** — Deploy and run locally to ensure security and compliance.
 
-[![legacy-use demo](https://framerusercontent.com/images/zbuaI2v5TNWWs9eVaW0dBad5LE.png)](https://framerusercontent.com/assets/Z6Dsz4JSIW0JIypHSZFcu5DVCU.mp4)
+[![legacy-use demo](https://www.legacy-use.com/_framer/images/zbuaI2v5TNWWs9eVaW0dBad5LE.befa00ed8d1e.png)](https://www.legacy-use.com/_framer/assets/Z6Dsz4JSIW0JIypHSZFcu5DVCU.mp4)
 
 ---
 
