@@ -50,6 +50,21 @@ class BaseComputerTool(BaseAnthropicTool):
     display_num: int = 1  # Default display number
     api_type: Literal['computer_20241022', 'computer_20250124'] = 'computer_20241022'
 
+    def __init__(
+        self,
+        *,
+        width: int | None = None,
+        height: int | None = None,
+        display_num: int | None = None,
+    ) -> None:
+        # Keep existing defaults unless a target-specific size is injected.
+        if width is not None:
+            self.width = int(width)
+        if height is not None:
+            self.height = int(height)
+        if display_num is not None:
+            self.display_num = int(display_num)
+
     @property
     def options(self):
         return {

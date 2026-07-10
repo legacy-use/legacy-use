@@ -32,6 +32,7 @@ from server.computer_use.tools import (
     ToolResult,
     ToolVersion,
 )
+from server.computer_use.tools.computer import BaseComputerTool
 from server.computer_use.tools.custom_action import CustomActionTool
 from server.computer_use.tools.extraction import ExtractionTool
 from server.computer_use.utils import (
@@ -113,6 +114,14 @@ async def sampling_loop(
 
     tool_group = TOOL_GROUPS_BY_VERSION[tool_version]
 
+    target_config: dict[str, Any] | None = None
+    target_id = job_data.get('target_id')
+    if target_id:
+        try:
+            target_config = db_tenant.get_target(target_id)
+        except Exception as e:
+            logger.warning(f'Could not load target config for tool sizing: {e}')
+
     # Create tools (no longer need database service)
     tools = []
     for ToolCls in tool_group.tools:
@@ -126,6 +135,13 @@ async def sampling_loop(
             response_example = api_definition_runtime.get_extraction_example()
             response_schema = infer_schema_from_response_example(response_example)
             tools.append(ToolCls(response_schema))
+        elif issubclass(ToolCls, BaseComputerTool):
+            tools.append(
+                ToolCls(
+                    width=(target_config or {}).get('width'),
+                    height=(target_config or {}).get('height'),
+                )
+            )
         else:
             tools.append(ToolCls())
 
